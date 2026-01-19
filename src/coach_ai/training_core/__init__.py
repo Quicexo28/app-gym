@@ -11,7 +11,7 @@ Design principle: return *issues + parameters*, not prescriptions.
 
 from .metrics import SessionMetrics, compute_session_metrics
 from .normalization import NormalizerParams, fit_normalizer, normalize_series, normalize_value
-from .schema import Session
+from .schema import Session, StrengthExercise, StrengthSet
 from .types import Issue, Severity
 from .validation import summarize_issues, validate_session, validate_sessions
 
@@ -28,4 +28,6 @@ __all__ = [
     "summarize_issues",
     "validate_session",
     "validate_sessions",
+    "StrengthExercise",
+    "StrengthSet",
 ]

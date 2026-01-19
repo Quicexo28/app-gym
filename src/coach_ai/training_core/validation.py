@@ -17,15 +17,9 @@ def _is_finite_number(x: object) -> bool:
 
 
 def validate_session(session: Session) -> list[Issue]:
-    """Validate a session and return issues.
+    """Validate a gym session and return issues (no exceptions).
 
-    Philosophy:
-    - Return *issues*, do not raise (unless the session isn't parseable).
-    - Prefer WARN over ERROR when something is merely suspicious.
-    - Do not auto-correct values here. If you want transformations, do them explicitly.
-
-    This function enforces only generic, domain-agnostic rules.
-    Sport-specific logic should live in later modules (or configurable rule layers).
+    Focus: hypertrophy/strength training (sets, reps, load_kg).
     """
 
     issues: list[Issue] = []
@@ -98,28 +92,15 @@ def validate_session(session: Session) -> list[Issue]:
                         value=rpe,
                     )
                 )
-            # Soft suspicious patterns (do not block)
-            if rpe == 0:
-                issues.append(
-                    Issue(
-                        severity=Severity.INFO,
-                        code="rpe_zero",
-                        message="rpe=0 is uncommon for a training session; ensure it's intentional.",
-                        field="rpe",
-                        value=rpe,
-                    )
-                )
 
-    # start_time sanity checks (never ERROR: clocks/timezones vary)
+    # start_time sanity checks
     st = session.start_time
     if st.tzinfo is None or st.tzinfo.utcoffset(st) is None:
         issues.append(
             Issue(
                 severity=Severity.WARN,
                 code="start_time_naive",
-                message=(
-                    "start_time has no timezone info. Series ordering can be ambiguous across DST/timezones."
-                ),
+                message="start_time has no timezone info; ordering can be ambiguous across timezones.",
                 field="start_time",
                 value=st.isoformat(),
             )
@@ -132,62 +113,181 @@ def validate_session(session: Session) -> list[Issue]:
                 Issue(
                     severity=Severity.WARN,
                     code="start_time_in_future",
-                    message="start_time is in the future (system clock mismatch or wrong date).",
+                    message="start_time is in the future (clock mismatch or wrong date).",
                     field="start_time",
                     value=st.isoformat(),
                     meta={"now_utc": now.isoformat()},
                 )
             )
 
-    # modality (informational only)
+    # modality informational
     if session.modality is None or not str(session.modality).strip():
         issues.append(
             Issue(
                 severity=Severity.INFO,
                 code="modality_missing",
-                message="modality not provided; comparisons across modalities may be less specific.",
+                message="modality not provided; keeping default assumptions may be less specific.",
                 field="modality",
                 value=session.modality,
             )
         )
 
-    # external_load: numeric finite and non-negative
-    for k, v in (session.external_load or {}).items():
-        if not _is_finite_number(v):
+    # Exercises/sets validation (gym-specific)
+    if not session.exercises:
+        issues.append(
+            Issue(
+                severity=Severity.WARN,
+                code="exercises_missing",
+                message="No exercises provided; external load (volume) metrics will be unavailable.",
+                field="exercises",
+                value=[],
+            )
+        )
+        return issues
+
+    for ex_i, ex in enumerate(session.exercises):
+        ex_field = f"exercises[{ex_i}]"
+
+        if not ex.name.strip():
             issues.append(
                 Issue(
                     severity=Severity.WARN,
-                    code="external_load_not_finite",
-                    message="external_load value is not a finite number and will be ignored in metrics.",
-                    field=f"external_load.{k}",
-                    value=v,
+                    code="exercise_name_empty",
+                    message="Exercise name is empty; grouping/aggregation becomes unreliable.",
+                    field=f"{ex_field}.name",
+                    value=ex.name,
+                )
+            )
+
+        if not ex.sets:
+            issues.append(
+                Issue(
+                    severity=Severity.WARN,
+                    code="exercise_sets_empty",
+                    message="Exercise has no sets; volume metrics will ignore it.",
+                    field=f"{ex_field}.sets",
+                    value=[],
                 )
             )
             continue
-        fv = float(v)
-        if fv < 0:
-            issues.append(
-                Issue(
-                    severity=Severity.ERROR,
-                    code="external_load_negative",
-                    message="external_load values must be >= 0.",
-                    field=f"external_load.{k}",
-                    value=fv,
+
+        for set_i, st_ in enumerate(ex.sets):
+            set_field = f"{ex_field}.sets[{set_i}]"
+
+            # reps
+            if not isinstance(st_.reps, int):
+                issues.append(
+                    Issue(
+                        severity=Severity.ERROR,
+                        code="reps_not_int",
+                        message="reps must be an integer.",
+                        field=f"{set_field}.reps",
+                        value=st_.reps,
+                    )
                 )
-            )
+            else:
+                if st_.reps <= 0:
+                    issues.append(
+                        Issue(
+                            severity=Severity.ERROR,
+                            code="reps_non_positive",
+                            message="reps must be > 0.",
+                            field=f"{set_field}.reps",
+                            value=st_.reps,
+                        )
+                    )
+                elif st_.reps > 200:
+                    issues.append(
+                        Issue(
+                            severity=Severity.WARN,
+                            code="reps_unusually_high",
+                            message="reps is unusually high (>200). Check units or entry.",
+                            field=f"{set_field}.reps",
+                            value=st_.reps,
+                        )
+                    )
+
+            # load_kg
+            if not _is_finite_number(st_.load_kg):
+                issues.append(
+                    Issue(
+                        severity=Severity.ERROR,
+                        code="load_not_finite",
+                        message="load_kg must be a finite number.",
+                        field=f"{set_field}.load_kg",
+                        value=st_.load_kg,
+                    )
+                )
+            else:
+                load = float(st_.load_kg)
+                if load < 0:
+                    issues.append(
+                        Issue(
+                            severity=Severity.ERROR,
+                            code="load_negative",
+                            message="load_kg must be >= 0.",
+                            field=f"{set_field}.load_kg",
+                            value=load,
+                        )
+                    )
+
+            # rir/rpe optional sanity (WARN only)
+            if st_.rir is not None:
+                if not _is_finite_number(st_.rir):
+                    issues.append(
+                        Issue(
+                            severity=Severity.WARN,
+                            code="rir_not_finite",
+                            message="rir is not finite; it will be ignored.",
+                            field=f"{set_field}.rir",
+                            value=st_.rir,
+                        )
+                    )
+                else:
+                    rir = float(st_.rir)
+                    if rir < 0 or rir > 10:
+                        issues.append(
+                            Issue(
+                                severity=Severity.WARN,
+                                code="rir_out_of_range",
+                                message="rir outside [0,10]; check entry.",
+                                field=f"{set_field}.rir",
+                                value=rir,
+                            )
+                        )
+
+            if st_.rpe is not None:
+                if not _is_finite_number(st_.rpe):
+                    issues.append(
+                        Issue(
+                            severity=Severity.WARN,
+                            code="set_rpe_not_finite",
+                            message="set rpe is not finite; it will be ignored.",
+                            field=f"{set_field}.rpe",
+                            value=st_.rpe,
+                        )
+                    )
+                else:
+                    srpe = float(st_.rpe)
+                    if srpe < 0 or srpe > 10:
+                        issues.append(
+                            Issue(
+                                severity=Severity.WARN,
+                                code="set_rpe_out_of_range",
+                                message="set rpe outside [0,10]; check entry.",
+                                field=f"{set_field}.rpe",
+                                value=srpe,
+                            )
+                        )
 
     return issues
 
 
 def validate_sessions(sessions: Sequence[Session]) -> list[Issue]:
-    """Validate a batch of sessions and return aggregated issues.
-
-    Adds batch-level checks (e.g., duplicates) while keeping per-session issues.
-    """
+    """Batch validation (adds duplicate checks)."""
 
     issues: list[Issue] = []
 
-    # Per-session issues
     for i, s in enumerate(sessions):
         for iss in validate_session(s):
             issues.append(
@@ -201,7 +301,6 @@ def validate_sessions(sessions: Sequence[Session]) -> list[Issue]:
                 )
             )
 
-    # Duplicate checks: (athlete_id, start_time) collisions
     seen: dict[tuple[str, str], int] = {}
     for i, s in enumerate(sessions):
         key = (s.athlete_id, s.start_time.isoformat())
@@ -211,10 +310,7 @@ def validate_sessions(sessions: Sequence[Session]) -> list[Issue]:
                 Issue(
                     severity=Severity.WARN,
                     code="duplicate_session_key",
-                    message=(
-                        "Two sessions share the same (athlete_id, start_time). "
-                        "This might be a duplicate import."
-                    ),
+                    message="Two sessions share the same (athlete_id, start_time). Might be duplicate import.",
                     field=f"sessions[{i}]",
                     value={"athlete_id": s.athlete_id, "start_time": s.start_time.isoformat()},
                     meta={"first_index": j, "second_index": i},
@@ -227,8 +323,6 @@ def validate_sessions(sessions: Sequence[Session]) -> list[Issue]:
 
 
 def summarize_issues(issues: Iterable[Issue]) -> dict[str, int]:
-    """Summarize issues by severity."""
-
     out = {Severity.ERROR.value: 0, Severity.WARN.value: 0, Severity.INFO.value: 0}
     for iss in issues:
         out[iss.severity.value] = out.get(iss.severity.value, 0) + 1

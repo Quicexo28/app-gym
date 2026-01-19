@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from coach_ai.training_core import fit_normalizer, normalize_series, normalize_value
 
 
@@ -24,7 +26,7 @@ def test_normalize_value_and_series():
     # flat history -> WARN and scale clamped to 1.0
     assert any(i.code == "normalizer_flat_history" for i in issues)
 
-    assert normalize_value(11, params) == 1.0
+    assert normalize_value(11, params) == pytest.approx(1.0, abs=1e-12)
     zs = normalize_series([None, 10, 11], params, clip_z=2.0)
     assert zs[0] is None
     assert zs[1] == 0.0

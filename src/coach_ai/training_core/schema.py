@@ -6,14 +6,35 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class Session(BaseModel):
-    """Domain-level representation of a training session.
+class StrengthSet(BaseModel):
+    """One set in a strength exercise.
 
-    Notes:
-    - Keep this model *light*: it should parse types reliably.
-    - Semantic validation lives in `coach_ai.training_core.validation`.
-    - `external_load` is a flexible dict to avoid premature ontology decisions.
+    We keep schema permissive (no ge/le constraints) so semantic issues can be emitted
+    by validation instead of failing parsing.
     """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reps: int = Field(..., description="Repetitions performed (raw; validated semantically).")
+    load_kg: float = Field(..., description="External load in kg (raw; validated semantically).")
+    rir: float | None = Field(default=None, description="Reps in reserve (optional).")
+    rpe: float | None = Field(default=None, description="Set RPE 0-10 (optional).")
+    is_warmup: bool = Field(default=False, description="Warm-up flag (optional).")
+    meta: dict[str, Any] = Field(default_factory=dict, description="Free-form set metadata.")
+
+
+class StrengthExercise(BaseModel):
+    """An exercise entry with its sets."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, description="Exercise name (e.g., Bench Press).")
+    sets: list[StrengthSet] = Field(default_factory=list, description="List of performed sets.")
+    meta: dict[str, Any] = Field(default_factory=dict, description="Free-form exercise metadata.")
+
+
+class Session(BaseModel):
+    """Domain-level representation of a gym training session."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -21,16 +42,14 @@ class Session(BaseModel):
     start_time: datetime = Field(..., description="Session start datetime")
     duration_min: float = Field(..., description="Duration in minutes (raw)")
     rpe: float | None = Field(default=None, description="Session RPE 0-10 (optional)")
-    modality: str | None = Field(default=None, description="Optional modality label")
-    external_load: dict[str, float] = Field(
-        default_factory=dict,
-        description="Optional external load signals (e.g., distance_km, tonnage_kg).",
+    modality: str | None = Field(
+        default="strength", description="Modality label (default: strength)."
     )
-    source: str | None = Field(
-        default=None,
-        description="Optional data source (manual, device name, platform).",
+
+    exercises: list[StrengthExercise] = Field(
+        default_factory=list,
+        description="Gym-specific structure: exercises and sets.",
     )
-    meta: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Free-form metadata (kept for traceability; not used by core rules).",
-    )
+
+    source: str | None = Field(default=None, description="Optional data source")
+    meta: dict[str, Any] = Field(default_factory=dict, description="Free-form session metadata")
