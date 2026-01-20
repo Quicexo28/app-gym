@@ -1,0 +1,60 @@
+{
+  "generated_at_utc": "2026-01-19T09:21:44.067733+00:00",
+  "seed": 42,
+  "n_athletes": 2,
+  "n_sessions": 24,
+  "metrics": {
+    "coverage_mean": 1.0,
+    "fatigue_spearman": 0.4452173913043478,
+    "fatigue_mae": 0.0969987447052472,
+    "n_points_eval": 24
+  },
+  "calibration": [
+    {
+      "count": 4.0,
+      "confidence_mean": 0.7248125,
+      "error_mean": 0.1680058418264066,
+      "confidence_min": 0.7025,
+      "confidence_max": 0.747125
+    },
+    {
+      "count": 4.0,
+      "confidence_mean": 0.8974068066496851,
+      "error_mean": 0.09090363688036301,
+      "confidence_min": 0.882243137416846,
+      "confidence_max": 0.9151634311422813
+    },
+    {
+      "count": 4.0,
+      "confidence_mean": 0.923673548294788,
+      "error_mean": 0.08213400307871752,
+      "confidence_min": 0.9183994176815122,
+      "confidence_max": 0.9273037058551729
+    },
+    {
+      "count": 4.0,
+      "confidence_mean": 0.9339204832971404,
+      "error_mean": 0.07933719577490592,
+      "confidence_min": 0.9273506841882752,
+      "confidence_max": 0.9384435511785971
+    },
+    {
+      "count": 4.0,
+      "confidence_mean": 0.9725719648016111,
+      "error_mean": 0.04840282521488913,
+      "confidence_min": 0.9461415675794093,
+      "confidence_max": 0.9929065519045428
+    },
+    {
+      "count": 4.0,
+      "confidence_mean": 0.9993712530595655,
+      "error_mean": 0.11320896545620111,
+      "confidence_min": 0.998772441659977,
+      "confidence_max": 0.9999906624526352
+    }
+  ],
+  "files": {
+    "points_csv": "data\\validation_tmp\\points.csv",
+    "report_json": "data\\validation_tmp\\report.json"
+  }
+}
