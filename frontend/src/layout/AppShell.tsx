@@ -1,34 +1,33 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { useAthleteId } from "../state/athlete";
 
-function TabLink({ to, label }: { to: string; label: string }) {
+function Item({ to, label }: { to: string; label: string }) {
   return (
     <NavLink
       to={to}
-      className={({ isActive }) => `tablink ${isActive ? "active" : ""}`}
+      className={({ isActive }) => `navItem ${isActive ? "active" : ""}`}
       end={to === "/home"}
     >
-      {label}
+      <span className="navLabel">{label}</span>
     </NavLink>
   );
 }
 
 export default function AppShell() {
   const [athleteId, setAthleteId] = useAthleteId();
-  const nav = useNavigate();
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <div className="brand" onClick={() => nav("/home")} role="button" tabIndex={0}>
-          Coach AI Engineer
-          <span className="brandSub">scenarios, no órdenes</span>
+    <div className="shell2">
+      <header className="topbar2">
+        <div className="brand2">
+          <div className="brandTitle">Coach AI Engineer</div>
+          <div className="brandSub">escenarios con incertidumbre explícita</div>
         </div>
 
-        <div className="athleteBox">
-          <label className="small" style={{ fontWeight: 700 }}>
+        <div className="athleteBox2">
+          <div className="small" style={{ fontWeight: 700 }}>
             Athlete
-          </label>
+          </div>
           <input
             className="input"
             value={athleteId}
@@ -39,25 +38,34 @@ export default function AppShell() {
         </div>
       </header>
 
-      <nav className="tabs">
-        <TabLink to="/home" label="Home" />
-        <TabLink to="/session/new" label="Nueva sesión" />
-        <TabLink to="/history" label="Historial" />
-        <TabLink to="/exercises" label="Ejercicios" />
-        <TabLink to="/routines" label="Rutinas" />
-        <TabLink to="/ingest" label="Import (avanzado)" />
-      </nav>
+      <div className="body2">
+        <aside className="sidebar">
+          <div className="sidebarTitle">Navegación</div>
+          <nav className="sidebarNav">
+            <Item to="/home" label="Home" />
+            <Item to="/session/new" label="Nueva sesión" />
+            <Item to="/history" label="Historial" />
+            <Item to="/exercises" label="Ejercicios" />
+            <Item to="/routines" label="Rutinas" />
+            <Item to="/ingest" label="Import (avanzado)" />
+          </nav>
 
-      <main className="content">
-        <Outlet />
-      </main>
+          <div className="sidebarHint small">
+            “Rutinas” = plantillas para registro (no prescripción).
+          </div>
+        </aside>
 
-      <footer className="tabbar">
-        <TabLink to="/home" label="Home" />
-        <TabLink to="/session/new" label="Nueva" />
-        <TabLink to="/history" label="Historial" />
-        <TabLink to="/exercises" label="Ejercicios" />
-        <TabLink to="/routines" label="Rutinas" />
+        <main className="content2">
+          <Outlet />
+        </main>
+      </div>
+
+      <footer className="tabbar2">
+        <Item to="/home" label="Home" />
+        <Item to="/session/new" label="Nueva" />
+        <Item to="/history" label="Historial" />
+        <Item to="/exercises" label="Ejercicios" />
+        <Item to="/routines" label="Rutinas" />
       </footer>
     </div>
   );

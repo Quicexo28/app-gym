@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+﻿import { Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./layout/AppShell";
 import Exercises from "./pages/Exercises";
 import History from "./pages/History";
@@ -20,7 +20,6 @@ export default function App() {
         <Route path="exercises" element={<Exercises />} />
         <Route path="routines" element={<Routines />} />
 
-        {/* herramientas */}
         <Route path="ingest" element={<Ingest />} />
         <Route path="run/:runId" element={<RunDetail />} />
 

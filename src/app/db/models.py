@@ -83,3 +83,6 @@ class Run(Base):
     latents: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     suggestions: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     issues: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+
+import app.db.models_auth  # noqa: F401, E402

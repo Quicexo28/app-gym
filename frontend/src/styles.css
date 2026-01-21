@@ -15,10 +15,15 @@ a {
   text-decoration: none;
 }
 
+.small {
+  color: #555;
+  font-size: 13px;
+}
+
 .container {
-  max-width: 980px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 18px;
 }
 
 .card {
@@ -43,11 +48,6 @@ a {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-}
-
-.small {
-  color: #555;
-  font-size: 13px;
 }
 
 .badge {
@@ -100,20 +100,6 @@ hr {
   margin: 16px 0;
 }
 
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.nav {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
 pre {
   white-space: pre-wrap;
   word-break: break-word;
@@ -122,4 +108,132 @@ pre {
   border-radius: 12px;
   padding: 12px;
   overflow: auto;
+}
+
+/* ===== Layout nuevo ===== */
+
+.shell2 {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar2 {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #ffffffcc;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #eee;
+  padding: 12px 14px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand2 {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.brandTitle {
+  font-weight: 900;
+}
+
+.brandSub {
+  font-weight: 600;
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.athleteBox2 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.body2 {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.sidebar {
+  width: 240px;
+  padding: 14px;
+  border-right: 1px solid #eee;
+  background: #fafafa;
+  display: none;
+}
+
+.sidebarTitle {
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.sidebarNav {
+  display: grid;
+  gap: 8px;
+}
+
+.sidebarHint {
+  margin-top: 12px;
+}
+
+.content2 {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 74px; /* tabbar en mobile */
+}
+
+.navItem {
+  border: 1px solid #e2e2e2;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.navItem.active {
+  border-color: #111;
+  background: #111;
+  color: #fff;
+}
+
+.navLabel {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.tabbar2 {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #eee;
+  background: #ffffffcc;
+  backdrop-filter: blur(10px);
+  z-index: 11;
+  overflow-x: auto;
+}
+
+/* Desktop: sidebar visible + tabbar oculto */
+@media (min-width: 920px) {
+  .sidebar {
+    display: block;
+  }
+  .tabbar2 {
+    display: none;
+  }
+  .content2 {
+    padding-bottom: 0;
+  }
 }
