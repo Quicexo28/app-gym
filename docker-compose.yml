@@ -9,5 +9,16 @@ services:
       - "5432:5432"
     volumes:
       - coach_ai_pg:/var/lib/postgresql/data
+
+  api:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql+psycopg://coach:coach@db:5432/coach_ai
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8000:8000"
+
 volumes:
   coach_ai_pg:
