@@ -1,5 +1,23 @@
-import { NavLink, Outlet } from "react-router-dom";
+﻿import { NavLink, Outlet } from "react-router-dom";
+
+import { useAuth } from "../state/auth";
+import { usePreferences } from "../state/preferences";
 import { useAthleteId } from "../state/athlete";
+
+type NavItemDef = {
+  to: string;
+  label: string;
+};
+
+const NAV_ITEMS: NavItemDef[] = [
+  { to: "/home", label: "Home" },
+  { to: "/session/new", label: "Nueva sesion" },
+  { to: "/history", label: "Historial" },
+  { to: "/exercises", label: "Ejercicios" },
+  { to: "/routines", label: "Rutinas" },
+  { to: "/ingest", label: "Importar" },
+  { to: "/settings", label: "Ajustes" },
+];
 
 function Item({ to, label }: { to: string; label: string }) {
   return (
@@ -15,58 +33,52 @@ function Item({ to, label }: { to: string; label: string }) {
 
 export default function AppShell() {
   const [athleteId, setAthleteId] = useAthleteId();
+  const { prefs, toggleTheme } = usePreferences();
+  const { user, planLabel, logout } = useAuth();
 
   return (
     <div className="shell2">
       <header className="topbar2">
-        <div className="brand2">
-          <div className="brandTitle">Coach AI Engineer</div>
-          <div className="brandSub">escenarios con incertidumbre explícita</div>
+        <div className="topbarRow">
+          <div className="brand2">
+            <div className="brandTitle">Coach AI Engineer</div>
+            <div className="brandSub">seguimiento rapido para decisiones de entrenamiento</div>
+          </div>
+
+          <div className="hstack compact topbarActions">
+            <label className="smallLabel" htmlFor="athlete-id-input">
+              Athlete
+            </label>
+            <input
+              id="athlete-id-input"
+              className="input athleteInput"
+              value={athleteId}
+              onChange={(e) => setAthleteId(e.target.value)}
+              placeholder="a1"
+            />
+            <button type="button" className="btn" onClick={toggleTheme}>
+              {prefs.theme === "dark" ? "Tema claro" : "Tema oscuro"}
+            </button>
+            <button type="button" className="btn" onClick={logout}>
+              Salir
+            </button>
+          </div>
         </div>
 
-        <div className="athleteBox2">
-          <div className="small" style={{ fontWeight: 700 }}>
-            Athlete
-          </div>
-          <input
-            className="input"
-            value={athleteId}
-            onChange={(e) => setAthleteId(e.target.value)}
-            placeholder="a1"
-            style={{ width: 160 }}
-          />
+        <nav className="topnav2" aria-label="Navegacion principal">
+          {NAV_ITEMS.map((item) => (
+            <Item key={item.to} to={item.to} label={item.label} />
+          ))}
+        </nav>
+
+        <div className="small topbarMeta">
+          {`Cuenta: ${user?.email || "-"} | Plan: ${planLabel || "-"} | Rol: ${user?.role || "-"} | Escala: ${prefs.effortScale.toUpperCase()} | Carga: ${prefs.weightUnit}`}
         </div>
       </header>
 
-      <div className="body2">
-        <aside className="sidebar">
-          <div className="sidebarTitle">Navegación</div>
-          <nav className="sidebarNav">
-            <Item to="/home" label="Home" />
-            <Item to="/session/new" label="Nueva sesión" />
-            <Item to="/history" label="Historial" />
-            <Item to="/exercises" label="Ejercicios" />
-            <Item to="/routines" label="Rutinas" />
-            <Item to="/ingest" label="Import (avanzado)" />
-          </nav>
-
-          <div className="sidebarHint small">
-            “Rutinas” = plantillas para registro (no prescripción).
-          </div>
-        </aside>
-
-        <main className="content2">
-          <Outlet />
-        </main>
-      </div>
-
-      <footer className="tabbar2">
-        <Item to="/home" label="Home" />
-        <Item to="/session/new" label="Nueva" />
-        <Item to="/history" label="Historial" />
-        <Item to="/exercises" label="Ejercicios" />
-        <Item to="/routines" label="Rutinas" />
-      </footer>
+      <main className="content2">
+        <Outlet />
+      </main>
     </div>
   );
 }

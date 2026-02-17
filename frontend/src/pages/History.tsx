@@ -1,29 +1,29 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { createRun, getSessions, listRuns } from "../api";
 import type { RunListItem } from "../api";
+import type { SessionRecord } from "../api";
+import { formatWeight } from "../lib/units";
 import { useAthleteId } from "../state/athlete";
-import { useNavigate } from "react-router-dom";
+import { usePreferences } from "../state/preferences";
 
-function volumeLoadKg(session: any): number {
-  try {
-    const ex = session.exercises || [];
-    let total = 0;
-    for (const e of ex) {
-      for (const s of e.sets || []) {
-        const reps = Number(s.reps);
-        const load = Number(s.load_kg);
-        if (Number.isFinite(reps) && Number.isFinite(load)) total += reps * load;
-      }
+function volumeLoadKg(session: SessionRecord): number {
+  const ex = session.exercises || [];
+  let total = 0;
+  for (const e of ex) {
+    for (const s of e.sets || []) {
+      const reps = Number(s.reps);
+      const load = Number(s.load_kg);
+      if (Number.isFinite(reps) && Number.isFinite(load)) total += reps * load;
     }
-    return total;
-  } catch {
-    return 0;
   }
+  return total;
 }
 
 export default function History() {
   const [athleteId] = useAthleteId();
-  const [sessions, setSessions] = useState<any[]>([]);
+  const { prefs } = usePreferences();
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [runs, setRuns] = useState<RunListItem[]>([]);
   const [busy, setBusy] = useState(false);
   const nav = useNavigate();
@@ -46,106 +46,99 @@ export default function History() {
     try {
       const res = await createRun(athleteId, "volume_load_kg", true);
       nav(`/run/${encodeURIComponent(res.run_id)}`);
-    } catch (e: any) {
-      alert(String(e?.message || e));
+    } catch (e: unknown) {
+      alert(String((e as { message?: string })?.message || e));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="container">
-      <div className="card">
-        <div className="badge">Athlete: {athleteId}</div>
-        <h2 style={{ margin: "10px 0 0 0" }}>Historial</h2>
-        <div className="small">Sesiones registradas + runs (escenarios) generados.</div>
+    <div className="container stack">
+      <header className="titleBlock">
+        <h1>Historial</h1>
+        <p>Sesiones y escenarios del atleta activo. Vista compacta para revisar rapido.</p>
+      </header>
 
-        <hr />
-
-        <div className="hstack">
-          <button className="btn primary" onClick={() => nav("/session/new")}>
-            Registrar sesión
-          </button>
+      <section className="surface">
+        <div className="chipRow">
+          <span className="chip">Athlete: {athleteId}</span>
+          <span className="chip">Carga visible: {prefs.weightUnit}</span>
+          <span className="chip">Sesiones: {sessionsSorted.length}</span>
+          <span className="chip">Runs: {runs.length}</span>
+        </div>
+        <div className="quickActions" style={{ marginTop: 12 }}>
+          <button className="btn primary" onClick={() => nav("/session/new")}>Nueva sesion</button>
           <button className="btn" onClick={runNow} disabled={busy}>
             {busy ? "Corriendo..." : "Correr escenarios"}
           </button>
         </div>
+      </section>
 
-        <hr />
-
-        <div className="row">
-          <div className="card" style={{ flex: "2 1 560px" }}>
-            <div className="small" style={{ fontWeight: 700 }}>
-              Sesiones ({sessionsSorted.length})
-            </div>
-
-            {sessionsSorted.length === 0 ? (
-              <div className="small" style={{ marginTop: 10 }}>
-                Sin sesiones todavía.
-              </div>
-            ) : (
-              <div style={{ overflowX: "auto", marginTop: 10 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: "left", borderBottom: "1px solid #eee", padding: "8px" }}>Fecha</th>
-                      <th style={{ textAlign: "left", borderBottom: "1px solid #eee", padding: "8px" }}>Dur</th>
-                      <th style={{ textAlign: "left", borderBottom: "1px solid #eee", padding: "8px" }}>RPE</th>
-                      <th style={{ textAlign: "left", borderBottom: "1px solid #eee", padding: "8px" }}>Vol (kg)</th>
-                      <th style={{ textAlign: "left", borderBottom: "1px solid #eee", padding: "8px" }}>Ejercicios</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sessionsSorted.slice(0, 30).map((s, idx) => (
-                      <tr key={idx}>
-                        <td style={{ padding: "8px", borderBottom: "1px solid #f3f3f3" }}>
-                          {s.start_time ? new Date(s.start_time).toLocaleString() : "—"}
-                        </td>
-                        <td style={{ padding: "8px", borderBottom: "1px solid #f3f3f3" }}>{s.duration_min ?? "—"}</td>
-                        <td style={{ padding: "8px", borderBottom: "1px solid #f3f3f3" }}>{s.rpe ?? "—"}</td>
-                        <td style={{ padding: "8px", borderBottom: "1px solid #f3f3f3" }}>{Math.round(volumeLoadKg(s))}</td>
-                        <td style={{ padding: "8px", borderBottom: "1px solid #f3f3f3" }}>
-                          {(s.exercises || []).map((e: any) => e.name).filter(Boolean).join(", ") || "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div className="small" style={{ marginTop: 8 }}>
-                  Mostrando hasta 30 sesiones más recientes.
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="card" style={{ flex: "1 1 360px" }}>
-            <div className="small" style={{ fontWeight: 700 }}>
-              Runs ({runs.length})
-            </div>
-
-            {runs.length === 0 ? (
-              <div className="small" style={{ marginTop: 10 }}>
-                Sin runs todavía.
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                {runs.slice(0, 12).map((r) => (
-                  <button
-                    key={r.run_id}
-                    className="btn"
-                    onClick={() => nav(`/run/${encodeURIComponent(r.run_id)}`)}
-                    style={{ textAlign: "left" }}
-                  >
-                    <div className="badge">{r.metric_key}</div>
-                    <div style={{ fontWeight: 800, marginTop: 6 }}>{r.summary?.top_scenario || "run"}</div>
-                    <div className="small">{new Date(r.generated_at_utc).toLocaleString()}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+      <section className="surface">
+        <div className="sectionHead">
+          <h3>Sesiones recientes</h3>
+          <p>Hasta 30 sesiones ordenadas por fecha.</p>
         </div>
-      </div>
+
+        {sessionsSorted.length === 0 ? (
+          <div className="emptyState">Sin sesiones todavia.</div>
+        ) : (
+          <div className="stack">
+            {sessionsSorted.slice(0, 30).map((s, idx) => {
+              const volKg = volumeLoadKg(s);
+              const exercises = (s.exercises || []).map((e) => e.name).filter(Boolean).join(" - ");
+
+              return (
+                <article key={idx} className="listItem">
+                  <div className="listMain">
+                    <strong>{s.start_time ? new Date(s.start_time).toLocaleString() : "Sin fecha"}</strong>
+                    <span className="small">Dur: {s.duration_min ?? "-"} min</span>
+                    <span className="small">
+                      {prefs.effortScale.toUpperCase()}: {s.rpe ?? "-"}
+                    </span>
+                  </div>
+                  <div className="listMeta">
+                    <span className="chip">Vol: {formatWeight(volKg, prefs.weightUnit)}</span>
+                    <span className="small">{exercises || "Sin ejercicios"}</span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="surface">
+        <div className="sectionHead">
+          <h3>Runs recientes</h3>
+          <p>Abre el detalle para ver trade-offs y confianza.</p>
+        </div>
+
+        {runs.length === 0 ? (
+          <div className="emptyState">Sin runs todavia.</div>
+        ) : (
+          <div className="gridCards">
+            {runs.slice(0, 12).map((r) => (
+              <button
+                key={r.run_id}
+                className="surfaceButton"
+                onClick={() => nav(`/run/${encodeURIComponent(r.run_id)}`)}
+              >
+                <div className="chipRow">
+                  <span className="chip">{r.metric_key}</span>
+                  <span className="chip">{new Date(r.generated_at_utc).toLocaleDateString()}</span>
+                </div>
+                <strong>{r.summary?.top_scenario || "run"}</strong>
+                <span className="small">
+                  Prob top: {typeof r.summary?.top_probability === "number" ? `${Math.round(r.summary.top_probability * 100)}%` : "-"}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
+

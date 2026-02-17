@@ -17,6 +17,7 @@ export type ExerciseCatalogItem = {
   name: string;
   group?: string;
   aliases?: string[];
+  path?: string[];
   created_at_utc: string;
 };
 

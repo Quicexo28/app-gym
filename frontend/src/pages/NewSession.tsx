@@ -1,12 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
-import { ingestSessions } from "../api";
-import { useAthleteId } from "../state/athlete";
-import { loadExerciseCatalog, loadRoutines } from "../lib/storage";
-import type { RoutineTemplate } from "../lib/storage";
 import { useNavigate } from "react-router-dom";
 
-type SetRow = { reps: string; load_kg: string };
+import { ingestSessions } from "../api";
+import {
+  ALL_EXERCISE_FILTER as ALL,
+  cleanExerciseText,
+  filterExerciseEntries,
+  getExerciseFilterOptions,
+  toExerciseCatalogEntries,
+  type ExerciseFilters,
+} from "../lib/exerciseCatalog";
+import { loadExerciseCatalog, loadRoutines } from "../lib/storage";
+import type { RoutineTemplate } from "../lib/storage";
+import { toKg } from "../lib/units";
+import { useAthleteId } from "../state/athlete";
+import { usePreferences } from "../state/preferences";
+
+type SetRow = { reps: string; load: string };
 type ExerciseRow = { name: string; sets: SetRow[] };
+
+const EMPTY_SET: SetRow = { reps: "", load: "" };
 
 function toISOZ(datetimeLocal: string): string {
   const d = new Date(datetimeLocal);
@@ -15,28 +28,87 @@ function toISOZ(datetimeLocal: string): string {
 
 export default function NewSession() {
   const [athleteId] = useAthleteId();
+  const { prefs } = usePreferences();
   const nav = useNavigate();
 
   const [startLocal, setStartLocal] = useState<string>("");
   const [durationMin, setDurationMin] = useState<string>("60");
-  const [rpe, setRpe] = useState<string>("7");
+  const [effort, setEffort] = useState<string>(prefs.effortScale === "rir" ? "2" : "7");
   const [notes, setNotes] = useState<string>("");
 
-  const [exercises, setExercises] = useState<ExerciseRow[]>([{ name: "", sets: [{ reps: "", load_kg: "" }] }]);
+  const [exercises, setExercises] = useState<ExerciseRow[]>([{ name: "", sets: [{ ...EMPTY_SET }] }]);
 
   const [routineId, setRoutineId] = useState<string>("");
   const [routines, setRoutines] = useState<RoutineTemplate[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
 
-  const catalog = useMemo(() => loadExerciseCatalog(), []);
+  const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
+  const [selectedFamily, setSelectedFamily] = useState<string>(ALL);
+  const [selectedVariation, setSelectedVariation] = useState<string>(ALL);
+  const [selectedSubvariation, setSelectedSubvariation] = useState<string>(ALL);
+  const [search, setSearch] = useState("");
+  const [selectedExerciseId, setSelectedExerciseId] = useState<string>("");
+
+  const catalogEntries = useMemo(() => toExerciseCatalogEntries(loadExerciseCatalog()), []);
+  const catalogNames = useMemo(
+    () => new Set(catalogEntries.map((entry) => cleanExerciseText(entry.name).toLowerCase())),
+    [catalogEntries],
+  );
 
   useEffect(() => {
     setRoutines(loadRoutines());
   }, []);
 
-  function addExercise() {
-    setExercises((prev) => [...prev, { name: "", sets: [{ reps: "", load_kg: "" }] }]);
+  useEffect(() => {
+    setEffort((prev) => {
+      if (prev) return prev;
+      return prefs.effortScale === "rir" ? "2" : "7";
+    });
+  }, [prefs.effortScale]);
+
+  const effortChoices = prefs.effortScale === "rir" ? [0, 1, 2, 3] : [6, 7, 8, 9];
+
+  const filters = useMemo<ExerciseFilters>(
+    () => ({
+      group: selectedGroup,
+      family: selectedFamily,
+      variation: selectedVariation,
+      subvariation: selectedSubvariation,
+      search,
+    }),
+    [search, selectedFamily, selectedGroup, selectedSubvariation, selectedVariation],
+  );
+
+  const { groupOptions, familyOptions, variationOptions, subvariationOptions } = useMemo(
+    () => getExerciseFilterOptions(catalogEntries, filters),
+    [catalogEntries, filters],
+  );
+
+  const filteredEntries = useMemo(() => filterExerciseEntries(catalogEntries, filters), [catalogEntries, filters]);
+
+  const effectiveSelectedExerciseId = useMemo(() => {
+    const stillVisible = filteredEntries.some((entry) => entry.id === selectedExerciseId);
+    if (stillVisible) return selectedExerciseId;
+    return filteredEntries[0]?.id || "";
+  }, [filteredEntries, selectedExerciseId]);
+
+  const selectedEntry = useMemo(
+    () => filteredEntries.find((entry) => entry.id === effectiveSelectedExerciseId) || null,
+    [effectiveSelectedExerciseId, filteredEntries],
+  );
+
+  function addBlankExercise() {
+    setExercises((prev) => [...prev, { name: "", sets: [{ ...EMPTY_SET }] }]);
+  }
+
+  function addExerciseFromSelector() {
+    setError("");
+    if (!selectedEntry) {
+      setError("Selecciona un ejercicio del listado.");
+      return;
+    }
+    setExercises((prev) => [...prev, { name: selectedEntry.name, sets: [{ ...EMPTY_SET }] }]);
   }
 
   function removeExercise(idx: number) {
@@ -49,7 +121,17 @@ export default function NewSession() {
 
   function addSet(exIdx: number) {
     setExercises((prev) =>
-      prev.map((e, i) => (i === exIdx ? { ...e, sets: [...e.sets, { reps: "", load_kg: "" }] } : e)),
+      prev.map((e, i) => (i === exIdx ? { ...e, sets: [...e.sets, { ...EMPTY_SET }] } : e)),
+    );
+  }
+
+  function duplicateLastSet(exIdx: number) {
+    setExercises((prev) =>
+      prev.map((e, i) => {
+        if (i !== exIdx) return e;
+        const last = e.sets[e.sets.length - 1] || EMPTY_SET;
+        return { ...e, sets: [...e.sets, { ...last }] };
+      }),
     );
   }
 
@@ -59,7 +141,7 @@ export default function NewSession() {
     );
   }
 
-  function setSetValue(exIdx: number, setIdx: number, key: "reps" | "load_kg", value: string) {
+  function setSetValue(exIdx: number, setIdx: number, key: "reps" | "load", value: string) {
     setExercises((prev) =>
       prev.map((e, i) => {
         if (i !== exIdx) return e;
@@ -73,7 +155,45 @@ export default function NewSession() {
     setRoutineId(id);
     const r = routines.find((x) => x.id === id);
     if (!r) return;
-    setExercises(r.exercises.map((name) => ({ name, sets: [{ reps: "", load_kg: "" }] })));
+    setExercises(r.exercises.map((name) => ({ name, sets: [{ ...EMPTY_SET }] })));
+  }
+
+  function resetLowerFilters(level: "group" | "family" | "variation") {
+    if (level === "group") {
+      setSelectedFamily(ALL);
+      setSelectedVariation(ALL);
+      setSelectedSubvariation(ALL);
+      return;
+    }
+
+    if (level === "family") {
+      setSelectedVariation(ALL);
+      setSelectedSubvariation(ALL);
+      return;
+    }
+
+    setSelectedSubvariation(ALL);
+  }
+
+  function clearFilters() {
+    setSelectedGroup(ALL);
+    setSelectedFamily(ALL);
+    setSelectedVariation(ALL);
+    setSelectedSubvariation(ALL);
+    setSearch("");
+  }
+
+  function parseEffort(): { apiRpe: number; raw: number } | null {
+    const raw = Number(effort);
+    if (!Number.isFinite(raw)) return null;
+
+    if (prefs.effortScale === "rpe") {
+      if (raw < 0 || raw > 10) return null;
+      return { apiRpe: raw, raw };
+    }
+
+    if (raw < 0 || raw > 6) return null;
+    return { apiRpe: Math.max(0, Math.min(10, 10 - raw)), raw };
   }
 
   async function submit() {
@@ -82,14 +202,16 @@ export default function NewSession() {
       setError("Falta fecha/hora de inicio.");
       return;
     }
+
     const dur = Number(durationMin);
     if (!Number.isFinite(dur) || dur <= 0) {
-      setError("Duración inválida (minutos).");
+      setError("Duracion invalida (minutos).");
       return;
     }
-    const r = Number(rpe);
-    if (!Number.isFinite(r) || r < 0 || r > 10) {
-      setError("RPE inválido (0–10).");
+
+    const effortParsed = parseEffort();
+    if (!effortParsed) {
+      setError(prefs.effortScale === "rir" ? "RIR invalido (0-6)." : "RPE invalido (0-10).");
       return;
     }
 
@@ -97,15 +219,16 @@ export default function NewSession() {
       .map((e) => {
         const name = e.name.trim();
         const sets = e.sets
-          .map((s) => ({ reps: Number(s.reps), load_kg: Number(s.load_kg) }))
-          .filter((s) => Number.isFinite(s.reps) && s.reps > 0 && Number.isFinite(s.load_kg) && s.load_kg >= 0);
+          .map((s) => ({ reps: Number(s.reps), loadValue: Number(s.load) }))
+          .filter((s) => Number.isFinite(s.reps) && s.reps > 0 && Number.isFinite(s.loadValue) && s.loadValue >= 0)
+          .map((s) => ({ reps: s.reps, load_kg: Number(toKg(s.loadValue, prefs.weightUnit).toFixed(3)) }));
 
         return { name, sets };
       })
       .filter((e) => e.name && e.sets.length > 0);
 
     if (exOut.length === 0) {
-      setError("Agrega al menos 1 ejercicio con al menos 1 set válido.");
+      setError("Agrega al menos 1 ejercicio con 1 set valido.");
       return;
     }
 
@@ -114,11 +237,18 @@ export default function NewSession() {
         athlete_id: athleteId,
         start_time: toISOZ(startLocal),
         duration_min: dur,
-        rpe: r,
+        rpe: effortParsed.apiRpe,
         modality: "strength",
         exercises: exOut,
         source: "ui",
-        meta: notes ? { note: notes } : {},
+        meta: {
+          note: notes || undefined,
+          effort_input: {
+            scale: prefs.effortScale,
+            value: effortParsed.raw,
+          },
+          weight_unit_input: prefs.weightUnit,
+        },
       },
     ];
 
@@ -126,180 +256,290 @@ export default function NewSession() {
     try {
       await ingestSessions(payload);
       nav("/history");
-    } catch (e: any) {
-      setError(String(e?.message || e));
+    } catch (e: unknown) {
+      setError(String((e as { message?: string })?.message || e));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="container">
-      <div className="card">
-        <div className="badge">Athlete: {athleteId}</div>
-        <h2 style={{ margin: "10px 0 0 0" }}>Nueva sesión</h2>
-        <div className="small">Registro cómodo para gym. No prescribe cargas: solo captura datos.</div>
+    <div className="container stack">
+      <header className="titleBlock">
+        <h1>Nueva sesion</h1>
+        <p>Registro rapido para gym. Las cargas se guardan en kg internamente aunque escribas en {prefs.weightUnit}.</p>
+      </header>
 
-        <hr />
+      <section className="surface">
+        <div className="chipRow">
+          <span className="chip">Athlete: {athleteId}</span>
+          <span className="chip">Escala: {prefs.effortScale.toUpperCase()}</span>
+          <span className="chip">Carga: {prefs.weightUnit}</span>
+        </div>
 
-        {error ? (
-          <div className="card" style={{ borderColor: "#f1c4c4", background: "#fff5f5" }}>
-            <div className="small" style={{ color: "#8a1f1f" }}>
-              {error}
-            </div>
+        {error ? <div className="message error">{error}</div> : null}
+
+        <div className="splitGrid">
+          <div>
+            <label className="smallLabel">Inicio</label>
+            <input
+              className="input"
+              type="datetime-local"
+              value={startLocal}
+              onChange={(e) => setStartLocal(e.target.value)}
+            />
           </div>
-        ) : null}
+          <div>
+            <label className="smallLabel">Duracion (min)</label>
+            <input className="input" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
+          </div>
+          <div>
+            <label className="smallLabel">{prefs.effortScale === "rir" ? "RIR (0-6)" : "RPE (0-10)"}</label>
+            <input className="input" value={effort} onChange={(e) => setEffort(e.target.value)} />
+          </div>
+        </div>
 
-        <div className="row" style={{ marginTop: 12 }}>
-          <div className="card">
-            <div className="small" style={{ fontWeight: 700 }}>
-              Datos base
-            </div>
+        <div className="chipRow" style={{ marginTop: 10 }}>
+          {effortChoices.map((value) => (
+            <button key={value} type="button" className="chipButton" onClick={() => setEffort(String(value))}>
+              {prefs.effortScale.toUpperCase()} {value}
+            </button>
+          ))}
+        </div>
 
-            <div className="row" style={{ marginTop: 10 }}>
-              <div>
-                <div className="small">Inicio</div>
-                <input
-                  className="input"
-                  type="datetime-local"
-                  value={startLocal}
-                  onChange={(e) => setStartLocal(e.target.value)}
-                />
-              </div>
-              <div>
-                <div className="small">Duración (min)</div>
-                <input className="input" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
-              </div>
-              <div>
-                <div className="small">RPE (0–10)</div>
-                <input className="input" value={rpe} onChange={(e) => setRpe(e.target.value)} />
-              </div>
-            </div>
+        <div style={{ marginTop: 12 }}>
+          <label className="smallLabel">Nota breve (opcional)</label>
+          <input
+            className="input"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="sueno, estres, sensacion general"
+          />
+        </div>
+      </section>
 
-            <div style={{ marginTop: 10 }}>
-              <div className="small">Notas (opcional)</div>
-              <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: sueño bajo, estrés..." />
-            </div>
+      <section className="surface">
+        <div className="sectionHead">
+          <h3>Plantilla de rutina</h3>
+          <p>Aplica una plantilla para cargar ejercicios en un toque.</p>
+        </div>
+        <div className="hstack">
+          <select className="input" value={routineId} onChange={(e) => applyRoutine(e.target.value)}>
+            <option value="">Sin plantilla</option>
+            {routines.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+          <button className="btn" onClick={() => nav("/routines")}>
+            Gestionar rutinas
+          </button>
+        </div>
+      </section>
+
+      <section className="surface">
+        <div className="sectionHead">
+          <h3>Ejercicios</h3>
+          <p>Usa selector jerarquico para agregar rapido y deja el detalle por sets abajo.</p>
+        </div>
+
+        <div className="splitGrid" style={{ marginTop: 10 }}>
+          <div>
+            <label className="smallLabel">Grupo muscular</label>
+            <select
+              className="input"
+              value={selectedGroup}
+              onChange={(e) => {
+                setSelectedGroup(e.target.value);
+                resetLowerFilters("group");
+              }}
+            >
+              <option value={ALL}>Todos</option>
+              {groupOptions.map((group) => (
+                <option key={group} value={group}>
+                  {group}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="card">
-            <div className="small" style={{ fontWeight: 700 }}>
-              Plantilla (Rutina)
-            </div>
+          <div>
+            <label className="smallLabel">Ejercicio base</label>
+            <select
+              className="input"
+              value={selectedFamily}
+              onChange={(e) => {
+                setSelectedFamily(e.target.value);
+                resetLowerFilters("family");
+              }}
+            >
+              <option value={ALL}>Todos</option>
+              {familyOptions.map((family) => (
+                <option key={family} value={family}>
+                  {family}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            <div className="hstack" style={{ marginTop: 10 }}>
-              <select className="input" value={routineId} onChange={(e) => applyRoutine(e.target.value)}>
-                <option value="">(sin plantilla)</option>
-                {routines.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-              <button className="btn" onClick={() => nav("/routines")}>
-                Gestionar rutinas
+          <div>
+            <label className="smallLabel">Variacion</label>
+            <select
+              className="input"
+              value={selectedVariation}
+              onChange={(e) => {
+                setSelectedVariation(e.target.value);
+                resetLowerFilters("variation");
+              }}
+            >
+              <option value={ALL}>Todas</option>
+              {variationOptions.map((variation) => (
+                <option key={variation} value={variation}>
+                  {variation}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="smallLabel">Subvariacion</label>
+            <select
+              className="input"
+              value={selectedSubvariation}
+              onChange={(e) => setSelectedSubvariation(e.target.value)}
+            >
+              <option value={ALL}>Todas</option>
+              {subvariationOptions.map((subvariation) => (
+                <option key={subvariation} value={subvariation}>
+                  {subvariation}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <label className="smallLabel">Buscar ejercicio</label>
+          <input
+            className="input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ej: sentadilla posterior smith"
+          />
+        </div>
+
+        <div className="chipRow" style={{ marginTop: 10, alignItems: "center" }}>
+          <span className="chip">Catalogo total: {catalogEntries.length}</span>
+          <span className="chip">Resultados: {filteredEntries.length}</span>
+          <span className="chip">
+            Ruta: {[selectedGroup, selectedFamily, selectedVariation, selectedSubvariation].filter((value) => value !== ALL).join(" > ") || "General"}
+          </span>
+          <button type="button" className="btn" onClick={clearFilters}>
+            Limpiar filtros
+          </button>
+        </div>
+
+        <div className="catalogList" style={{ marginTop: 12 }}>
+          {filteredEntries.length === 0 ? (
+            <div className="emptyState">Sin coincidencias para la combinacion de filtros actual.</div>
+          ) : (
+            filteredEntries.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={`catalogItem ${effectiveSelectedExerciseId === entry.id ? "active" : ""}`}
+                onClick={() => setSelectedExerciseId(entry.id)}
+              >
+                <strong>{entry.name}</strong>
+                <span className="small">{entry.path.join(" > ")}</span>
               </button>
-            </div>
-
-            <div className="small" style={{ marginTop: 10 }}>
-              Tip: gestiona nombres en “Ejercicios” para que el historial sea consistente.
-            </div>
-
-            <div className="small" style={{ marginTop: 10 }}>
-              Catálogo: {catalog.length} ejercicios (opcional)
-            </div>
-          </div>
+            ))
+          )}
         </div>
 
-        <hr />
-
-        <div className="small" style={{ fontWeight: 700 }}>
-          Ejercicios
+        <div className="quickActions" style={{ marginTop: 12 }}>
+          <button className="btn primary" onClick={addExerciseFromSelector} disabled={!selectedEntry}>
+            + Agregar desde selector
+          </button>
+          <button className="btn" onClick={addBlankExercise}>
+            + Ejercicio libre
+          </button>
         </div>
 
-        <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-          {exercises.map((ex, exIdx) => (
-            <div key={exIdx} className="card">
-              <div className="hstack" style={{ justifyContent: "space-between" }}>
-                <div style={{ flex: "1 1 auto" }}>
-                  <div className="small">Ejercicio</div>
-                  <input
-                    className="input"
-                    value={ex.name}
-                    onChange={(e) => setExerciseName(exIdx, e.target.value)}
-                    placeholder="Ej: Bench Press"
-                    list="exercise_catalog"
-                  />
+        <div className="stack" style={{ marginTop: 12 }}>
+          {exercises.map((ex, exIdx) => {
+            const hasOption = catalogNames.has(cleanExerciseText(ex.name).toLowerCase());
+
+            return (
+              <div key={exIdx} className="exerciseCard">
+                <div className="hstack" style={{ justifyContent: "space-between" }}>
+                  <div style={{ flex: 1 }}>
+                    <label className="smallLabel">Ejercicio</label>
+                    <select className="input" value={ex.name} onChange={(e) => setExerciseName(exIdx, e.target.value)}>
+                      {!hasOption && ex.name ? (
+                        <option value={ex.name}>{ex.name} (manual)</option>
+                      ) : null}
+                      <option value="">Selecciona ejercicio...</option>
+                      {catalogEntries.map((entry) => (
+                        <option key={entry.id} value={entry.name}>
+                          {entry.path.join(" > ")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button className="btn" onClick={() => removeExercise(exIdx)} disabled={exercises.length <= 1}>
+                    Quitar
+                  </button>
                 </div>
-                <button className="btn" onClick={() => removeExercise(exIdx)} disabled={exercises.length <= 1}>
-                  Eliminar
-                </button>
-              </div>
 
-              <datalist id="exercise_catalog">
-                {catalog.map((c) => (
-                  <option key={c.id} value={c.name} />
-                ))}
-              </datalist>
-
-              <div className="small" style={{ fontWeight: 700, marginTop: 12 }}>
-                Sets
-              </div>
-
-              <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-                {ex.sets.map((s, setIdx) => (
-                  <div key={setIdx} className="hstack">
-                    <div style={{ flex: "1 1 120px" }}>
-                      <div className="small">Reps</div>
+                <div className="setGrid">
+                  {ex.sets.map((s, setIdx) => (
+                    <div key={setIdx} className="setRow">
+                      <span className="setTag">Set {setIdx + 1}</span>
                       <input
                         className="input"
                         value={s.reps}
                         onChange={(e) => setSetValue(exIdx, setIdx, "reps", e.target.value)}
-                        placeholder="8"
+                        placeholder="reps"
                       />
-                    </div>
-                    <div style={{ flex: "1 1 160px" }}>
-                      <div className="small">Carga (kg)</div>
                       <input
                         className="input"
-                        value={s.load_kg}
-                        onChange={(e) => setSetValue(exIdx, setIdx, "load_kg", e.target.value)}
-                        placeholder="60"
+                        value={s.load}
+                        onChange={(e) => setSetValue(exIdx, setIdx, "load", e.target.value)}
+                        placeholder={`carga (${prefs.weightUnit})`}
                       />
+                      <button className="btn" onClick={() => removeSet(exIdx, setIdx)} disabled={ex.sets.length <= 1}>
+                        -
+                      </button>
                     </div>
-                    <button className="btn" onClick={() => removeSet(exIdx, setIdx)} disabled={ex.sets.length <= 1}>
-                      Quitar set
-                    </button>
-                  </div>
-                ))}
+                  ))}
+                </div>
+
+                <div className="hstack compact">
+                  <button className="btn" onClick={() => addSet(exIdx)}>
+                    + Set vacio
+                  </button>
+                  <button className="btn" onClick={() => duplicateLastSet(exIdx)}>
+                    + Duplicar ultimo set
+                  </button>
+                </div>
               </div>
-
-              <div className="hstack" style={{ marginTop: 10 }}>
-                <button className="btn" onClick={() => addSet(exIdx)}>
-                  + Añadir set
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+      </section>
 
-        <div className="hstack" style={{ marginTop: 12 }}>
-          <button className="btn" onClick={addExercise}>
-            + Añadir ejercicio
-          </button>
-        </div>
-
-        <hr />
-
+      <section className="surface">
         <div className="hstack">
           <button className="btn primary" onClick={submit} disabled={busy}>
-            {busy ? "Guardando..." : "Guardar sesión"}
+            {busy ? "Guardando..." : "Guardar sesion"}
           </button>
           <button className="btn" onClick={() => nav("/history")} disabled={busy}>
             Cancelar
           </button>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

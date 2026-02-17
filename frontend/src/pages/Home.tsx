@@ -1,53 +1,70 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+﻿import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiPing } from "../api";
+import { useAthleteId } from "../state/athlete";
+import { usePreferences } from "../state/preferences";
 
 export default function Home() {
-  const [athleteId, setAthleteId] = useState("a1");
-  const [ping, setPing] = useState<string>("(checking...)");
+  const [athleteId, setAthleteId] = useAthleteId();
+  const { prefs } = usePreferences();
+  const [ping, setPing] = useState<string>("Conectando API...");
   const nav = useNavigate();
 
   useEffect(() => {
     apiPing()
-      .then((r) => setPing(r.pong ? "API: ok" : "API: unknown"))
+      .then((r) => setPing(r.pong ? "API conectada" : "API sin respuesta valida"))
       .catch((e) => setPing(`API error: ${String(e.message || e)}`));
   }, []);
 
   return (
-    <div className="container">
-      <div className="header">
+    <div className="container stack">
+      <header className="titleBlock">
+        <h1>Dashboard</h1>
+        <p>Registro rapido para gym con escenarios probabilisticos. La decision final siempre es humana.</p>
+      </header>
+
+      <section className="surface quickGrid">
         <div>
-          <h2 style={{ margin: 0 }}>Coach AI Engineer — MVP</h2>
-          <div className="small">
-            Este sistema <b>no decide</b>. Sugiere escenarios con incertidumbre explícita.
+          <div className="smallLabel">Estado</div>
+          <div className="statusText">{ping}</div>
+        </div>
+        <div>
+          <div className="smallLabel">Atleta activo</div>
+          <div className="hstack compact">
+            <input className="input athleteInput" value={athleteId} onChange={(e) => setAthleteId(e.target.value)} />
+            <button className="btn" onClick={() => nav(`/athlete/${encodeURIComponent(athleteId)}`)}>
+              Panel atleta
+            </button>
           </div>
         </div>
-        <div className="nav">
-          <Link className="btn" to="/ingest">
-            Ingesta (JSON)
-          </Link>
+      </section>
+
+      <section className="surface">
+        <div className="sectionHead">
+          <h3>Acciones rapidas</h3>
+          <p>Flujo recomendado: registrar sesion, revisar historial y correr escenarios.</p>
         </div>
-      </div>
-
-      <div className="card">
-        <div className="small">{ping}</div>
-
-        <hr />
-
-        <label className="small" style={{ fontWeight: 700 }}>
-          Athlete ID
-        </label>
-        <div className="hstack" style={{ marginTop: 8 }}>
-          <input className="input" value={athleteId} onChange={(e) => setAthleteId(e.target.value)} />
-          <button className="btn primary" onClick={() => nav(`/athlete/${encodeURIComponent(athleteId)}`)}>
-            Abrir panel
-          </button>
+        <div className="quickActions">
+          <button className="btn primary" onClick={() => nav("/session/new")}>Nueva sesion</button>
+          <button className="btn" onClick={() => nav("/history")}>Historial</button>
+          <button className="btn" onClick={() => nav("/routines")}>Rutinas</button>
+          <button className="btn" onClick={() => nav("/settings")}>Ajustes</button>
         </div>
+      </section>
 
-        <div className="small" style={{ marginTop: 12 }}>
-          Flujo recomendado: <b>Ingesta</b> → <b>Panel atleta</b> → <b>Run</b> → <b>Summary</b>.
+      <section className="surface">
+        <div className="sectionHead">
+          <h3>Preferencias activas</h3>
+          <p>Estas opciones impactan como se muestran y capturan los datos en la app.</p>
         </div>
-      </div>
+        <div className="chipRow">
+          <span className="chip">Tema: {prefs.theme}</span>
+          <span className="chip">Esfuerzo: {prefs.effortScale.toUpperCase()}</span>
+          <span className="chip">Carga: {prefs.weightUnit}</span>
+          <span className="chip">Distancia: {prefs.distanceUnit}</span>
+        </div>
+      </section>
     </div>
   );
 }
+

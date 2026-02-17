@@ -1,41 +1,58 @@
-import type { RunSummaryResponse } from "../api";
+﻿import type { RunSummaryResponse } from "../api";
+
+function renderValue(value: unknown): string {
+  if (value === null || value === undefined) return "-";
+  if (typeof value === "number") return Number.isFinite(value) ? String(Number(value.toFixed(3))) : "-";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value);
+}
 
 export function ScenarioCard({ s }: { s: RunSummaryResponse["top3_scenarios"][number] }) {
-  const prob = typeof s.probability === "number" ? `${Math.round(s.probability * 100)}%` : "—";
-  const conf = typeof s.confidence === "number" ? `${Math.round(s.confidence * 100)}%` : "—";
+  const prob = typeof s.probability === "number" ? `${Math.round(s.probability * 100)}%` : "-";
+  const conf = typeof s.confidence === "number" ? `${Math.round(s.confidence * 100)}%` : "-";
+  const leverEntries = Object.entries(s.levers || {});
 
   return (
-    <div className="card" style={{ flex: "1 1 280px" }}>
+    <article className="surfaceButton scenarioCard">
       <div className="hstack" style={{ justifyContent: "space-between" }}>
         <div>
-          <div className="badge">{s.name}</div>
+          <span className="chip">{s.name}</span>
           <h3 style={{ margin: "8px 0 0 0" }}>{s.title}</h3>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div className="small">prob</div>
-          <div style={{ fontWeight: 700 }}>{prob}</div>
-          <div className="small" style={{ marginTop: 6 }}>
-            conf
-          </div>
-          <div style={{ fontWeight: 700 }}>{conf}</div>
+        <div className="metricBlock">
+          <span>Prob {prob}</span>
+          <span>Conf {conf}</span>
         </div>
       </div>
 
-      <hr />
-
-      <div className="small" style={{ fontWeight: 700 }}>
-        Palancas (direccional, no prescriptivo)
+      <div className="sectionHead" style={{ marginTop: 10 }}>
+        <h4>Palancas</h4>
+        <p>Direccion esperada, no prescripcion exacta.</p>
       </div>
-      <pre style={{ marginTop: 8 }}>{JSON.stringify(s.levers, null, 2)}</pre>
+      {leverEntries.length === 0 ? (
+        <div className="small">Sin palancas reportadas.</div>
+      ) : (
+        <div className="chipRow">
+          {leverEntries.map(([key, value]) => (
+            <span key={key} className="chip">{`${key}: ${renderValue(value)}`}</span>
+          ))}
+        </div>
+      )}
 
-      <div className="small" style={{ fontWeight: 700, marginTop: 12 }}>
-        Trade-offs
+      <div className="sectionHead" style={{ marginTop: 10 }}>
+        <h4>Trade-offs</h4>
+        <p>Costes potenciales a considerar en la decision.</p>
       </div>
-      <ul className="small" style={{ marginTop: 8 }}>
-        {(s.tradeoffs || []).map((t, idx) => (
-          <li key={idx}>{t}</li>
-        ))}
-      </ul>
-    </div>
+      {(s.tradeoffs || []).length === 0 ? (
+        <div className="small">Sin trade-offs reportados.</div>
+      ) : (
+        <ul className="compactList">
+          {(s.tradeoffs || []).map((t, idx) => (
+            <li key={idx}>{t}</li>
+          ))}
+        </ul>
+      )}
+    </article>
   );
 }
+

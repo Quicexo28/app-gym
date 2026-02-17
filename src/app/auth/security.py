@@ -9,7 +9,8 @@ from passlib.context import CryptContext
 
 from app.auth.types import Plan, Role
 
-PWD_CONTEXT = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use a pure-passlib hasher to avoid bcrypt backend incompatibilities in local/dev.
+PWD_CONTEXT = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-insecure-change-me")
 JWT_ALG = os.environ.get("JWT_ALG", "HS256")

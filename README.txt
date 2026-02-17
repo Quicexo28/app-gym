@@ -84,3 +84,24 @@ Migraciones DB (Alembic): se reinició para recuperar consistencia (se debe reha
 Auth + planes (free/pro/coach): especificado, pero requiere DB + migración estable + endpoints.
 
 UI/UX de “gym-first” (ejercicios/rutinas/historial) está en etapa de diseño.
+---
+
+## Docker: dev vs production
+
+- Dev stack: `docker-compose.yml` (bind mount + reload para iterar rapido).
+- Production stack: `docker-compose.prod.yml` (API + Postgres, sin reload, migracion separada).
+- Guia operativa de produccion: `docs/docker-production.md`.
+
+Flujo de deploy de produccion:
+
+```bash
+docker compose -f docker-compose.prod.yml build api
+docker compose -f docker-compose.prod.yml up -d db
+docker compose -f docker-compose.prod.yml run --rm migrate
+docker compose -f docker-compose.prod.yml up -d api
+```
+
+## Frontend (dev/build)
+
+- `npm run dev` (desde la raiz) usa `frontend/vite.config.ts` y sirve la app real de `frontend/`.
+- `npm run build` y `npm run preview` (desde la raiz) tambien operan sobre `frontend/`.

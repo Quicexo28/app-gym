@@ -1,0 +1,56 @@
+name: coach-ai-engineer-prod
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-coach_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-coach}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - coach_ai_pg_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-coach} -d ${POSTGRES_DB:-coach_ai}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: coach-ai-engineer-api:prod
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  migrate:
+    image: coach-ai-engineer-api:prod
+    env_file:
+      - .env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "test -n \"$$DATABASE_URL\" && exec alembic upgrade head"]
+    restart: "no"
+
+volumes:
+  coach_ai_pg_prod:
