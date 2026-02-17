@@ -9,14 +9,24 @@ services:
       - "5432:5432"
     volumes:
       - coach_ai_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coach -d coach_ai"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   api:
-    build: .
+    build:
+      context: .
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://coach:coach@db:5432/coach_ai
+      JWT_SECRET: dev-insecure-change-me
       PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./:/app
     ports:
       - "8000:8000"
 

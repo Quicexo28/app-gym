@@ -1,25 +1,19 @@
-# Utiliza una imagen ligera: las variantes “-slim” de Python reducen mucho el tamaño y superficie de ataque:contentReference[oaicite:0]{index=0}.
 FROM python:3.11-slim
 
-# Define el directorio de trabajo para las siguientes instrucciones:contentReference[oaicite:1]{index=1}.
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-# Copia primero el archivo de configuración del proyecto.
-# Esto permite aprovechar la caché de Docker si las dependencias no cambian:contentReference[oaicite:2]{index=2}.
-COPY pyproject.toml .
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=68" wheel
 
-# Instala las herramientas necesarias para compilar e instalar tu proyecto.
-RUN pip install --no-cache-dir setuptools>=68 wheel:contentReference[oaicite:3]{index=3}
+COPY pyproject.toml README.md ./
+COPY alembic.ini ./alembic.ini
+COPY migrations ./migrations
+COPY src ./src
 
-# Copia el código del proyecto.
-COPY . .
+RUN pip install --no-cache-dir -e .
 
-# Instala tu aplicación como paquete de Python.
-# Esto leerá las dependencias de pyproject.toml e instalará todo usando pip.
-RUN pip install --no-cache-dir .
+EXPOSE 8000
 
-# Comando que se ejecutará al arrancar el contenedor:
-# primero aplica las migraciones de base de datos con Alembic y luego
-# inicia el servidor FastAPI con Uvicorn:contentReference[oaicite:4]{index=4}.
-CMD ["bash", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
-
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/migrations"]
