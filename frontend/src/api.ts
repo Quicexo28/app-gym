@@ -152,6 +152,33 @@ export type RunSummaryResponse = {
   summary: JsonObject;
 };
 
+export type AccessibleAthletesResponse = {
+  can_switch: boolean;
+  athlete_ids: string[];
+};
+
+export type ProfileData = {
+  username?: string | null;
+  bio?: string | null;
+  achievements: string[];
+  medals: string[];
+};
+
+export type ProfileTrainingStats = {
+  sessions_total: number;
+  runs_total: number;
+  last_session_at?: string | null;
+  last_run_at?: string | null;
+};
+
+export type ProfileResponse = {
+  email: string;
+  role: Role;
+  plan: BackendPlan;
+  profile: ProfileData;
+  training_stats: ProfileTrainingStats;
+};
+
 let authToken: string | null = null;
 
 export function setApiToken(token: string | null): void {
@@ -298,6 +325,33 @@ export function exportGlobalExercises(): Promise<GlobalExerciseExportPayload> {
 
 export function getMe(): Promise<AuthUser> {
   return http("/api/v1/me");
+}
+
+export function getAccessibleAthletes(): Promise<AccessibleAthletesResponse> {
+  return http("/api/v1/athletes/accessible");
+}
+
+export function deleteMyAccount(confirm: string): Promise<{ ok: boolean }> {
+  return http("/api/v1/auth/me", {
+    method: "DELETE",
+    body: JSON.stringify({ confirm }),
+  });
+}
+
+export function getMyProfile(): Promise<ProfileResponse> {
+  return http("/api/v1/profile/me");
+}
+
+export function updateMyProfile(payload: {
+  username?: string | null;
+  bio?: string | null;
+  achievements?: string[];
+  medals?: string[];
+}): Promise<ProfileResponse> {
+  return http("/api/v1/profile/me", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function adminSwitchPlan(payload: {

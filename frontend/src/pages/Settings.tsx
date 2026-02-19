@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { adminSwitchPlan, ingestSessions, labelToBackendPlan, type PlanLabel, type Role } from "../api";
+import { adminSwitchPlan, deleteMyAccount, ingestSessions, labelToBackendPlan, type PlanLabel, type Role } from "../api";
 import { parseExerciseImportFile, type LegacyImportMode } from "../lib/legacyImport";
+import { saveRoutines } from "../lib/storage";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
@@ -62,9 +64,10 @@ function OptionRow<T extends string>({
 }
 
 export default function Settings() {
+  const nav = useNavigate();
   const { prefs, setTheme, setEffortScale, setWeightUnit, setDistanceUnit } = usePreferences();
-  const { user, planLabel, isAdmin, refreshMe } = useAuth();
-  const { importGlobalCatalog, exportGlobalCatalog } = useExerciseCatalog();
+  const { user, planLabel, isAdmin, refreshMe, logout } = useAuth();
+  const { items, removeItem, importGlobalCatalog, exportGlobalCatalog, refresh } = useExerciseCatalog();
 
   const [switchEmail, setSwitchEmail] = useState("");
   const [switchPlan, setSwitchPlan] = useState<PlanLabel>("standard");
@@ -83,6 +86,11 @@ export default function Settings() {
   const [sessionImportInfo, setSessionImportInfo] = useState("");
   const [sessionImportResult, setSessionImportResult] = useState("");
   const [sessionImportShowAdvanced, setSessionImportShowAdvanced] = useState(false);
+
+  const [dangerBusy, setDangerBusy] = useState(false);
+  const [dangerError, setDangerError] = useState("");
+  const [dangerInfo, setDangerInfo] = useState("");
+  const dangerBtnStyle = { borderColor: "var(--danger)", color: "var(--danger)" } as const;
 
   useEffect(() => {
     if (!user) return;
@@ -215,6 +223,122 @@ export default function Settings() {
     } catch {
       setSessionImportError("No se pudo leer el archivo.");
       setSessionImportInfo("");
+    }
+  }
+
+  function requestDangerConfirmation(actionLabel: string, expected: string): boolean {
+    const answer = window.prompt(`${actionLabel}\nEscribe exactamente: ${expected}`);
+    if (answer === null) return false;
+    return answer.trim() === expected;
+  }
+
+  async function clearAllRoutines() {
+    setDangerError("");
+    setDangerInfo("");
+
+    const ok = requestDangerConfirmation("Esta accion borra TODAS tus rutinas locales.", "BORRAR RUTINAS");
+    if (!ok) {
+      setDangerError("Confirmacion cancelada.");
+      return;
+    }
+
+    setDangerBusy(true);
+    try {
+      saveRoutines([]);
+      setDangerInfo("Rutinas locales eliminadas.");
+    } catch (e: unknown) {
+      setDangerError(String((e as { message?: string })?.message || e));
+    } finally {
+      setDangerBusy(false);
+    }
+  }
+
+  async function clearAllCustomExercises() {
+    setDangerError("");
+    setDangerInfo("");
+
+    const customItems = items.filter((item) => item.scope === "custom");
+    if (customItems.length === 0) {
+      setDangerInfo("No hay ejercicios personalizados para borrar.");
+      return;
+    }
+
+    const ok = requestDangerConfirmation(
+      `Esta accion borra ${customItems.length} ejercicios personalizados.`,
+      "BORRAR EJERCICIOS PERSONALIZADOS",
+    );
+    if (!ok) {
+      setDangerError("Confirmacion cancelada.");
+      return;
+    }
+
+    setDangerBusy(true);
+    try {
+      for (const item of customItems) {
+        await removeItem(item);
+      }
+      await refresh();
+      setDangerInfo(`Ejercicios personalizados eliminados: ${customItems.length}.`);
+    } catch (e: unknown) {
+      setDangerError(String((e as { message?: string })?.message || e));
+    } finally {
+      setDangerBusy(false);
+    }
+  }
+
+  async function clearAllGlobalExercises() {
+    setDangerError("");
+    setDangerInfo("");
+
+    if (!isAdmin) {
+      setDangerError("Solo admin puede borrar ejercicios globales.");
+      return;
+    }
+
+    const globalCount = items.filter((item) => item.scope === "global").length;
+    const ok = requestDangerConfirmation(
+      `Esta accion borra TODOS los ejercicios globales (${globalCount}).`,
+      "BORRAR EJERCICIOS GLOBALES",
+    );
+    if (!ok) {
+      setDangerError("Confirmacion cancelada.");
+      return;
+    }
+
+    setDangerBusy(true);
+    try {
+      await importGlobalCatalog({ mode: "replace", items: [] });
+      await refresh();
+      setDangerInfo("Ejercicios globales eliminados.");
+    } catch (e: unknown) {
+      setDangerError(String((e as { message?: string })?.message || e));
+    } finally {
+      setDangerBusy(false);
+    }
+  }
+
+  async function deleteAccount() {
+    setDangerError("");
+    setDangerInfo("");
+
+    const ok = requestDangerConfirmation(
+      "Esta accion elimina tu cuenta y tus datos personales asociados.",
+      "ELIMINAR CUENTA",
+    );
+    if (!ok) {
+      setDangerError("Confirmacion cancelada.");
+      return;
+    }
+
+    setDangerBusy(true);
+    try {
+      await deleteMyAccount("ELIMINAR CUENTA");
+      logout();
+      nav("/login", { replace: true });
+    } catch (e: unknown) {
+      setDangerError(String((e as { message?: string })?.message || e));
+    } finally {
+      setDangerBusy(false);
     }
   }
 
@@ -465,6 +589,33 @@ export default function Settings() {
           <div className="small">Las funciones admin (import/export global, import batch y cambio de plan) solo aparecen con rol admin.</div>
         </section>
       )}
+
+      <section className="surface">
+        <div className="sectionHead">
+          <h3>Danger Zone</h3>
+          <p>Acciones destructivas. Cada una exige confirmacion escrita.</p>
+        </div>
+
+        <div className="quickActions" style={{ marginTop: 12 }}>
+          <button className="btn" style={dangerBtnStyle} onClick={clearAllRoutines} disabled={dangerBusy}>
+            {dangerBusy ? "Procesando..." : "Borrar todas mis rutinas"}
+          </button>
+          <button className="btn" style={dangerBtnStyle} onClick={clearAllCustomExercises} disabled={dangerBusy}>
+            {dangerBusy ? "Procesando..." : "Borrar todos mis ejercicios personalizados"}
+          </button>
+          {isAdmin ? (
+            <button className="btn" style={dangerBtnStyle} onClick={clearAllGlobalExercises} disabled={dangerBusy}>
+              {dangerBusy ? "Procesando..." : "Admin: borrar todos los ejercicios globales"}
+            </button>
+          ) : null}
+          <button className="btn" style={dangerBtnStyle} onClick={deleteAccount} disabled={dangerBusy}>
+            {dangerBusy ? "Procesando..." : "Eliminar mi cuenta"}
+          </button>
+        </div>
+
+        {dangerError ? <div className="message error" style={{ marginTop: 12 }}>{dangerError}</div> : null}
+        {dangerInfo ? <div className="message" style={{ marginTop: 12 }}>{dangerInfo}</div> : null}
+      </section>
     </div>
   );
 }

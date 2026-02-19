@@ -24,6 +24,29 @@ class Athlete(Base):
     )
 
 
+class CoachAthleteAssignment(Base):
+    __tablename__ = "coach_athlete_assignments"
+    __table_args__ = (
+        UniqueConstraint("coach_user_id", "athlete_id", name="uq_coach_athlete_assignment"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    coach_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        index=True,
+        nullable=False,
+    )
+    athlete_id: Mapped[str] = mapped_column(
+        ForeignKey("athletes.athlete_id"),
+        index=True,
+        nullable=False,
+    )
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+
+
 class TrainingSession(Base):
     __tablename__ = "sessions"
     __table_args__ = (

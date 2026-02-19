@@ -1,10 +1,10 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createRun, getSessions, listRuns } from "../api";
 import type { RunListItem } from "../api";
 import type { SessionRecord } from "../api";
 import { formatWeight } from "../lib/units";
-import { useAthleteId } from "../state/athlete";
+import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 
 function volumeLoadKg(session: SessionRecord): number {
@@ -21,6 +21,7 @@ function volumeLoadKg(session: SessionRecord): number {
 }
 
 export default function History() {
+  const { athleteIds, canSwitch, ready: athleteReady } = useAthleteAccess();
   const [athleteId] = useAthleteId();
   const { prefs } = usePreferences();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -29,6 +30,12 @@ export default function History() {
   const nav = useNavigate();
 
   useEffect(() => {
+    if (!athleteId) {
+      setSessions([]);
+      setRuns([]);
+      return;
+    }
+
     getSessions(athleteId)
       .then(setSessions)
       .catch(() => setSessions([]));
@@ -42,6 +49,8 @@ export default function History() {
   }, [sessions]);
 
   async function runNow() {
+    if (!athleteId) return;
+
     setBusy(true);
     try {
       const res = await createRun(athleteId, "volume_load_kg", true);
@@ -62,17 +71,24 @@ export default function History() {
 
       <section className="surface">
         <div className="chipRow">
-          <span className="chip">Athlete: {athleteId}</span>
+          <span className="chip">Athlete: {athleteId || "-"}</span>
           <span className="chip">Carga visible: {prefs.weightUnit}</span>
           <span className="chip">Sesiones: {sessionsSorted.length}</span>
           <span className="chip">Runs: {runs.length}</span>
         </div>
         <div className="quickActions" style={{ marginTop: 12 }}>
-          <button className="btn primary" onClick={() => nav("/session/new")}>Nueva sesion</button>
-          <button className="btn" onClick={runNow} disabled={busy}>
+          <button className="btn primary" onClick={() => nav("/session/new")} disabled={!athleteId}>
+            Nueva sesion
+          </button>
+          <button className="btn" onClick={runNow} disabled={busy || !athleteId}>
             {busy ? "Corriendo..." : "Correr escenarios"}
           </button>
         </div>
+        {canSwitch && athleteReady && athleteIds.length === 0 ? (
+          <div className="message error" style={{ marginTop: 12 }}>
+            No tienes atletas asignados. Pide a un admin que te asigne al menos uno.
+          </div>
+        ) : null}
       </section>
 
       <section className="surface">

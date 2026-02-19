@@ -1,11 +1,11 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiPing } from "../api";
-import { useAthleteId } from "../state/athlete";
+import { useAthleteAccess } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 
 export default function Home() {
-  const [athleteId, setAthleteId] = useAthleteId();
+  const { athleteId, athleteIds, canSwitch, ready: athleteReady, setAthleteId } = useAthleteAccess();
   const { prefs, resolvedTheme } = usePreferences();
   const [ping, setPing] = useState<string>("Conectando API...");
   const nav = useNavigate();
@@ -31,12 +31,36 @@ export default function Home() {
         </div>
         <div>
           <div className="smallLabel">Atleta activo</div>
-          <div className="hstack compact">
-            <input className="input athleteInput" value={athleteId} onChange={(e) => setAthleteId(e.target.value)} />
-            <button className="btn" onClick={() => nav(`/athlete/${encodeURIComponent(athleteId)}`)}>
-              Panel atleta
-            </button>
-          </div>
+          {canSwitch ? (
+            <div className="hstack compact">
+              <select
+                className="input athleteInput"
+                value={athleteId}
+                onChange={(e) => setAthleteId(e.target.value)}
+                disabled={!athleteReady || athleteIds.length === 0}
+              >
+                {athleteIds.length === 0 ? (
+                  <option value="">Sin atletas asignados</option>
+                ) : (
+                  athleteIds.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button className="btn" onClick={() => nav(`/athlete/${encodeURIComponent(athleteId)}`)} disabled={!athleteId}>
+                Panel atleta
+              </button>
+            </div>
+          ) : (
+            <div className="chipRow">
+              <span className="chip">{athleteId || "-"}</span>
+              <button className="btn" onClick={() => nav(`/athlete/${encodeURIComponent(athleteId)}`)} disabled={!athleteId}>
+                Panel atleta
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -46,11 +70,20 @@ export default function Home() {
           <p>Flujo recomendado: registrar sesion, revisar historial y correr escenarios.</p>
         </div>
         <div className="quickActions">
-          <button className="btn primary" onClick={() => nav("/session/new")}>Nueva sesion</button>
-          <button className="btn" onClick={() => nav("/history")}>Historial</button>
+          <button className="btn primary" onClick={() => nav("/session/new")} disabled={!athleteId}>
+            Nueva sesion
+          </button>
+          <button className="btn" onClick={() => nav("/history")} disabled={!athleteId}>
+            Historial
+          </button>
           <button className="btn" onClick={() => nav("/routines")}>Rutinas</button>
           <button className="btn" onClick={() => nav("/settings")}>Ajustes</button>
         </div>
+        {canSwitch && athleteReady && athleteIds.length === 0 ? (
+          <div className="message error" style={{ marginTop: 12 }}>
+            No tienes atletas asignados. Pide a un admin que te asigne al menos uno.
+          </div>
+        ) : null}
       </section>
 
       <section className="surface">

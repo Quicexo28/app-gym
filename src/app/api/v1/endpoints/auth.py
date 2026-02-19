@@ -12,14 +12,17 @@ from urllib.request import urlopen
 from email_validator import EmailNotValidError, validate_email
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.auth.athlete_access import personal_athlete_id_for_user
+from app.auth.deps import get_current_user
 from app.auth.security import create_access_token, hash_password, verify_password
 from app.auth.types import Plan, Role
 from app.core.config import Settings
 from app.db.engine import get_db
+from app.db.models import Athlete, CoachAthleteAssignment, ExerciseCatalog, Run, TrainingSession
 from app.db.models_auth import User, UserSettings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -63,6 +66,10 @@ class UserResponse(BaseModel):
 class AuthResponse(BaseModel):
     token: TokenResponse
     user: UserResponse
+
+
+class DeleteAccountRequest(BaseModel):
+    confirm: str = Field(min_length=1, max_length=64)
 
 
 def _normalize_email(raw: str) -> str:
@@ -310,3 +317,27 @@ def google_login(
         db.refresh(user)
 
     return _auth_response_for_user(user)
+
+
+@router.delete("/me")
+def delete_my_account(
+    payload: DeleteAccountRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> dict:
+    if payload.confirm.strip() != "ELIMINAR CUENTA":
+        raise HTTPException(status_code=400, detail='Confirmacion invalida. Debe ser "ELIMINAR CUENTA".')
+
+    personal_athlete_id = personal_athlete_id_for_user(user)
+
+    db.execute(delete(Run).where(Run.athlete_id == personal_athlete_id))
+    db.execute(delete(TrainingSession).where(TrainingSession.athlete_id == personal_athlete_id))
+    db.execute(delete(Athlete).where(Athlete.athlete_id == personal_athlete_id))
+
+    db.execute(delete(CoachAthleteAssignment).where(CoachAthleteAssignment.coach_user_id == user.id))
+    db.execute(delete(ExerciseCatalog).where(ExerciseCatalog.owner_user_id == user.id))
+    db.execute(delete(UserSettings).where(UserSettings.user_id == user.id))
+    db.execute(delete(User).where(User.id == user.id))
+    db.commit()
+
+    return {"ok": True}

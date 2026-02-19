@@ -8,6 +8,7 @@ import History from "./pages/History";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import NewSession from "./pages/NewSession";
+import Profile from "./pages/Profile";
 import Routines from "./pages/Routines";
 import RunDetail from "./pages/RunDetail";
 import Settings from "./pages/Settings";
@@ -47,6 +48,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="home" element={<Home />} />
+        <Route path="profile" element={<Profile />} />
         <Route path="session/new" element={<NewSession />} />
         <Route path="history" element={<History />} />
         <Route path="exercises" element={<Exercises />} />

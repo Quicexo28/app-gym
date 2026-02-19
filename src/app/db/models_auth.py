@@ -54,6 +54,10 @@ class UserSettings(Base):
     effort_mode: Mapped[str] = mapped_column(String(8), nullable=False, default="rpe")  # rpe | rir
 
     modules_enabled: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    profile_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    profile_bio: Mapped[str | None] = mapped_column(String(280), nullable=True)
+    profile_achievements: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    profile_medals: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False

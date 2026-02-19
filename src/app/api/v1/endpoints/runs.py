@@ -8,9 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
+from app.auth.athlete_access import require_athlete_access
+from app.auth.deps import get_current_user
 from app.db.engine import get_db
 from app.db.models import Run
 from app.db.repo import list_sessions_for_athlete
+from app.db.models_auth import User
 from coach_ai.e2e import EndToEndConfig, run_end_to_end
 from coach_ai.e2e.versioning import ENGINE_VERSION, fingerprint_config
 
@@ -22,10 +25,13 @@ router = APIRouter(prefix="/runs", tags=["runs"])
 @router.post("/{athlete_id}")
 def run_pipeline_for_athlete(
     athlete_id: str,
+    user: Annotated[User, Depends(get_current_user)],
     db: DbSession,
     metric_key: str = "volume_load_kg",
     use_normalized: bool = True,
 ) -> dict:
+    require_athlete_access(db, user, athlete_id)
+
     sessions = list_sessions_for_athlete(db, athlete_id)
     if not sessions:
         raise HTTPException(status_code=404, detail="No sessions found for athlete.")
@@ -65,7 +71,11 @@ def run_pipeline_for_athlete(
 
 
 @router.get("/{run_id}")
-def get_run(run_id: str, db: DbSession) -> dict:
+def get_run(
+    run_id: str,
+    user: Annotated[User, Depends(get_current_user)],
+    db: DbSession,
+) -> dict:
     try:
         rid = uuid.UUID(run_id)
     except ValueError as err:
@@ -74,6 +84,7 @@ def get_run(run_id: str, db: DbSession) -> dict:
     row = db.get(Run, rid)
     if row is None:
         raise HTTPException(status_code=404, detail="Run not found.")
+    require_athlete_access(db, user, row.athlete_id)
 
     return {
         "run_id": str(row.run_id),
@@ -91,7 +102,11 @@ def get_run(run_id: str, db: DbSession) -> dict:
 
 
 @router.get("/{run_id}/summary")
-def get_run_summary(run_id: str, db: DbSession) -> dict:
+def get_run_summary(
+    run_id: str,
+    user: Annotated[User, Depends(get_current_user)],
+    db: DbSession,
+) -> dict:
     """Coach-friendly view: top 3 scenarios + last latent state + issue counts.
 
     This endpoint is meant for UX consumption (MVP).
@@ -107,6 +122,7 @@ def get_run_summary(run_id: str, db: DbSession) -> dict:
     row = db.get(Run, rid)
     if row is None:
         raise HTTPException(status_code=404, detail="Run not found.")
+    require_athlete_access(db, user, row.athlete_id)
 
     suggestions = row.suggestions or {}
     scenarios = suggestions.get("scenarios", []) if isinstance(suggestions, dict) else []

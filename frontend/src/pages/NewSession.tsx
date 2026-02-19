@@ -5,17 +5,44 @@ import { ingestSessions } from "../api";
 import { loadRoutines } from "../lib/storage";
 import type { RoutineTemplate } from "../lib/storage";
 import { toKg } from "../lib/units";
-import { useAthleteId } from "../state/athlete";
+import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 
 type SetRow = { reps: string; load: string };
 type RoutineExerciseDraft = { name: string; sets: SetRow[] };
+type SessionStep = "pick_routine" | "capture_session";
 
 const EMPTY_SET: SetRow = { reps: "", load: "" };
+const DEFAULT_DURATION_MIN = "60";
 
 function toISOZ(datetimeLocal: string): string {
   const d = new Date(datetimeLocal);
   return d.toISOString();
+}
+
+function deviceDatetimeLocal(): string {
+  const now = new Date();
+  const timezoneOffsetMs = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
+}
+
+function parseDurationSeconds(value: string): number | null {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return Math.round(minutes * 60);
+}
+
+function formatTimer(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function normalizeRoutineExercises(source: string[]): string[] {
@@ -37,18 +64,24 @@ function routineToDraft(routine: RoutineTemplate): RoutineExerciseDraft[] {
 }
 
 export default function NewSession() {
+  const { athleteIds, canSwitch, ready: athleteReady } = useAthleteAccess();
   const [athleteId] = useAthleteId();
   const { prefs } = usePreferences();
   const nav = useNavigate();
 
+  const [step, setStep] = useState<SessionStep>("pick_routine");
   const [startLocal, setStartLocal] = useState<string>("");
-  const [durationMin, setDurationMin] = useState<string>("60");
+  const [durationMin, setDurationMin] = useState<string>(DEFAULT_DURATION_MIN);
   const [effort, setEffort] = useState<string>(prefs.effortScale === "rir" ? "2" : "7");
   const [notes, setNotes] = useState<string>("");
 
   const [routineId, setRoutineId] = useState<string>("");
   const [routines, setRoutines] = useState<RoutineTemplate[]>([]);
   const [routineExercises, setRoutineExercises] = useState<RoutineExerciseDraft[]>([]);
+
+  const [remainingSec, setRemainingSec] = useState<number>(0);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerFinished, setTimerFinished] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
@@ -68,6 +101,25 @@ export default function NewSession() {
 
   const sortedRoutines = useMemo(() => [...routines].sort((a, b) => a.name.localeCompare(b.name)), [routines]);
   const selectedRoutine = useMemo(() => sortedRoutines.find((routine) => routine.id === routineId) || null, [routineId, sortedRoutines]);
+  const durationSeconds = useMemo(() => parseDurationSeconds(durationMin), [durationMin]);
+
+  useEffect(() => {
+    if (!timerRunning) return;
+
+    const intervalId = window.setInterval(() => {
+      setRemainingSec((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(intervalId);
+          setTimerRunning(false);
+          setTimerFinished(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [timerRunning]);
 
   function applyRoutine(nextRoutineId: string) {
     setRoutineId(nextRoutineId);
@@ -78,6 +130,83 @@ export default function NewSession() {
       return;
     }
     setRoutineExercises(routineToDraft(routine));
+  }
+
+  function startSessionStep() {
+    if (!selectedRoutine) {
+      setError("Selecciona una rutina para comenzar la sesion.");
+      return;
+    }
+
+    setError("");
+    setRoutineExercises(routineToDraft(selectedRoutine));
+    setStartLocal(deviceDatetimeLocal());
+    setStep("capture_session");
+
+    if (!durationSeconds) {
+      setRemainingSec(0);
+      setTimerRunning(false);
+      setTimerFinished(false);
+      setError("Duracion invalida (minutos).");
+      return;
+    }
+
+    setRemainingSec(durationSeconds);
+    setTimerFinished(false);
+    setTimerRunning(true);
+  }
+
+  function goBackToRoutineStep() {
+    setStep("pick_routine");
+    setTimerRunning(false);
+    setTimerFinished(false);
+    setRemainingSec(0);
+    setError("");
+  }
+
+  function startOrResumeTimer() {
+    if (!durationSeconds) {
+      setError("Duracion invalida (minutos).");
+      return;
+    }
+
+    setError("");
+    const mustReset = timerFinished || remainingSec <= 0;
+    if (mustReset) {
+      setRemainingSec(durationSeconds);
+      setTimerFinished(false);
+    }
+    setTimerRunning(true);
+  }
+
+  function pauseTimer() {
+    setTimerRunning(false);
+  }
+
+  function resetTimer(autostart: boolean) {
+    if (!durationSeconds) {
+      setError("Duracion invalida (minutos).");
+      return;
+    }
+
+    setError("");
+    setRemainingSec(durationSeconds);
+    setTimerFinished(false);
+    setTimerRunning(autostart);
+  }
+
+  function updateDuration(next: string) {
+    setDurationMin(next);
+    if (timerRunning) return;
+
+    const parsed = parseDurationSeconds(next);
+    if (!parsed) {
+      setRemainingSec(0);
+      return;
+    }
+
+    setRemainingSec(parsed);
+    setTimerFinished(false);
   }
 
   function addSet(exIdx: number) {
@@ -132,6 +261,11 @@ export default function NewSession() {
 
   async function submit() {
     setError("");
+
+    if (!athleteId) {
+      setError("No hay atleta activo para registrar la sesion.");
+      return;
+    }
 
     if (!selectedRoutine) {
       setError("Selecciona una rutina para registrar la sesion.");
@@ -203,12 +337,80 @@ export default function NewSession() {
   }
 
   const hasRoutines = sortedRoutines.length > 0;
+  const hasActiveAthlete = Boolean(athleteId);
+
+  if (step === "pick_routine") {
+    return (
+      <div className="container stack">
+        <header className="titleBlock">
+          <h1>Nueva sesion</h1>
+          <p>Paso 1/2. Selecciona una rutina para iniciar el registro.</p>
+        </header>
+
+        <section className="surface">
+          <div className="chipRow">
+            <span className="chip">Athlete: {athleteId}</span>
+            <span className="chip">Escala: {prefs.effortScale.toUpperCase()}</span>
+            <span className="chip">Carga: {prefs.weightUnit}</span>
+            <span className="chip">Rutinas: {sortedRoutines.length}</span>
+          </div>
+
+          {error ? (
+            <div className="message error" style={{ marginTop: 12 }}>
+              {error}
+            </div>
+          ) : null}
+
+          {!hasRoutines ? (
+            <div className="emptyState" style={{ marginTop: 12 }}>
+              No hay rutinas creadas. Crea al menos una rutina para registrar sesiones.
+              <div className="quickActions" style={{ marginTop: 10 }}>
+                <button className="btn primary" onClick={() => nav("/routines")}>
+                  Ir a rutinas
+                </button>
+              </div>
+            </div>
+          ) : canSwitch && athleteReady && athleteIds.length === 0 ? (
+            <div className="emptyState" style={{ marginTop: 12 }}>
+              No tienes atletas asignados. Pide a un admin que te asigne al menos uno para poder registrar sesiones.
+            </div>
+          ) : (
+            <div className="stack" style={{ marginTop: 12 }}>
+              <div>
+                <label className="smallLabel">Rutina</label>
+                <select className="input" value={routineId} onChange={(e) => applyRoutine(e.target.value)}>
+                  <option value="">Selecciona una rutina...</option>
+                  {sortedRoutines.map((routine) => (
+                    <option key={routine.id} value={routine.id}>
+                      {routine.name} ({routine.exercises.length})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="quickActions">
+                <button className="btn primary" onClick={startSessionStep} disabled={!selectedRoutine || !hasActiveAthlete}>
+                  Continuar a datos de sesion
+                </button>
+                <button className="btn" onClick={() => nav("/routines")}>
+                  Gestionar rutinas
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+  const timerStatus = timerRunning ? "En curso" : timerFinished ? "Finalizado" : "Pausado";
+  const timerActionLabel = timerFinished || remainingSec <= 0 ? "Iniciar nuevamente" : "Reanudar";
 
   return (
     <div className="container stack">
       <header className="titleBlock">
-        <h1>Nueva sesion</h1>
-        <p>Registro guiado por rutina. Cada sesion se construye desde una plantilla existente.</p>
+        <h1>Sesion por rutina</h1>
+        <p>Paso 2/2. Fecha predefinida del dispositivo y temporizador activo por duracion.</p>
       </header>
 
       <section className="surface">
@@ -216,52 +418,32 @@ export default function NewSession() {
           <span className="chip">Athlete: {athleteId}</span>
           <span className="chip">Escala: {prefs.effortScale.toUpperCase()}</span>
           <span className="chip">Carga: {prefs.weightUnit}</span>
-          <span className="chip">Rutinas: {sortedRoutines.length}</span>
+          <span className="chip">Rutina: {selectedRoutine?.name || "-"}</span>
         </div>
 
-        {error ? <div className="message error" style={{ marginTop: 12 }}>{error}</div> : null}
-
-        {!hasRoutines ? (
-          <div className="emptyState" style={{ marginTop: 12 }}>
-            No hay rutinas creadas. Crea al menos una rutina para poder registrar sesiones.
-            <div className="quickActions" style={{ marginTop: 10 }}>
-              <button className="btn primary" onClick={() => nav("/routines")}>
-                Ir a rutinas
-              </button>
-            </div>
+        {error ? (
+          <div className="message error" style={{ marginTop: 12 }}>
+            {error}
           </div>
-        ) : (
-          <div className="splitGrid" style={{ marginTop: 12 }}>
-            <div>
-              <label className="smallLabel">Rutina</label>
-              <select className="input" value={routineId} onChange={(e) => applyRoutine(e.target.value)}>
-                <option value="">Selecciona una rutina...</option>
-                {sortedRoutines.map((routine) => (
-                  <option key={routine.id} value={routine.id}>
-                    {routine.name} ({routine.exercises.length})
-                  </option>
-                ))}
-              </select>
-            </div>
+        ) : null}
 
-            <div style={{ alignSelf: "end" }}>
-              <div className="quickActions">
-                <button className="btn" onClick={() => nav("/routines")}>
-                  Gestionar rutinas
-                </button>
-                <button className="btn" onClick={resetRoutineSets} disabled={!selectedRoutine}>
-                  Reiniciar sets
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <div className="quickActions" style={{ marginTop: 12 }}>
+          <button className="btn" onClick={goBackToRoutineStep}>
+            Cambiar rutina
+          </button>
+          <button className="btn" onClick={() => nav("/routines")}>
+            Gestionar rutinas
+          </button>
+          <button className="btn" onClick={resetRoutineSets} disabled={!selectedRoutine}>
+            Reiniciar sets
+          </button>
+        </div>
       </section>
 
       <section className="surface">
         <div className="sectionHead">
-          <h3>Datos de la sesion</h3>
-          <p>Se aplican a todos los ejercicios de la rutina seleccionada.</p>
+          <h3>Datos de la rutina</h3>
+          <p>Fecha tomada del dispositivo al iniciar el paso 2 y duracion con temporizador.</p>
         </div>
 
         <div className="splitGrid" style={{ marginTop: 10 }}>
@@ -276,7 +458,7 @@ export default function NewSession() {
           </div>
           <div>
             <label className="smallLabel">Duracion (min)</label>
-            <input className="input" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
+            <input className="input" value={durationMin} onChange={(e) => updateDuration(e.target.value)} />
           </div>
           <div>
             <label className="smallLabel">{prefs.effortScale === "rir" ? "RIR (0-6)" : "RPE (0-10)"}</label>
@@ -300,6 +482,34 @@ export default function NewSession() {
             onChange={(e) => setNotes(e.target.value)}
             placeholder="sueno, estres, sensacion general"
           />
+        </div>
+
+        <div className="surface" style={{ marginTop: 12, padding: 12 }}>
+          <div className="sectionHead">
+            <h4>Temporizador de sesion</h4>
+            <p>Iniciado al entrar en este paso. Se detiene automaticamente al finalizar.</p>
+          </div>
+          <div className="timerValue" style={{ marginTop: 10 }}>
+            {formatTimer(remainingSec)}
+          </div>
+          <div className="chipRow" style={{ marginTop: 8 }}>
+            <span className="chip">Estado: {timerStatus}</span>
+            <span className="chip">Duracion objetivo: {durationMin || "-"} min</span>
+          </div>
+          <div className="quickActions" style={{ marginTop: 10 }}>
+            {timerRunning ? (
+              <button className="btn primary" type="button" onClick={pauseTimer}>
+                Pausar temporizador
+              </button>
+            ) : (
+              <button className="btn primary" type="button" onClick={startOrResumeTimer} disabled={!durationSeconds}>
+                {timerActionLabel}
+              </button>
+            )}
+            <button className="btn" type="button" onClick={() => resetTimer(true)} disabled={!durationSeconds}>
+              Reiniciar
+            </button>
+          </div>
         </div>
       </section>
 
@@ -368,7 +578,7 @@ export default function NewSession() {
 
       <section className="surface">
         <div className="hstack">
-          <button className="btn primary" onClick={submit} disabled={busy || !selectedRoutine}>
+          <button className="btn primary" onClick={submit} disabled={busy || !selectedRoutine || !hasActiveAthlete}>
             {busy ? "Guardando..." : "Guardar sesion"}
           </button>
           <button className="btn" onClick={() => nav("/history")} disabled={busy}>

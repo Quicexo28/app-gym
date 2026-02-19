@@ -5,8 +5,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.auth.athlete_access import require_athlete_access, require_athlete_access_many
+from app.auth.deps import get_current_user
 from app.db.engine import get_db
 from app.db.repo import list_sessions_for_athlete, upsert_session
+from app.db.models_auth import User
 from coach_ai.training_core import Session as DomainSession
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -15,7 +18,13 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.post("/batch")
-def ingest_sessions(sessions: list[DomainSession], db: DbSession) -> dict:
+def ingest_sessions(
+    sessions: list[DomainSession],
+    user: Annotated[User, Depends(get_current_user)],
+    db: DbSession,
+) -> dict:
+    require_athlete_access_many(db, user, (session.athlete_id for session in sessions))
+
     inserted = 0
     duplicates = 0
     results = []
@@ -32,5 +41,10 @@ def ingest_sessions(sessions: list[DomainSession], db: DbSession) -> dict:
 
 
 @router.get("/{athlete_id}")
-def get_sessions(athlete_id: str, db: DbSession) -> list[DomainSession]:
+def get_sessions(
+    athlete_id: str,
+    user: Annotated[User, Depends(get_current_user)],
+    db: DbSession,
+) -> list[DomainSession]:
+    require_athlete_access(db, user, athlete_id)
     return list_sessions_for_athlete(db, athlete_id)

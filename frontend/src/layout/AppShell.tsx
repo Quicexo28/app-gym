@@ -1,8 +1,8 @@
-﻿import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 
+import { useAthleteAccess } from "../state/athlete";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
-import { useAthleteId } from "../state/athlete";
 
 type NavItemDef = {
   to: string;
@@ -11,6 +11,7 @@ type NavItemDef = {
 
 const NAV_ITEMS: NavItemDef[] = [
   { to: "/home", label: "Home" },
+  { to: "/profile", label: "Perfil" },
   { to: "/session/new", label: "Nueva sesion" },
   { to: "/history", label: "Historial" },
   { to: "/exercises", label: "Ejercicios" },
@@ -31,7 +32,7 @@ function Item({ to, label }: { to: string; label: string }) {
 }
 
 export default function AppShell() {
-  const [athleteId, setAthleteId] = useAthleteId();
+  const { athleteId, athleteIds, canSwitch, ready: athleteReady, setAthleteId } = useAthleteAccess();
   const { prefs, resolvedTheme, toggleTheme } = usePreferences();
   const { user, planLabel, logout } = useAuth();
 
@@ -48,16 +49,30 @@ export default function AppShell() {
           </div>
 
           <div className="hstack compact topbarActions">
-            <label className="smallLabel" htmlFor="athlete-id-input">
-              Athlete
-            </label>
-            <input
-              id="athlete-id-input"
-              className="input athleteInput"
-              value={athleteId}
-              onChange={(e) => setAthleteId(e.target.value)}
-              placeholder="a1"
-            />
+            {canSwitch ? (
+              <>
+                <label className="smallLabel" htmlFor="athlete-id-input">
+                  Athlete
+                </label>
+                <select
+                  id="athlete-id-input"
+                  className="input athleteInput"
+                  value={athleteId}
+                  onChange={(e) => setAthleteId(e.target.value)}
+                  disabled={!athleteReady || athleteIds.length === 0}
+                >
+                  {athleteIds.length === 0 ? (
+                    <option value="">Sin atletas asignados</option>
+                  ) : (
+                    athleteIds.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </>
+            ) : null}
             <button type="button" className="btn" onClick={toggleTheme}>
               {themeLabel}
             </button>
@@ -74,7 +89,7 @@ export default function AppShell() {
         </nav>
 
         <div className="small topbarMeta">
-          {`Cuenta: ${user?.email || "-"} | Plan: ${planLabel || "-"} | Rol: ${user?.role || "-"} | Escala: ${prefs.effortScale.toUpperCase()} | Carga: ${prefs.weightUnit}`}
+          {`Cuenta: ${user?.email || "-"} | Plan: ${planLabel || "-"} | Rol: ${user?.role || "-"} | Atleta: ${athleteId || "-"} | Escala: ${prefs.effortScale.toUpperCase()} | Carga: ${prefs.weightUnit}`}
         </div>
       </header>
 

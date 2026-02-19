@@ -212,6 +212,13 @@ textarea.input:focus,
   font-weight: 700;
 }
 
+.timerValue {
+  font-size: clamp(1.6rem, 4.4vw, 2.2rem);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
 .splitGrid {
   display: grid;
   gap: 12px;
