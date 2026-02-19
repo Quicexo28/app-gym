@@ -16,4 +16,4 @@ RUN pip install --no-cache-dir -e .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/migrations"]
+CMD ["sh", "-c", "attempt=1; max_attempts=20; until alembic upgrade head; do if [ \"$attempt\" -ge \"$max_attempts\" ]; then echo 'alembic upgrade failed after retries' >&2; exit 1; fi; attempt=$((attempt+1)); echo 'Waiting for database, retrying alembic in 2s...' >&2; sleep 2; done; exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src --reload-dir /app/migrations"]

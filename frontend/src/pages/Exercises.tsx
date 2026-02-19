@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   ALL_EXERCISE_FILTER as ALL,
   buildExerciseCatalogBrowser,
   catalogPathKeyFromParts,
   cleanExerciseText,
+  tokenizeExerciseSearch,
   type ExerciseCatalogEntry,
   type ExerciseFilters,
 } from "../lib/exerciseCatalog";
@@ -16,23 +17,70 @@ type MutableNode = {
   label: string;
   path: string[];
   children: Map<string, MutableNode>;
-  items: ExerciseCatalogEntry[];
+  items: TreeItem[];
 };
 
 type CatalogNode = {
   label: string;
   path: string[];
   children: CatalogNode[];
-  items: ExerciseCatalogEntry[];
+  items: TreeItem[];
   totalItems: number;
 };
+
+type TreeItem = {
+  entry: ExerciseCatalogEntry;
+  treePath: string[];
+};
+
+type TreeActions = {
+  onEdit: (item: ExerciseCatalogEntry) => void;
+  canEdit: (item: ExerciseCatalogEntry) => boolean;
+  onRemove: (item: ExerciseCatalogEntry) => void;
+  canRemove: (item: ExerciseCatalogEntry) => boolean;
+  editingId: string;
+};
+
+function normalizePathSegment(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function firstMatchingPathIndex(path: string[], searchTokens: string[]): number {
+  if (searchTokens.length === 0) return 0;
+
+  for (let index = 0; index < path.length; index += 1) {
+    const normalizedSegment = normalizePathSegment(path[index]);
+    if (searchTokens.some((token) => normalizedSegment.includes(token))) {
+      return index;
+    }
+  }
+
+  return 0;
+}
+
+function toTreeItems(entries: ExerciseCatalogEntry[], searchTokens: string[]): TreeItem[] {
+  return entries.map((entry) => {
+    if (searchTokens.length === 0) {
+      return { entry, treePath: entry.path };
+    }
+
+    const startIndex = firstMatchingPathIndex(entry.path, searchTokens);
+    const slicedPath = entry.path.slice(startIndex);
+    return { entry, treePath: slicedPath.length > 0 ? slicedPath : entry.path };
+  });
+}
 
 function freezeNodes(source: Map<string, MutableNode>): CatalogNode[] {
   return Array.from(source.values())
     .sort((a, b) => a.label.localeCompare(b.label))
     .map((node) => {
       const children = freezeNodes(node.children);
-      const items = [...node.items].sort((a, b) => a.name.localeCompare(b.name));
+      const items = [...node.items].sort((a, b) => a.entry.name.localeCompare(b.entry.name));
       const childCount = children.reduce((acc, child) => acc + child.totalItems, 0);
 
       return {
@@ -45,11 +93,11 @@ function freezeNodes(source: Map<string, MutableNode>): CatalogNode[] {
     });
 }
 
-function buildTree(items: ExerciseCatalogEntry[]): CatalogNode[] {
+function buildTree(items: TreeItem[]): CatalogNode[] {
   const root = new Map<string, MutableNode>();
 
   for (const item of items) {
-    const path = item.path;
+    const path = item.treePath;
     if (path.length === 0) continue;
 
     let cursor = root;
@@ -78,13 +126,10 @@ function buildTree(items: ExerciseCatalogEntry[]): CatalogNode[] {
   return freezeNodes(root);
 }
 
-function renderTree(
-  nodes: CatalogNode[],
-  onRemove: (item: ExerciseCatalogEntry) => void,
-  canRemove: (item: ExerciseCatalogEntry) => boolean,
-) {
+function renderTree(nodes: CatalogNode[], actions: TreeActions, expandAll: boolean) {
+  const { onEdit, canEdit, onRemove, canRemove, editingId } = actions;
   return nodes.map((node) => (
-    <details key={node.path.join(" > ")} className="treeNode">
+    <details key={node.path.join(" > ")} className="treeNode" open={expandAll}>
       <summary className="treeSummary">
         <span>{node.label}</span>
         <span className="chip">{node.totalItems}</span>
@@ -94,25 +139,32 @@ function renderTree(
         {node.items.length > 0 ? (
           <div className="treeLeafList">
             {node.items.map((item) => (
-              <article key={item.id} className="treeLeaf">
+              <article key={item.entry.id} className="treeLeaf">
                 <div>
-                  <strong>{item.name}</strong>
-                  <div className="small">{item.path.join(" > ")}</div>
+                  <strong>{item.entry.name}</strong>
+                  <div className="small">{item.treePath.join(" > ")}</div>
                   <div className="chipRow" style={{ marginTop: 6 }}>
-                    <span className="chip">{item.scope === "global" ? "Global" : "Personal"}</span>
+                    <span className="chip">{item.entry.scope === "global" ? "Global" : "Personal"}</span>
                   </div>
                 </div>
-                {canRemove(item) ? (
-                  <button className="btn" onClick={() => onRemove(item)}>
-                    Eliminar
-                  </button>
-                ) : null}
+                <div className="hstack compact">
+                  {canEdit(item.entry) ? (
+                    <button className="btn" onClick={() => onEdit(item.entry)}>
+                      {editingId === item.entry.id ? "Editando..." : "Editar"}
+                    </button>
+                  ) : null}
+                  {canRemove(item.entry) ? (
+                    <button className="btn" onClick={() => onRemove(item.entry)}>
+                      Eliminar
+                    </button>
+                  ) : null}
+                </div>
               </article>
             ))}
           </div>
         ) : null}
 
-        {node.children.length > 0 ? renderTree(node.children, onRemove, canRemove) : null}
+        {node.children.length > 0 ? renderTree(node.children, actions, expandAll) : null}
       </div>
     </details>
   ));
@@ -122,12 +174,17 @@ export default function Exercises() {
   const { isAdmin } = useAuth();
   const { viewMode } = useViewMode();
   const isAdminMode = isAdmin && viewMode === "admin";
-  const { ready, loading, syncError, items, entries, addCustom, addGlobal, removeItem } = useExerciseCatalog();
+  const { ready, loading, syncError, items, entries, addCustom, addGlobal, updateItem, removeItem } = useExerciseCatalog();
   const [group, setGroup] = useState("");
   const [family, setFamily] = useState("");
   const [variation, setVariation] = useState("");
   const [subvariation, setSubvariation] = useState("");
   const [createScope, setCreateScope] = useState<"custom" | "global">("custom");
+  const [editId, setEditId] = useState("");
+  const [editGroup, setEditGroup] = useState("");
+  const [editFamily, setEditFamily] = useState("");
+  const [editVariation, setEditVariation] = useState("");
+  const [editSubvariation, setEditSubvariation] = useState("");
 
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
   const [selectedFamily, setSelectedFamily] = useState<string>(ALL);
@@ -149,7 +206,10 @@ export default function Exercises() {
   const browser = useMemo(() => buildExerciseCatalogBrowser(entries, filters), [entries, filters]);
 
   const filteredEntries = browser.filteredEntries;
-  const tree = useMemo(() => buildTree(filteredEntries), [filteredEntries]);
+  const searchTokens = useMemo(() => tokenizeExerciseSearch(search), [search]);
+  const treeItems = useMemo(() => toTreeItems(filteredEntries, searchTokens), [filteredEntries, searchTokens]);
+  const tree = useMemo(() => buildTree(treeItems), [treeItems]);
+  const editingItem = useMemo(() => items.find((item) => item.id === editId) || null, [editId, items]);
 
   function resetLowerFilters(level: "group" | "family" | "variation") {
     if (level === "group") {
@@ -174,6 +234,46 @@ export default function Exercises() {
     setSelectedVariation(ALL);
     setSelectedSubvariation(ALL);
     setSearch("");
+  }
+
+  function clearEdit() {
+    setEditId("");
+    setEditGroup("");
+    setEditFamily("");
+    setEditVariation("");
+    setEditSubvariation("");
+  }
+
+  useEffect(() => {
+    if (!editingItem) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        clearEdit();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [editingItem]);
+
+  function canEditEntry(entry: ExerciseCatalogEntry): boolean {
+    return isAdminMode || entry.scope === "custom";
+  }
+
+  function startEdit(entry: ExerciseCatalogEntry) {
+    if (!canEditEntry(entry)) return;
+    setError("");
+    setEditId(entry.id);
+    setEditGroup(entry.group);
+    setEditFamily(entry.family);
+    setEditVariation(entry.variation || "");
+    setEditSubvariation(entry.subvariation || "");
   }
 
   async function add() {
@@ -239,6 +339,66 @@ export default function Exercises() {
       const item = items.find((candidate) => candidate.id === entry.id);
       if (!item) return;
       await removeItem(item);
+      if (editId === entry.id) {
+        clearEdit();
+      }
+    } catch (cause: unknown) {
+      setError(String((cause as { message?: string })?.message || cause));
+    }
+  }
+
+  async function saveEdit() {
+    setError("");
+    if (!editingItem) {
+      setError("Selecciona un ejercicio para editar.");
+      return;
+    }
+
+    const normalizedGroup = cleanExerciseText(editGroup) || "General";
+    const normalizedFamily = cleanExerciseText(editFamily);
+    const normalizedVariation = cleanExerciseText(editVariation);
+    const normalizedSubvariation = cleanExerciseText(editSubvariation);
+
+    if (!normalizedFamily) {
+      setError("Debes indicar al menos el ejercicio base.");
+      return;
+    }
+
+    if (normalizedSubvariation && !normalizedVariation) {
+      setError("Para usar subvariacion debes indicar antes una variacion.");
+      return;
+    }
+
+    const nextKey = catalogPathKeyFromParts(
+      normalizedGroup,
+      normalizedFamily,
+      normalizedVariation,
+      normalizedSubvariation,
+    );
+    const scope = editingItem.scope === "global" ? "global" : "custom";
+
+    const exists = items.some((item) => {
+      if (item.id === editingItem.id) return false;
+      const samePath =
+        catalogPathKeyFromParts(item.group, item.family, item.variation || "", item.subvariation || "") === nextKey;
+      if (!samePath) return false;
+      if (scope === "global") return item.scope === "global";
+      return item.scope !== "global";
+    });
+    if (exists) {
+      setError("Ese ejercicio ya existe en el catalogo.");
+      return;
+    }
+
+    try {
+      await updateItem(editingItem, {
+        group: normalizedGroup,
+        family: normalizedFamily,
+        variation: normalizedVariation || undefined,
+        subvariation: normalizedSubvariation || undefined,
+        aliases: editingItem.aliases,
+      });
+      clearEdit();
     } catch (cause: unknown) {
       setError(String((cause as { message?: string })?.message || cause));
     }
@@ -408,10 +568,64 @@ export default function Exercises() {
           </div>
         ) : (
           <div className="treeList" style={{ marginTop: 12 }}>
-            {renderTree(tree, remove, (entry) => isAdminMode || entry.scope === "custom")}
+            {renderTree(tree, {
+              onEdit: startEdit,
+              canEdit: canEditEntry,
+              onRemove: remove,
+              canRemove: canEditEntry,
+              editingId: editId,
+            }, searchTokens.length > 0)}
           </div>
         )}
       </section>
+
+      {editingItem ? (
+        <div className="modalOverlay" role="presentation" onClick={clearEdit}>
+          <section
+            className="modalCard"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-exercise-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sectionHead">
+              <h3 id="edit-exercise-title">Editar ejercicio</h3>
+              <p>Cambia grupo muscular y la rama completa del ejercicio seleccionado.</p>
+            </div>
+            <div className="chipRow" style={{ marginTop: 6 }}>
+              <span className="chip">Tipo: {editingItem.scope === "global" ? "Global" : "Personal"}</span>
+            </div>
+
+            <div className="splitGrid" style={{ marginTop: 8 }}>
+              <div>
+                <label className="smallLabel">Grupo muscular</label>
+                <input className="input" value={editGroup} onChange={(e) => setEditGroup(e.target.value)} />
+              </div>
+              <div>
+                <label className="smallLabel">Ejercicio base</label>
+                <input className="input" value={editFamily} onChange={(e) => setEditFamily(e.target.value)} />
+              </div>
+              <div>
+                <label className="smallLabel">Variacion (opcional)</label>
+                <input className="input" value={editVariation} onChange={(e) => setEditVariation(e.target.value)} />
+              </div>
+              <div>
+                <label className="smallLabel">Subvariacion (opcional)</label>
+                <input className="input" value={editSubvariation} onChange={(e) => setEditSubvariation(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="quickActions" style={{ marginTop: 12 }}>
+              <button className="btn primary" onClick={() => void saveEdit()} disabled={loading || !ready}>
+                {loading ? "Sincronizando..." : "Guardar cambios"}
+              </button>
+              <button className="btn" onClick={clearEdit}>
+                Cancelar
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

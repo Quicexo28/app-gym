@@ -388,6 +388,18 @@ export type ProfileResponse = {
 
 let authToken: string | null = null;
 let apiViewMode: ViewMode | null = null;
+const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "").replace(/\/+$/, "");
+
+function toApiUrl(path: string): string {
+  if (!API_BASE_URL) {
+    return path;
+  }
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE_URL}${normalizedPath}`;
+}
 
 export function setApiToken(token: string | null): void {
   authToken = token;
@@ -409,7 +421,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("X-App-View-Mode", apiViewMode);
   }
 
-  const res = await fetch(path, {
+  const res = await fetch(toApiUrl(path), {
     ...init,
     headers,
   });
@@ -502,6 +514,38 @@ export function createGlobalExercise(payload: {
 }): Promise<ExerciseCatalogApiItem> {
   return http("/api/v1/exercises/global", {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateCustomExercise(
+  exerciseId: string,
+  payload: {
+    group: string;
+    family: string;
+    variation?: string;
+    subvariation?: string;
+    aliases?: string[];
+  },
+): Promise<ExerciseCatalogApiItem> {
+  return http(`/api/v1/exercises/custom/${encodeURIComponent(exerciseId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateGlobalExercise(
+  exerciseId: string,
+  payload: {
+    group: string;
+    family: string;
+    variation?: string;
+    subvariation?: string;
+    aliases?: string[];
+  },
+): Promise<ExerciseCatalogApiItem> {
+  return http(`/api/v1/exercises/global/${encodeURIComponent(exerciseId)}`, {
+    method: "PUT",
     body: JSON.stringify(payload),
   });
 }

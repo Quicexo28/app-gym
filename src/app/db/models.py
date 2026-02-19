@@ -198,7 +198,7 @@ class CycleTemplate(Base):
         nullable=False,
     )
     level: Mapped[CycleLevel] = mapped_column(
-        Enum(CycleLevel, name="cycle_level_enum"),
+        Enum(CycleLevel, name="cycle_level_enum", values_callable=lambda enum_cls: [item.value for item in enum_cls]),
         nullable=False,
         index=True,
     )
@@ -206,7 +206,7 @@ class CycleTemplate(Base):
     objective: Mapped[str | None] = mapped_column(String(280), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[CycleStatus] = mapped_column(
-        Enum(CycleStatus, name="cycle_status_enum"),
+        Enum(CycleStatus, name="cycle_status_enum", values_callable=lambda enum_cls: [item.value for item in enum_cls]),
         nullable=False,
         default=CycleStatus.DRAFT,
     )
@@ -295,7 +295,7 @@ class CycleAssignment(Base):
         nullable=False,
     )
     level: Mapped[CycleLevel] = mapped_column(
-        Enum(CycleLevel, name="cycle_level_enum"),
+        Enum(CycleLevel, name="cycle_level_enum", values_callable=lambda enum_cls: [item.value for item in enum_cls]),
         nullable=False,
     )
     assigned_by_user_id: Mapped[uuid.UUID] = mapped_column(
@@ -305,12 +305,16 @@ class CycleAssignment(Base):
         nullable=False,
     )
     status: Mapped[CycleStatus] = mapped_column(
-        Enum(CycleStatus, name="cycle_status_enum"),
+        Enum(CycleStatus, name="cycle_status_enum", values_callable=lambda enum_cls: [item.value for item in enum_cls]),
         nullable=False,
         default=CycleStatus.DRAFT,
     )
     start_mode: Mapped[CycleStartMode] = mapped_column(
-        Enum(CycleStartMode, name="cycle_start_mode_enum"),
+        Enum(
+            CycleStartMode,
+            name="cycle_start_mode_enum",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
         nullable=False,
         default=CycleStartMode.AUTO_ON_FIRST_SESSION,
     )
@@ -360,7 +364,11 @@ class CycleAssignmentBlock(Base):
     target_fatigue: Mapped[float | None] = mapped_column(Float, nullable=True)
     target_frequency: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[CycleBlockStatus] = mapped_column(
-        Enum(CycleBlockStatus, name="cycle_block_status_enum"),
+        Enum(
+            CycleBlockStatus,
+            name="cycle_block_status_enum",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
         nullable=False,
         default=CycleBlockStatus.PENDING,
     )

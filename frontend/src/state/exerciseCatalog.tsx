@@ -11,6 +11,8 @@ import {
   exportGlobalExercises,
   getExerciseCatalog,
   importGlobalExercises,
+  updateCustomExercise,
+  updateGlobalExercise,
   type ExerciseCatalogApiItem,
   type GlobalExerciseExportPayload,
 } from "../api";
@@ -48,6 +50,7 @@ type ExerciseCatalogContextValue = {
   refresh: () => Promise<void>;
   addCustom: (payload: ExerciseCreateInput) => Promise<void>;
   addGlobal: (payload: ExerciseCreateInput) => Promise<void>;
+  updateItem: (item: ExerciseCatalogItem, payload: ExerciseCreateInput) => Promise<void>;
   removeItem: (item: ExerciseCatalogItem) => Promise<void>;
   importGlobalCatalog: (payload: ExerciseImportInput) => Promise<ExerciseImportResult>;
   exportGlobalCatalog: () => Promise<GlobalExerciseExportPayload>;
@@ -178,6 +181,41 @@ export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
     [isAdminMode, refresh],
   );
 
+  const updateItem = useCallback(
+    async (item: ExerciseCatalogItem, payload: ExerciseCreateInput) => {
+      if (!isAuthenticated) {
+        if (item.scope === "global") {
+          throw new Error("Solo admin puede editar ejercicios globales.");
+        }
+        const next = items.map((entry) =>
+          entry.id === item.id
+            ? {
+                ...entry,
+                group: payload.group,
+                family: payload.family,
+                variation: payload.variation,
+                subvariation: payload.subvariation,
+                aliases: payload.aliases,
+              }
+            : entry,
+        );
+        setItems(next);
+        return;
+      }
+
+      if (item.scope === "global") {
+        if (!isAdminMode) {
+          throw new Error("Solo admin puede editar ejercicios globales.");
+        }
+        await updateGlobalExercise(item.id, payload);
+      } else {
+        await updateCustomExercise(item.id, payload);
+      }
+      await refresh();
+    },
+    [isAuthenticated, isAdminMode, items, refresh],
+  );
+
   const removeItem = useCallback(
     async (item: ExerciseCatalogItem) => {
       if (item.scope === "global") {
@@ -233,11 +271,12 @@ export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
       refresh,
       addCustom,
       addGlobal,
+      updateItem,
       removeItem,
       importGlobalCatalog,
       exportGlobalCatalog,
     }),
-    [addCustom, addGlobal, entries, exportGlobalCatalog, importGlobalCatalog, items, loading, ready, refresh, removeItem, syncError],
+    [addCustom, addGlobal, entries, exportGlobalCatalog, importGlobalCatalog, items, loading, ready, refresh, removeItem, syncError, updateItem],
   );
 
   return <ExerciseCatalogContext.Provider value={value}>{children}</ExerciseCatalogContext.Provider>;

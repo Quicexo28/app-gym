@@ -1,8 +1,8 @@
-# Docker Production Runbook (API + Postgres)
+# Docker Production Runbook (Always-On API + Postgres)
 
 ## Scope
-- Deploy target: single VM using `docker compose`.
-- Components: `api` + `db`.
+- Deploy target: single cloud VM using `docker compose`.
+- Components: `api` + `db` (frontend can be deployed as static app separately).
 - TLS/ingress: external proxy (outside this compose).
 - Migration strategy: run one-shot migration job before starting API.
 - Availability target: brief downtime accepted.
@@ -11,6 +11,8 @@
 - `Dockerfile.prod`: production image for the API.
 - `docker-compose.prod.yml`: production stack (`db`, `migrate`, `api`).
 - `.env.prod.example`: template for production environment values.
+- `deploy/deploy_prod.sh`: one-command deploy script for the VM.
+- `deploy/install_systemd_service.sh`: optional boot-time systemd service setup.
 
 ## Prerequisites
 - Linux VM with Docker Engine and Docker Compose plugin.
@@ -39,19 +41,25 @@ Recommended to update:
 Run from repo root:
 
 ```bash
-docker compose -f docker-compose.prod.yml build api
-docker compose -f docker-compose.prod.yml up -d db
-docker compose -f docker-compose.prod.yml run --rm migrate
-docker compose -f docker-compose.prod.yml up -d api
+docker compose --env-file .env.prod -f docker-compose.prod.yml build api
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm migrate
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api
 ```
 
 Notes:
 - Do not skip `migrate`.
 - If `migrate` fails, fix the issue and re-run it before bringing up `api`.
 
+### 2.1) Deploy using helper script (recommended)
+```bash
+chmod +x deploy/deploy_prod.sh
+./deploy/deploy_prod.sh
+```
+
 ## 3) Post-deploy verification
 ```bash
-docker compose -f docker-compose.prod.yml ps
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 curl -f http://127.0.0.1:${API_PORT:-8000}/health
 curl -f http://127.0.0.1:${API_PORT:-8000}/api/v1/meta/ping
 ```
@@ -62,7 +70,7 @@ Expected:
 - `/health` returns `{"status":"ok"}`.
 - `/api/v1/meta/ping` returns `{"pong":true}`.
 
-## 3.1) Frontend auth env (Google)
+## 3.1) Frontend auth env (Google + API URL)
 The React app reads Google client id from `frontend/.env.local` (or build-time env var):
 
 ```bash
@@ -70,6 +78,7 @@ cp frontend/.env.example frontend/.env.local
 ```
 
 Set:
+- `VITE_API_BASE_URL=https://api.tu-dominio.com` (or empty for same-origin reverse proxy)
 - `VITE_GOOGLE_CLIENT_ID=<same value as GOOGLE_CLIENT_ID>`
 - `VITE_ENABLE_GUEST_LOGIN=true` (optional; for debug environments only)
 
@@ -77,13 +86,23 @@ Use the same Google OAuth client id in backend (`GOOGLE_CLIENT_ID`) and frontend
 
 Guest login endpoint (`/api/v1/auth/guest`) is disabled automatically when backend runs with `ENV=prod`.
 
+## 3.2) Keep service alive after VM reboot
+Container restart policies are already `unless-stopped`. For extra safety you can also install the optional systemd unit:
+
+```bash
+chmod +x deploy/install_systemd_service.sh
+sudo ./deploy/install_systemd_service.sh /opt/coach-ai-engineer-boilerplate
+```
+
+This removes dependency on your local PC and Docker Desktop.
+
 ## 4) Rollback
 For this stage rollback is image-based plus DB restore when schema/data changed.
 
 1. Switch API image tag back to previous stable image.
 2. Restart API:
 ```bash
-docker compose -f docker-compose.prod.yml up -d api
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api
 ```
 3. If schema changes are incompatible, restore the DB backup taken before deploy.
 
@@ -95,14 +114,14 @@ mkdir -p backups
 
 Dump DB from the running Postgres container:
 ```bash
-docker compose -f docker-compose.prod.yml exec -T db \
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
   pg_dump -U "${POSTGRES_USER:-coach}" -d "${POSTGRES_DB:-coach_ai}" \
   > "backups/coach_ai_$(date +%Y%m%d_%H%M%S).sql"
 ```
 
 Restore from SQL dump:
 ```bash
-cat backups/<dump_file>.sql | docker compose -f docker-compose.prod.yml exec -T db \
+cat backups/<dump_file>.sql | docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
   psql -U "${POSTGRES_USER:-coach}" -d "${POSTGRES_DB:-coach_ai}"
 ```
 

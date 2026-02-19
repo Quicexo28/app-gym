@@ -17,6 +17,13 @@ if (-not (Test-Path $venvActivate)) {
 }
 . $venvActivate
 
+# Ejecutar migraciones antes de iniciar la API.
+Write-Host "==> Running migrations (alembic upgrade head)..." -ForegroundColor Cyan
+alembic upgrade head
+if ($LASTEXITCODE -ne 0) {
+  throw "Alembic migration failed. Fix DB connectivity/migrations and retry."
+}
+
 # Construir args para uvicorn
 $uvArgs = @("app.main:app", "--host", $BindHost, "--port", "$Port")
 if (-not $NoReload) {

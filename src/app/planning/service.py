@@ -1210,7 +1210,7 @@ def athlete_overview(db: Session, *, athlete_id: str) -> dict[str, Any]:
     if not clean_athlete_id:
         raise HTTPException(status_code=400, detail="athlete_id is required.")
     if db.get(Athlete, clean_athlete_id) is None:
-        raise HTTPException(status_code=404, detail="Athlete not found.")
+        ensure_athlete(db, clean_athlete_id)
 
     assignments = (
         db.execute(

@@ -193,6 +193,34 @@ def _create_exercise(
     return row
 
 
+def _update_exercise(
+    db: DbSession,
+    row: ExerciseCatalog,
+    normalized: NormalizedExercise,
+) -> ExerciseCatalog:
+    existing = db.execute(
+        select(ExerciseCatalog).where(
+            ExerciseCatalog.id != row.id,
+            ExerciseCatalog.owner_user_id.is_(None)
+            if row.owner_user_id is None
+            else ExerciseCatalog.owner_user_id == row.owner_user_id,
+            ExerciseCatalog.path_key == normalized.path_key,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Exercise already exists.")
+
+    row.path_key = normalized.path_key
+    row.group = normalized.group
+    row.family = normalized.family
+    row.variation = normalized.variation or None
+    row.subvariation = normalized.subvariation or None
+    row.aliases = normalized.aliases or None
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 @router.get("/catalog", response_model=list[ExerciseResponse])
 def list_catalog(
     user: Annotated[User, Depends(get_current_user)],
@@ -239,6 +267,27 @@ def delete_custom_exercise(
     return {"ok": True, "id": str(exercise_id)}
 
 
+@router.put("/custom/{exercise_id}", response_model=ExerciseResponse)
+def update_custom_exercise(
+    exercise_id: uuid.UUID,
+    payload: ExerciseCreateRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> ExerciseResponse:
+    normalized = _normalize_payload(payload)
+    row = db.execute(
+        select(ExerciseCatalog).where(
+            ExerciseCatalog.id == exercise_id,
+            ExerciseCatalog.owner_user_id == user.id,
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Custom exercise not found.")
+
+    updated = _update_exercise(db, row, normalized)
+    return _to_response(updated)
+
+
 @router.post("/global", response_model=ExerciseResponse)
 def create_global_exercise(
     payload: ExerciseCreateRequest,
@@ -270,6 +319,28 @@ def delete_global_exercise(
     db.delete(row)
     db.commit()
     return {"ok": True, "id": str(exercise_id)}
+
+
+@router.put("/global/{exercise_id}", response_model=ExerciseResponse)
+def update_global_exercise(
+    exercise_id: uuid.UUID,
+    payload: ExerciseCreateRequest,
+    admin: Annotated[User, Depends(require_role(Role.ADMIN))],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> ExerciseResponse:
+    _ = admin
+    normalized = _normalize_payload(payload)
+    row = db.execute(
+        select(ExerciseCatalog).where(
+            ExerciseCatalog.id == exercise_id,
+            ExerciseCatalog.owner_user_id.is_(None),
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Global exercise not found.")
+
+    updated = _update_exercise(db, row, normalized)
+    return _to_response(updated)
 
 
 @router.get("/global/export", response_model=ExerciseExportResponse)

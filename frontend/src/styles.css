@@ -422,6 +422,27 @@ textarea.input:focus,
   background: var(--bg-elevated);
 }
 
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, #000, transparent 45%);
+}
+
+.modalCard {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
 .metricBlock {
   display: grid;
   gap: 4px;
@@ -569,6 +590,14 @@ textarea.input:focus,
     grid-column: 1 / -1;
   }
 
+  .planningEditor {
+    grid-template-columns: 1fr;
+  }
+
+  .planningConfigCard {
+    position: static;
+  }
+
   .planningMosaic {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -605,6 +634,24 @@ textarea.input:focus,
 }
 
 .planningEditor {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.planningConfigCard {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  position: sticky;
+  top: 84px;
+}
+
+.planningEditorMain {
   display: grid;
   gap: 12px;
 }
@@ -666,26 +713,4 @@ textarea.input:focus,
 
 .planningInspector h4 {
   margin: 0;
-}
-
-.planningModalBackdrop {
-  position: fixed;
-  inset: 0;
-  background: rgb(7 14 20 / 48%);
-  backdrop-filter: blur(2px);
-  display: grid;
-  place-items: center;
-  z-index: 60;
-  padding: 18px;
-}
-
-.planningModalCard {
-  width: min(520px, 100%);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow);
-  padding: 16px;
-  display: grid;
-  gap: 8px;
 }

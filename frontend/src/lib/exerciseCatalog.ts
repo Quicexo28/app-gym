@@ -46,6 +46,17 @@ function normalizeSearchValue(value: string): string {
     .toLowerCase();
 }
 
+export function tokenizeExerciseSearch(value: string): string[] {
+  const normalized = normalizeSearchValue(value);
+  if (!normalized) return [];
+  return normalized.split(" ").map((token) => token.trim()).filter(Boolean);
+}
+
+function matchesExerciseSearch(searchText: string, searchTokens: string[]): boolean {
+  if (searchTokens.length === 0) return true;
+  return searchTokens.every((token) => searchText.includes(token));
+}
+
 function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }
@@ -114,11 +125,11 @@ export function toExerciseCatalogEntries(items: ExerciseCatalogItem[]): Exercise
 }
 
 function getFilteredForOptions(entries: ExerciseCatalogEntry[], filters: ExerciseFilters): ExerciseCatalogEntry[] {
-  const search = normalizeSearchValue(filters.search);
+  const searchTokens = tokenizeExerciseSearch(filters.search);
 
   return entries.filter((entry) => {
     if (filters.group !== ALL_EXERCISE_FILTER && !includesByKey(filters.group, entry.group)) return false;
-    if (search && !entry.searchText.includes(search)) return false;
+    if (!matchesExerciseSearch(entry.searchText, searchTokens)) return false;
     return true;
   });
 }
@@ -164,14 +175,14 @@ export function getExerciseFilterOptions(
 }
 
 export function filterExerciseEntries(entries: ExerciseCatalogEntry[], filters: ExerciseFilters): ExerciseCatalogEntry[] {
-  const search = normalizeSearchValue(filters.search);
+  const searchTokens = tokenizeExerciseSearch(filters.search);
 
   return entries.filter((entry) => {
     if (filters.group !== ALL_EXERCISE_FILTER && !includesByKey(filters.group, entry.group)) return false;
     if (filters.family !== ALL_EXERCISE_FILTER && !includesByKey(filters.family, entry.family)) return false;
     if (filters.variation !== ALL_EXERCISE_FILTER && !includesByKey(filters.variation, entry.variation)) return false;
     if (filters.subvariation !== ALL_EXERCISE_FILTER && !includesByKey(filters.subvariation, entry.subvariation)) return false;
-    if (search && !entry.searchText.includes(search)) return false;
+    if (!matchesExerciseSearch(entry.searchText, searchTokens)) return false;
     return true;
   });
 }

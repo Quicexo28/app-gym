@@ -62,7 +62,11 @@ def set_current_view_mode(mode: ViewMode) -> Token[ViewMode | None]:
 
 
 def reset_current_view_mode(token: Token[ViewMode | None]) -> None:
-    _CURRENT_VIEW_MODE.reset(token)
+    try:
+        _CURRENT_VIEW_MODE.reset(token)
+    except ValueError:
+        # FastAPI may run dependency teardown in a different context/threadpool.
+        _CURRENT_VIEW_MODE.set(None)
 
 
 def get_current_view_mode(user: User) -> ViewMode:

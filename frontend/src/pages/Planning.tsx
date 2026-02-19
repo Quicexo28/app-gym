@@ -27,17 +27,26 @@ import { loadRoutines, type RoutineTemplate } from "../lib/storage";
 import { useAthleteAccess } from "../state/athlete";
 
 type PlanningTab = "micro" | "meso" | "macro" | "assignments" | "tracking";
+type BuilderLevel = "micro" | "meso" | "macro";
+const CUSTOM_OBJECTIVE_PRESET_ID = "custom";
 
 type BuilderConfig = {
   name: string;
+  objectivePresetId: string;
   objective: string;
   duration: number;
+};
+
+type ObjectivePreset = {
+  id: string;
+  label: string;
+  objective: string;
+  trainingPhase?: string;
 };
 
 type MicroSlot = {
   index: number;
   title: string;
-  objective: string;
   routineId: string;
 };
 
@@ -46,7 +55,9 @@ type LinkSlot = {
   childTemplateId: string;
 };
 
-type MicroBuilder = BuilderConfig & {
+type MicroBuilder = {
+  name: string;
+  duration: number;
   slots: MicroSlot[];
 };
 
@@ -54,10 +65,50 @@ type LinkBuilder = BuilderConfig & {
   slots: LinkSlot[];
 };
 
+const OBJECTIVE_PRESETS: ObjectivePreset[] = [
+  {
+    id: "hypertrophy",
+    label: "Hipertrofia",
+    objective: "Aumentar volumen util con ejecucion controlada.",
+    trainingPhase: "hypertrophy",
+  },
+  {
+    id: "strength",
+    label: "Fuerza",
+    objective: "Elevar fuerza maxima con enfasis tecnico.",
+    trainingPhase: "strength",
+  },
+  {
+    id: "deload",
+    label: "Descarga",
+    objective: "Reducir fatiga acumulada sin perder patron tecnico.",
+    trainingPhase: "deload",
+  },
+  {
+    id: "conditioning",
+    label: "Acondicionamiento",
+    objective: "Mejorar capacidad de trabajo y tolerancia al esfuerzo.",
+    trainingPhase: "conditioning",
+  },
+  {
+    id: "technique",
+    label: "Tecnica",
+    objective: "Refinar patron motor, ritmo y estabilidad.",
+    trainingPhase: "technique",
+  },
+  {
+    id: CUSTOM_OBJECTIVE_PRESET_ID,
+    label: "Personalizado",
+    objective: "",
+  },
+];
+
+const OBJECTIVE_PRESET_MAP = new Map(OBJECTIVE_PRESETS.map((preset) => [preset.id, preset]));
+
 function levelLabel(level: CycleLevel): string {
-  if (level === "micro") return "Micro";
-  if (level === "meso") return "Meso";
-  return "Macro";
+  if (level === "micro") return "Microciclo";
+  if (level === "meso") return "Mesociclo";
+  return "Macrociclo";
 }
 
 function statusLabel(status: CycleStatus): string {
@@ -74,16 +125,21 @@ function defaultDurationForLevel(level: CycleLevel): number {
 }
 
 function durationLabel(level: CycleLevel): string {
-  if (level === "micro") return "Duracion relativa (dias)";
-  if (level === "meso") return "Duracion relativa (bloques micro)";
-  return "Duracion relativa (bloques meso)";
+  if (level === "micro") return "Sesiones por ciclo";
+  if (level === "meso") return "Ciclos por bloque";
+  return "Bloques por plan";
+}
+
+function defaultBuilderName(level: BuilderLevel): string {
+  if (level === "micro") return "Nuevo microciclo";
+  if (level === "meso") return "Nuevo mesociclo";
+  return "Nuevo macrociclo";
 }
 
 function makeMicroSlots(duration: number): MicroSlot[] {
   return Array.from({ length: duration }, (_, idx) => ({
     index: idx + 1,
     title: `Sesion ${idx + 1}`,
-    objective: "",
     routineId: "",
   }));
 }
@@ -93,6 +149,53 @@ function makeLinkSlots(duration: number): LinkSlot[] {
     index: idx + 1,
     childTemplateId: "",
   }));
+}
+
+function resizeMicroSlots(slots: MicroSlot[], duration: number): MicroSlot[] {
+  const byIndex = new Map(slots.map((slot) => [slot.index, slot]));
+  return Array.from({ length: duration }, (_, idx) => {
+    const index = idx + 1;
+    const existing = byIndex.get(index);
+    if (existing) return { ...existing, index };
+    return {
+      index,
+      title: `Sesion ${index}`,
+      routineId: "",
+    };
+  });
+}
+
+function resizeLinkSlots(slots: LinkSlot[], duration: number): LinkSlot[] {
+  const byIndex = new Map(slots.map((slot) => [slot.index, slot]));
+  return Array.from({ length: duration }, (_, idx) => {
+    const index = idx + 1;
+    const existing = byIndex.get(index);
+    if (existing) return { ...existing, index };
+    return {
+      index,
+      childTemplateId: "",
+    };
+  });
+}
+
+function buildBlankMicroBuilder(): MicroBuilder {
+  const duration = defaultDurationForLevel("micro");
+  return {
+    name: defaultBuilderName("micro"),
+    duration,
+    slots: makeMicroSlots(duration),
+  };
+}
+
+function buildBlankLinkBuilder(level: "meso" | "macro"): LinkBuilder {
+  const duration = defaultDurationForLevel(level);
+  return {
+    name: defaultBuilderName(level),
+    objectivePresetId: CUSTOM_OBJECTIVE_PRESET_ID,
+    objective: "",
+    duration,
+    slots: makeLinkSlots(duration),
+  };
 }
 
 function TreeNode({ node }: { node: PlanningTemplateTree }) {
@@ -109,7 +212,7 @@ function TreeNode({ node }: { node: PlanningTemplateTree }) {
               <article key={`${node.id}_block_${idx}`} className="treeLeaf">
                 <div>
                   <strong>{block.title}</strong>
-                  <div className="small">{`Bloque ${block.relative_day}`}</div>
+                  <div className="small">{`Sesion ${block.relative_day}`}</div>
                 </div>
               </article>
             ))}
@@ -140,15 +243,9 @@ export default function Planning() {
   const [templatesError, setTemplatesError] = useState("");
   const [feedback, setFeedback] = useState("");
 
-  const [configOpen, setConfigOpen] = useState(false);
-  const [configLevel, setConfigLevel] = useState<CycleLevel>("micro");
-  const [configName, setConfigName] = useState("");
-  const [configDuration, setConfigDuration] = useState(String(defaultDurationForLevel("micro")));
-  const [configObjective, setConfigObjective] = useState("");
-
-  const [microBuilder, setMicroBuilder] = useState<MicroBuilder | null>(null);
-  const [mesoBuilder, setMesoBuilder] = useState<LinkBuilder | null>(null);
-  const [macroBuilder, setMacroBuilder] = useState<LinkBuilder | null>(null);
+  const [microBuilder, setMicroBuilder] = useState<MicroBuilder>(() => buildBlankMicroBuilder());
+  const [mesoBuilder, setMesoBuilder] = useState<LinkBuilder>(() => buildBlankLinkBuilder("meso"));
+  const [macroBuilder, setMacroBuilder] = useState<LinkBuilder>(() => buildBlankLinkBuilder("macro"));
 
   const [selectedMicroSlot, setSelectedMicroSlot] = useState<number>(1);
   const [selectedMesoSlot, setSelectedMesoSlot] = useState<number>(1);
@@ -187,15 +284,15 @@ export default function Planning() {
   );
 
   const selectedMicroSlotData = useMemo(
-    () => microBuilder?.slots.find((slot) => slot.index === selectedMicroSlot) || null,
+    () => microBuilder.slots.find((slot) => slot.index === selectedMicroSlot) || microBuilder.slots[0] || null,
     [microBuilder, selectedMicroSlot],
   );
   const selectedMesoSlotData = useMemo(
-    () => mesoBuilder?.slots.find((slot) => slot.index === selectedMesoSlot) || null,
+    () => mesoBuilder.slots.find((slot) => slot.index === selectedMesoSlot) || mesoBuilder.slots[0] || null,
     [mesoBuilder, selectedMesoSlot],
   );
   const selectedMacroSlotData = useMemo(
-    () => macroBuilder?.slots.find((slot) => slot.index === selectedMacroSlot) || null,
+    () => macroBuilder.slots.find((slot) => slot.index === selectedMacroSlot) || macroBuilder.slots[0] || null,
     [macroBuilder, selectedMacroSlot],
   );
 
@@ -290,89 +387,124 @@ export default function Planning() {
     void loadAssignmentDetail(selectedAssignmentId);
   }, [selectedAssignmentId, loadAssignmentDetail]);
 
-  function openConfig(level: CycleLevel) {
-    setConfigLevel(level);
-    setConfigName("");
-    setConfigObjective("");
-    setConfigDuration(String(defaultDurationForLevel(level)));
-    setConfigOpen(true);
+  useEffect(() => {
+    if (selectedMicroSlot <= microBuilder.duration) return;
+    setSelectedMicroSlot(microBuilder.duration);
+  }, [selectedMicroSlot, microBuilder.duration]);
+
+  useEffect(() => {
+    if (selectedMesoSlot <= mesoBuilder.duration) return;
+    setSelectedMesoSlot(mesoBuilder.duration);
+  }, [selectedMesoSlot, mesoBuilder.duration]);
+
+  useEffect(() => {
+    if (selectedMacroSlot <= macroBuilder.duration) return;
+    setSelectedMacroSlot(macroBuilder.duration);
+  }, [selectedMacroSlot, macroBuilder.duration]);
+
+  function parseDurationInput(raw: string, fallback: number): number {
+    const parsed = Math.floor(Number(raw));
+    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+    return parsed;
   }
 
-  function startBuilder() {
-    const name = configName.trim();
-    const duration = Math.max(1, Math.floor(Number(configDuration) || 0));
-    if (!name) {
-      setTemplatesError("Nombre requerido.");
-      return;
-    }
-    if (!Number.isFinite(duration) || duration < 1) {
-      setTemplatesError("Duracion invalida.");
-      return;
-    }
+  function applyObjectivePresetToLink(level: "meso" | "macro", presetId: string) {
+    const setter = level === "meso" ? setMesoBuilder : setMacroBuilder;
+    setter((current) => ({
+      ...current,
+      objectivePresetId: presetId,
+      objective:
+        presetId === CUSTOM_OBJECTIVE_PRESET_ID
+          ? current.objective
+          : OBJECTIVE_PRESET_MAP.get(presetId)?.objective || current.objective,
+    }));
+  }
 
-    if (configLevel === "micro") {
-      setMicroBuilder({
-        name,
-        objective: configObjective.trim(),
-        duration,
-        slots: makeMicroSlots(duration),
-      });
+  function resetBuilder(level: BuilderLevel) {
+    if (level === "micro") {
+      setMicroBuilder(buildBlankMicroBuilder());
       setSelectedMicroSlot(1);
-      setTab("micro");
-    } else if (configLevel === "meso") {
-      setMesoBuilder({
-        name,
-        objective: configObjective.trim(),
-        duration,
-        slots: makeLinkSlots(duration),
-      });
+    } else if (level === "meso") {
+      setMesoBuilder(buildBlankLinkBuilder("meso"));
       setSelectedMesoSlot(1);
-      setTab("meso");
     } else {
-      setMacroBuilder({
-        name,
-        objective: configObjective.trim(),
-        duration,
-        slots: makeLinkSlots(duration),
-      });
+      setMacroBuilder(buildBlankLinkBuilder("macro"));
       setSelectedMacroSlot(1);
-      setTab("macro");
     }
-
-    setConfigOpen(false);
+    setFeedback(`${levelLabel(level)} listo para configurar.`);
     setTemplatesError("");
-    setFeedback(`${levelLabel(configLevel)} en configuracion.`);
+  }
+
+  function updateMicroConfig(patch: Partial<Pick<MicroBuilder, "name">>) {
+    setMicroBuilder((current) => ({ ...current, ...patch }));
+  }
+
+  function updateLinkConfig(level: "meso" | "macro", patch: Partial<BuilderConfig>) {
+    const setter = level === "meso" ? setMesoBuilder : setMacroBuilder;
+    setter((current) => ({ ...current, ...patch }));
+  }
+
+  function updateMicroDuration(rawValue: string) {
+    setMicroBuilder((current) => {
+      const duration = parseDurationInput(rawValue, current.duration);
+      return {
+        ...current,
+        duration,
+        slots: resizeMicroSlots(current.slots, duration),
+      };
+    });
+  }
+
+  function updateLinkDuration(level: "meso" | "macro", rawValue: string) {
+    const setter = level === "meso" ? setMesoBuilder : setMacroBuilder;
+    setter((current) => {
+      const duration = parseDurationInput(rawValue, current.duration);
+      return {
+        ...current,
+        duration,
+        slots: resizeLinkSlots(current.slots, duration),
+      };
+    });
   }
 
   function updateMicroSlot(index: number, patch: Partial<MicroSlot>) {
-    setMicroBuilder((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        slots: current.slots.map((slot) => (slot.index === index ? { ...slot, ...patch } : slot)),
-      };
-    });
+    setMicroBuilder((current) => ({
+      ...current,
+      slots: current.slots.map((slot) => (slot.index === index ? { ...slot, ...patch } : slot)),
+    }));
   }
 
   function updateLinkSlot(level: "meso" | "macro", index: number, childTemplateId: string) {
     const setter = level === "meso" ? setMesoBuilder : setMacroBuilder;
-    setter((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        slots: current.slots.map((slot) => (slot.index === index ? { ...slot, childTemplateId } : slot)),
-      };
-    });
+    setter((current) => ({
+      ...current,
+      slots: current.slots.map((slot) => (slot.index === index ? { ...slot, childTemplateId } : slot)),
+    }));
+  }
+
+  function builderFocusTag(builder: BuilderConfig): string | undefined {
+    if (builder.objectivePresetId === CUSTOM_OBJECTIVE_PRESET_ID) {
+      return builder.objective.trim() ? "custom" : undefined;
+    }
+    return builder.objectivePresetId;
+  }
+
+  function builderTrainingPhase(builder: BuilderConfig): string | undefined {
+    if (builder.objectivePresetId === CUSTOM_OBJECTIVE_PRESET_ID) return undefined;
+    return OBJECTIVE_PRESET_MAP.get(builder.objectivePresetId)?.trainingPhase;
   }
 
   async function saveMicroBuilder() {
-    if (!microBuilder) return;
+    const name = microBuilder.name.trim();
+    if (!name) {
+      setTemplatesError("Nombre requerido.");
+      return;
+    }
     setFeedback("");
     try {
       await createPlanningTemplate({
         level: "micro",
-        name: microBuilder.name,
-        objective: microBuilder.objective || undefined,
+        name,
         duration_days: microBuilder.duration,
         blocks: microBuilder.slots.map((slot, idx) => {
           const routine = slot.routineId ? routineMap.get(slot.routineId) || null : null;
@@ -380,7 +512,6 @@ export default function Planning() {
             sequence_index: idx + 1,
             relative_day: slot.index,
             title: slot.title || `Sesion ${slot.index}`,
-            objective: slot.objective || undefined,
             routine_snapshot: routine
               ? {
                   routine_id: routine.id,
@@ -392,7 +523,6 @@ export default function Planning() {
         }),
       });
       setFeedback("Microciclo guardado.");
-      setMicroBuilder(null);
       await refreshTemplates();
     } catch (cause: unknown) {
       setTemplatesError(String((cause as { message?: string })?.message || cause));
@@ -401,20 +531,27 @@ export default function Planning() {
 
   async function saveLinkBuilder(level: "meso" | "macro") {
     const builder = level === "meso" ? mesoBuilder : macroBuilder;
-    if (!builder) return;
+    const name = builder.name.trim();
+    if (!name) {
+      setTemplatesError("Nombre requerido.");
+      return;
+    }
+    const focusTag = builderFocusTag(builder);
     setFeedback("");
 
     const selected = builder.slots.filter((slot) => slot.childTemplateId);
     if (selected.length === 0) {
-      setTemplatesError("Debes seleccionar al menos un bloque.");
+      setTemplatesError(level === "meso" ? "Debes seleccionar al menos un ciclo." : "Debes seleccionar al menos un bloque.");
       return;
     }
 
     try {
       const created = await createPlanningTemplate({
         level,
-        name: builder.name,
-        objective: builder.objective || undefined,
+        name,
+        objective: builder.objective.trim() || undefined,
+        focus_tags: focusTag ? [focusTag] : undefined,
+        training_phase: builderTrainingPhase(builder),
         duration_weeks: builder.duration,
       });
 
@@ -426,8 +563,6 @@ export default function Planning() {
       }
 
       setFeedback(`${levelLabel(level)} guardado.`);
-      if (level === "meso") setMesoBuilder(null);
-      if (level === "macro") setMacroBuilder(null);
       await refreshTemplates();
       await loadTree(created.id);
     } catch (cause: unknown) {
@@ -490,16 +625,18 @@ export default function Planning() {
       return <div className="emptyState">Sin plantillas guardadas en este nivel.</div>;
     }
 
+    const unitLabel = level === "micro" ? "Sesiones" : level === "meso" ? "Ciclos" : "Bloques";
+
     return (
       <div className="gridCards">
         {levelTemplates.map((item) => (
           <article key={item.id} className="surfaceButton">
             <strong>{item.name}</strong>
             <span className="small">{`Estado: ${statusLabel(item.status)}`}</span>
-            <span className="small">{`Duracion: ${item.duration_days || item.duration_weeks || "-"} (relativa)`}</span>
+            <span className="small">{`${unitLabel}: ${item.duration_days || item.duration_weeks || "-"}`}</span>
             <div className="quickActions">
               <button className="btn" onClick={() => void loadTree(item.id)}>
-                Ver mosaico
+                Ver estructura
               </button>
               <button className="btn" onClick={() => void deleteTemplateItem(item.id)}>
                 Borrar
@@ -511,29 +648,78 @@ export default function Planning() {
     );
   }
 
+  function renderObjectiveControls(
+    builder: BuilderConfig,
+    onSelectPreset: (presetId: string) => void,
+    onObjectiveChange: (value: string) => void,
+  ) {
+    return (
+      <>
+        <label className="smallLabel">Categoria / objetivo base</label>
+        <div className="chipRow">
+          {OBJECTIVE_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={`chipButton ${builder.objectivePresetId === preset.id ? "activeChipButton" : ""}`}
+              onClick={() => onSelectPreset(preset.id)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <label className="smallLabel">Objetivo final</label>
+        <input
+          className="input"
+          value={builder.objective}
+          onChange={(e) => onObjectiveChange(e.target.value)}
+          placeholder="Puedes personalizar el objetivo aqui"
+        />
+      </>
+    );
+  }
+
   function renderMicroTab() {
     return (
       <section className="surface stack">
         <div className="planningTopRow">
           <div className="sectionHead">
             <h3>Microciclo</h3>
-            <p>Flujo: crear nuevo microciclo - configurar - editar mosaico por bloques relativos.</p>
           </div>
-          <button className="btn primary" onClick={() => openConfig("micro")}>
-            Crear nuevo microciclo
-          </button>
+          <div className="quickActions">
+            <button className="btn" onClick={() => resetBuilder("micro")}>
+              Nuevo limpio
+            </button>
+            <button className="btn primary" onClick={() => void saveMicroBuilder()}>
+              Guardar microciclo
+            </button>
+          </div>
         </div>
 
-        {!microBuilder ? (
-          <div className="emptyState">
-            Inicia con "Crear nuevo microciclo" para abrir la configuracion y construir el mosaico de bloques.
-          </div>
-        ) : (
-          <div className="planningEditor">
+        <div className="planningEditor">
+          <aside className="planningConfigCard">
+            <label className="smallLabel">Nombre</label>
+            <input
+              className="input"
+              value={microBuilder.name}
+              onChange={(e) => updateMicroConfig({ name: e.target.value })}
+            />
+
+            <label className="smallLabel">{durationLabel("micro")}</label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              value={microBuilder.duration}
+              onChange={(e) => updateMicroDuration(e.target.value)}
+              inputMode="numeric"
+            />
+          </aside>
+
+          <div className="planningEditorMain">
             <div className="planningHeaderCard">
-              <strong>{microBuilder.name}</strong>
-              <span className="small">{`Duracion relativa: ${microBuilder.duration} bloques`}</span>
-              <span className="small">{microBuilder.objective || "Sin objetivo"}</span>
+              <strong>{microBuilder.name || "Microciclo sin nombre"}</strong>
+              <span className="small">{`Sesiones: ${microBuilder.duration}`}</span>
             </div>
 
             <div className="planningMosaic">
@@ -545,7 +731,7 @@ export default function Planning() {
                     className={`planningSquare ${selectedMicroSlot === slot.index ? "active" : ""}`}
                     onClick={() => setSelectedMicroSlot(slot.index)}
                   >
-                    <span className="planningSquareIdx">{`B${slot.index}`}</span>
+                    <span className="planningSquareIdx">{`S${slot.index}`}</span>
                     <strong>{slot.title || `Sesion ${slot.index}`}</strong>
                     <span className="small">{routineName || "Sin rutina"}</span>
                   </button>
@@ -555,19 +741,12 @@ export default function Planning() {
 
             {selectedMicroSlotData ? (
               <aside className="planningInspector">
-                <h4>{`Bloque ${selectedMicroSlotData.index}`}</h4>
+                <h4>{`Sesion ${selectedMicroSlotData.index}`}</h4>
                 <label className="smallLabel">Titulo</label>
                 <input
                   className="input"
                   value={selectedMicroSlotData.title}
                   onChange={(e) => updateMicroSlot(selectedMicroSlotData.index, { title: e.target.value })}
-                />
-
-                <label className="smallLabel">Objetivo</label>
-                <input
-                  className="input"
-                  value={selectedMicroSlotData.objective}
-                  onChange={(e) => updateMicroSlot(selectedMicroSlotData.index, { objective: e.target.value })}
                 />
 
                 <label className="smallLabel">Rutina</label>
@@ -586,22 +765,13 @@ export default function Planning() {
 
                 {routines.length === 0 ? (
                   <div className="small" style={{ marginTop: 8 }}>
-                    No hay rutinas locales. Crea rutinas primero para asignarlas a los bloques.
+                    No hay rutinas locales. Crea rutinas para asignarlas a las sesiones.
                   </div>
                 ) : null}
               </aside>
             ) : null}
-
-            <div className="quickActions">
-              <button className="btn primary" onClick={() => void saveMicroBuilder()}>
-                Guardar microciclo
-              </button>
-              <button className="btn" onClick={() => setMicroBuilder(null)}>
-                Cancelar
-              </button>
-            </div>
           </div>
-        )}
+        </div>
 
         {renderTemplateCards("micro")}
       </section>
@@ -614,33 +784,66 @@ export default function Planning() {
     const setSelectedSlot = level === "meso" ? setSelectedMesoSlot : setSelectedMacroSlot;
     const childTemplates = level === "meso" ? templates.micro : templates.meso;
     const childMap = level === "meso" ? microTemplateMap : mesoTemplateMap;
+    const sectionTitle = level === "meso" ? "Mesociclo" : "Macrociclo";
+    const saveLabel = level === "meso" ? "Guardar mesociclo" : "Guardar macrociclo";
+    const childLabel = level === "meso" ? "Ciclo" : "Bloque";
+    const childLabelPlural = level === "meso" ? "Ciclos" : "Bloques";
     const usedIds = new Set(
-      (builder?.slots || [])
+      builder.slots
         .filter((slot) => slot.index !== selectedSlot?.index && slot.childTemplateId)
         .map((slot) => slot.childTemplateId),
     );
+    const selectedCategory = OBJECTIVE_PRESET_MAP.get(builder.objectivePresetId)?.label || "Personalizado";
+    const assignedBlocks = builder.slots.filter((slot) => slot.childTemplateId).length;
 
     return (
       <section className="surface stack">
         <div className="planningTopRow">
           <div className="sectionHead">
-            <h3>{level === "meso" ? "Mesociclo" : "Macrociclo"}</h3>
-            <p>{`Flujo: crear nuevo ${level}ciclo - configurar - mosaico de bloques relativos para escoger ${level === "meso" ? "microciclos" : "mesociclos"}.`}</p>
+            <h3>{sectionTitle}</h3>
           </div>
-          <button className="btn primary" onClick={() => openConfig(level)}>
-            {`Crear nuevo ${level}ciclo`}
-          </button>
+          <div className="quickActions">
+            <button className="btn" onClick={() => resetBuilder(level)}>
+              Nuevo limpio
+            </button>
+            <button className="btn primary" onClick={() => void saveLinkBuilder(level)}>
+              {saveLabel}
+            </button>
+          </div>
         </div>
 
-        {!builder ? (
-          <div className="emptyState">
-            {`Inicia con "Crear nuevo ${level}ciclo" para abrir configuracion y asignar los bloques del mosaico.`}
-          </div>
-        ) : (
-          <div className="planningEditor">
+        <div className="planningEditor">
+          <aside className="planningConfigCard">
+            <label className="smallLabel">Nombre</label>
+            <input
+              className="input"
+              value={builder.name}
+              onChange={(e) => updateLinkConfig(level, { name: e.target.value })}
+            />
+
+            <label className="smallLabel">{durationLabel(level)}</label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              value={builder.duration}
+              onChange={(e) => updateLinkDuration(level, e.target.value)}
+              inputMode="numeric"
+            />
+
+            {renderObjectiveControls(
+              builder,
+              (presetId) => applyObjectivePresetToLink(level, presetId),
+              (value) => updateLinkConfig(level, { objective: value }),
+            )}
+          </aside>
+
+          <div className="planningEditorMain">
             <div className="planningHeaderCard">
-              <strong>{builder.name}</strong>
-              <span className="small">{`Duracion relativa: ${builder.duration} bloques`}</span>
+              <strong>{builder.name || `${levelLabel(level)} sin nombre`}</strong>
+              <span className="small">{`${childLabelPlural}: ${builder.duration}`}</span>
+              <span className="small">{`Categoria: ${selectedCategory}`}</span>
+              <span className="small">{`${childLabelPlural} asignados: ${assignedBlocks}/${builder.duration}`}</span>
               <span className="small">{builder.objective || "Sin objetivo"}</span>
             </div>
 
@@ -651,17 +854,17 @@ export default function Planning() {
                   className={`planningSquare ${selectedSlot?.index === slot.index ? "active" : ""}`}
                   onClick={() => setSelectedSlot(slot.index)}
                 >
-                  <span className="planningSquareIdx">{`B${slot.index}`}</span>
+                  <span className="planningSquareIdx">{`${level === "meso" ? "C" : "B"}${slot.index}`}</span>
                   <strong>{childMap.get(slot.childTemplateId)?.name || "Sin asignar"}</strong>
-                  <span className="small">{level === "meso" ? "Microciclo" : "Mesociclo"}</span>
+                  <span className="small">{childLabel}</span>
                 </button>
               ))}
             </div>
 
             {selectedSlot ? (
               <aside className="planningInspector">
-                <h4>{`Bloque ${selectedSlot.index}`}</h4>
-                <label className="smallLabel">{level === "meso" ? "Microciclo" : "Mesociclo"}</label>
+                <h4>{`${childLabel} ${selectedSlot.index}`}</h4>
+                <label className="smallLabel">{childLabel}</label>
                 <select
                   className="input"
                   value={selectedSlot.childTemplateId}
@@ -680,17 +883,8 @@ export default function Planning() {
                 </select>
               </aside>
             ) : null}
-
-            <div className="quickActions">
-              <button className="btn primary" onClick={() => void saveLinkBuilder(level)}>
-                {`Guardar ${level}ciclo`}
-              </button>
-              <button className="btn" onClick={() => (level === "meso" ? setMesoBuilder(null) : setMacroBuilder(null))}>
-                Cancelar
-              </button>
-            </div>
           </div>
-        )}
+        </div>
 
         {renderTemplateCards(level)}
       </section>
@@ -700,7 +894,6 @@ export default function Planning() {
     <div className="container stack">
       <header className="titleBlock">
         <h1>Planificacion</h1>
-        <p>Vista tipo calendario/mosaico por bloques relativos. No se muestran fechas fijas en la construccion.</p>
       </header>
 
       {templatesError ? <section className="message error">{templatesError}</section> : null}
@@ -709,13 +902,13 @@ export default function Planning() {
       <section className="surface">
         <div className="quickActions">
           <button className={`btn ${tab === "micro" ? "primary" : ""}`} onClick={() => setTab("micro")}>
-            Micro
+            Microciclo
           </button>
           <button className={`btn ${tab === "meso" ? "primary" : ""}`} onClick={() => setTab("meso")}>
-            Meso
+            Mesociclo
           </button>
           <button className={`btn ${tab === "macro" ? "primary" : ""}`} onClick={() => setTab("macro")}>
-            Macro
+            Macrociclo
           </button>
           <button className={`btn ${tab === "assignments" ? "primary" : ""}`} onClick={() => setTab("assignments")}>
             Asignaciones
@@ -737,7 +930,6 @@ export default function Planning() {
         <section className="surface stack">
           <div className="sectionHead">
             <h3>Asignar ciclo</h3>
-            <p>Asigna plantillas creadas a sujetos accesibles.</p>
           </div>
           <select className="input" value={assignmentAthleteId} onChange={(e) => setAssignmentAthleteId(e.target.value)}>
             <option value="">Sujeto</option>
@@ -788,7 +980,6 @@ export default function Planning() {
         <section className="surface stack">
           <div className="sectionHead">
             <h3>Seguimiento</h3>
-            <p>Reconciliacion, adherencia y metricas de los ciclos asignados.</p>
           </div>
 
           {loadingAssignments ? <div className="emptyState">Cargando asignaciones...</div> : null}
@@ -823,7 +1014,11 @@ export default function Planning() {
               </div>
               <div className="chipRow" style={{ marginTop: 10 }}>
                 <span className="chip">{`Estado: ${statusLabel(assignmentDetail.status)}`}</span>
-                <span className="chip">{`Bloques: ${assignmentDetail.blocks_completed || 0}/${assignmentDetail.blocks_total || 0}`}</span>
+                <span className="chip">
+                  {`${assignmentDetail.level === "micro" ? "Sesiones" : assignmentDetail.level === "meso" ? "Ciclos" : "Bloques"}: ${
+                    assignmentDetail.blocks_completed || 0
+                  }/${assignmentDetail.blocks_total || 0}`}
+                </span>
                 <button className="btn" onClick={() => void changeAssignmentStatus(selectedAssignmentId, "active")}>
                   Activar
                 </button>
@@ -836,7 +1031,15 @@ export default function Planning() {
                   <article key={block.id} className="listItem">
                     <div className="listMain">
                       <strong>{block.title}</strong>
-                      <span className="small">{`Bloque relativo ${block.relative_day}`}</span>
+                      <span className="small">
+                        {`${
+                          assignmentDetail.level === "micro"
+                            ? "Sesion"
+                            : assignmentDetail.level === "meso"
+                              ? "Ciclo"
+                              : "Bloque"
+                        } ${block.relative_day}`}
+                      </span>
                     </div>
                     <div className="listMeta">
                       <span className="small">{`Estado: ${block.status}`}</span>
@@ -852,7 +1055,6 @@ export default function Planning() {
             <article className="surface">
               <div className="sectionHead">
                 <h4>Metricas</h4>
-                <p>Calculadas sobre sesiones reales.</p>
               </div>
               <div className="statsGrid" style={{ marginTop: 10 }}>
                 <article className="statCard">
@@ -900,7 +1102,6 @@ export default function Planning() {
         <section className="surface">
           <div className="sectionHead">
             <h3>Estructura guardada</h3>
-            <p>Mosaico/arbol de la plantilla seleccionada.</p>
           </div>
           <div style={{ marginTop: 10 }}>
             <TreeNode node={treeData} />
@@ -908,35 +1109,6 @@ export default function Planning() {
         </section>
       ) : null}
 
-      {configOpen ? (
-        <div className="planningModalBackdrop">
-          <section className="planningModalCard">
-            <div className="sectionHead">
-              <h3>{`Nuevo ${levelLabel(configLevel).toLowerCase()}ciclo`}</h3>
-              <p>Configura la base y luego edita los cuadrados del mosaico relativo.</p>
-            </div>
-            <label className="smallLabel">Nombre</label>
-            <input className="input" value={configName} onChange={(e) => setConfigName(e.target.value)} />
-            <label className="smallLabel">{durationLabel(configLevel)}</label>
-            <input
-              className="input"
-              value={configDuration}
-              onChange={(e) => setConfigDuration(e.target.value)}
-              inputMode="numeric"
-            />
-            <label className="smallLabel">Objetivo</label>
-            <input className="input" value={configObjective} onChange={(e) => setConfigObjective(e.target.value)} />
-            <div className="quickActions" style={{ marginTop: 10 }}>
-              <button className="btn primary" onClick={startBuilder}>
-                Continuar al mosaico
-              </button>
-              <button className="btn" onClick={() => setConfigOpen(false)}>
-                Cancelar
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
     </div>
   );
 }

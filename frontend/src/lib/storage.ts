@@ -41,13 +41,25 @@ type LegacyExerciseCatalogItem = {
 export type RoutineTemplate = {
   id: string;
   name: string;
-  exercises: string[];
+  exercises: RoutineExerciseTemplate[];
   created_at_utc: string;
+};
+
+export type RoutineExerciseTemplate = {
+  name: string;
+  target_sets: number;
+  target_reps_min: number;
+  target_reps_max: number;
+  rest_seconds: number;
 };
 
 const KEY_EXERCISES_V1 = "coach_ai_exercise_catalog_v1";
 const KEY_EXERCISES_V2 = "coach_ai_exercise_catalog_v2";
 const KEY_ROUTINES = "coach_ai_routines_v1";
+const DEFAULT_TARGET_SETS = 3;
+const DEFAULT_TARGET_REPS_MIN = 8;
+const DEFAULT_TARGET_REPS_MAX = 12;
+const DEFAULT_REST_SECONDS = 90;
 
 function clean(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -77,6 +89,126 @@ function splitName(name: string): string[] {
 
 function buildPathKey(group: string, family: string, variation: string, subvariation: string): string {
   return [group, family, variation, subvariation].map((value) => normalizeKey(value)).join("|");
+}
+
+function parseBoundedInt(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(numeric)));
+}
+
+function parseOptionalBoundedInt(value: unknown, min: number, max: number): number | null {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.max(min, Math.min(max, Math.round(numeric)));
+}
+
+function parseLegacyRepsRange(value: unknown): { min: number; max: number } | null {
+  const text = clean(value);
+  if (!text) return null;
+  const matches = text.match(/\d+/g);
+  if (!matches || matches.length === 0) return null;
+
+  const values = matches
+    .map((token) => Number(token))
+    .filter((numeric) => Number.isFinite(numeric))
+    .map((numeric) => Math.max(1, Math.min(100, Math.round(numeric))));
+
+  if (values.length === 0) return null;
+  if (values.length === 1) {
+    return { min: values[0], max: values[0] };
+  }
+
+  const first = values[0];
+  const second = values[1];
+  return {
+    min: Math.min(first, second),
+    max: Math.max(first, second),
+  };
+}
+
+function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null {
+  if (typeof raw === "string") {
+    const name = clean(raw);
+    if (!name) return null;
+    return {
+      name,
+      target_sets: DEFAULT_TARGET_SETS,
+      target_reps_min: DEFAULT_TARGET_REPS_MIN,
+      target_reps_max: DEFAULT_TARGET_REPS_MAX,
+      rest_seconds: DEFAULT_REST_SECONDS,
+    };
+  }
+
+  if (!raw || typeof raw !== "object") return null;
+  const source = raw as {
+    name?: unknown;
+    target_sets?: unknown;
+    sets?: unknown;
+    target_reps_min?: unknown;
+    reps_min?: unknown;
+    target_reps_max?: unknown;
+    reps_max?: unknown;
+    target_reps?: unknown;
+    reps?: unknown;
+    rest_seconds?: unknown;
+    rest_sec?: unknown;
+  };
+
+  const name = clean(source.name);
+  if (!name) return null;
+
+  const targetSets = parseBoundedInt(source.target_sets ?? source.sets, DEFAULT_TARGET_SETS, 1, 30);
+  const directRepsMin = parseOptionalBoundedInt(source.target_reps_min ?? source.reps_min, 1, 100);
+  const directRepsMax = parseOptionalBoundedInt(source.target_reps_max ?? source.reps_max, 1, 100);
+  const legacyRepsRange = parseLegacyRepsRange(source.target_reps ?? source.reps);
+  const repsMin = directRepsMin ?? directRepsMax ?? legacyRepsRange?.min ?? DEFAULT_TARGET_REPS_MIN;
+  const repsMax = directRepsMax ?? directRepsMin ?? legacyRepsRange?.max ?? DEFAULT_TARGET_REPS_MAX;
+  const restSeconds = parseBoundedInt(source.rest_seconds ?? source.rest_sec, DEFAULT_REST_SECONDS, 0, 900);
+  const normalizedRepsMin = Math.min(repsMin, repsMax);
+  const normalizedRepsMax = Math.max(repsMin, repsMax);
+
+  return {
+    name,
+    target_sets: targetSets,
+    target_reps_min: normalizedRepsMin,
+    target_reps_max: normalizedRepsMax,
+    rest_seconds: restSeconds,
+  };
+}
+
+function normalizeRoutineExerciseList(raw: unknown): RoutineExerciseTemplate[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: RoutineExerciseTemplate[] = [];
+  for (const entry of raw) {
+    const next = normalizeRoutineExercise(entry);
+    if (!next) continue;
+    const key = normalizeKey(next.name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(next);
+  }
+  return out;
+}
+
+function normalizeRoutineTemplate(raw: unknown): RoutineTemplate | null {
+  if (!raw || typeof raw !== "object") return null;
+  const source = raw as {
+    id?: unknown;
+    name?: unknown;
+    exercises?: unknown;
+    created_at_utc?: unknown;
+  };
+  const name = clean(source.name);
+  if (!name) return null;
+  const created = clean(source.created_at_utc) || new Date().toISOString();
+  return {
+    id: clean(source.id) || uid("rt"),
+    name,
+    exercises: normalizeRoutineExerciseList(source.exercises),
+    created_at_utc: created,
+  };
 }
 
 function toCanonicalItem(source: LegacyExerciseCatalogItem): ExerciseCatalogItem | null {
@@ -208,11 +340,28 @@ export function saveExerciseCatalog(items: ExerciseCatalogItem[]): void {
 }
 
 export function loadRoutines(): RoutineTemplate[] {
-  return loadJSON<RoutineTemplate[]>(KEY_ROUTINES, []);
+  const rawValue = loadJSON<unknown>(KEY_ROUTINES, []);
+  const raw = Array.isArray(rawValue) ? rawValue : [];
+  const normalized = raw
+    .map((entry) => normalizeRoutineTemplate(entry))
+    .filter((entry): entry is RoutineTemplate => Boolean(entry));
+
+  try {
+    if (JSON.stringify(raw) !== JSON.stringify(normalized)) {
+      saveJSON(KEY_ROUTINES, normalized);
+    }
+  } catch {
+    saveJSON(KEY_ROUTINES, normalized);
+  }
+
+  return normalized;
 }
 
 export function saveRoutines(items: RoutineTemplate[]): void {
-  saveJSON(KEY_ROUTINES, items);
+  const normalized = items
+    .map((entry) => normalizeRoutineTemplate(entry))
+    .filter((entry): entry is RoutineTemplate => Boolean(entry));
+  saveJSON(KEY_ROUTINES, normalized);
 }
 
 export function uid(prefix = "id"): string {

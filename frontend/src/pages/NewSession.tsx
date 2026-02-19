@@ -3,13 +3,13 @@ import { useNavigate } from "react-router-dom";
 
 import { ingestSessions } from "../api";
 import { loadRoutines } from "../lib/storage";
-import type { RoutineTemplate } from "../lib/storage";
+import type { RoutineExerciseTemplate, RoutineTemplate } from "../lib/storage";
 import { toKg } from "../lib/units";
 import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 
 type SetRow = { reps: string; load: string };
-type RoutineExerciseDraft = { name: string; sets: SetRow[] };
+type RoutineExerciseDraft = { name: string; target_reps_min: number; target_reps_max: number; rest_seconds: number; sets: SetRow[] };
 type SessionStep = "pick_routine" | "capture_session";
 
 const EMPTY_SET: SetRow = { reps: "", load: "" };
@@ -45,22 +45,51 @@ function formatTimer(totalSeconds: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function normalizeRoutineExercises(source: string[]): string[] {
+function formatRepsRange(min: number, max: number): string {
+  if (min === max) return String(min);
+  return `${min}-${max}`;
+}
+
+function formatRestRecommendation(restSeconds: number): string {
+  if (restSeconds <= 0) return "Sin descanso";
+  return `${restSeconds}s`;
+}
+
+function normalizeRoutineExercises(source: RoutineExerciseTemplate[]): RoutineExerciseTemplate[] {
   const seen = new Set<string>();
-  const out: string[] = [];
+  const out: RoutineExerciseTemplate[] = [];
   for (const raw of source) {
-    const name = raw.trim();
+    const name = raw.name.trim();
     if (!name) continue;
     const key = name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push(name);
+    out.push({
+      name,
+      target_sets: Math.max(1, Math.min(30, Math.round(raw.target_sets || 1))),
+      target_reps_min: Math.max(1, Math.min(100, Math.round(raw.target_reps_min || 1))),
+      target_reps_max: Math.max(1, Math.min(100, Math.round(raw.target_reps_max || 1))),
+      rest_seconds: Math.max(0, Math.min(900, Math.round(raw.rest_seconds || 0))),
+    });
   }
-  return out;
+  return out.map((exercise) => ({
+    ...exercise,
+    target_reps_min: Math.min(exercise.target_reps_min, exercise.target_reps_max),
+    target_reps_max: Math.max(exercise.target_reps_min, exercise.target_reps_max),
+  }));
 }
 
 function routineToDraft(routine: RoutineTemplate): RoutineExerciseDraft[] {
-  return normalizeRoutineExercises(routine.exercises).map((name) => ({ name, sets: [{ ...EMPTY_SET }] }));
+  return normalizeRoutineExercises(routine.exercises).map((exercise) => ({
+    name: exercise.name,
+    target_reps_min: exercise.target_reps_min,
+    target_reps_max: exercise.target_reps_max,
+    rest_seconds: exercise.rest_seconds,
+    sets: Array.from({ length: exercise.target_sets }, () => ({
+      reps: String(exercise.target_reps_min),
+      load: "",
+    })),
+  }));
 }
 
 export default function NewSession() {
@@ -211,7 +240,14 @@ export default function NewSession() {
 
   function addSet(exIdx: number) {
     setRoutineExercises((prev) =>
-      prev.map((entry, i) => (i === exIdx ? { ...entry, sets: [...entry.sets, { ...EMPTY_SET }] } : entry)),
+      prev.map((entry, i) =>
+        i === exIdx
+          ? {
+              ...entry,
+              sets: [...entry.sets, { reps: String(entry.target_reps_min), load: "" }],
+            }
+          : entry,
+      ),
     );
   }
 
@@ -536,6 +572,10 @@ export default function NewSession() {
                   </div>
                   <span className="chip">Sets: {exercise.sets.length}</span>
                 </div>
+                <div className="chipRow" style={{ marginTop: 8 }}>
+                  <span className="chip">{`Reps objetivo: ${formatRepsRange(exercise.target_reps_min, exercise.target_reps_max)}`}</span>
+                  <span className="chip">{`Descanso recomendado: ${formatRestRecommendation(exercise.rest_seconds)}`}</span>
+                </div>
 
                 <div className="setGrid">
                   {exercise.sets.map((set, setIdx) => (
@@ -545,7 +585,7 @@ export default function NewSession() {
                         className="input"
                         value={set.reps}
                         onChange={(e) => setSetValue(exIdx, setIdx, "reps", e.target.value)}
-                        placeholder="reps"
+                        placeholder={formatRepsRange(exercise.target_reps_min, exercise.target_reps_max)}
                       />
                       <input
                         className="input"
