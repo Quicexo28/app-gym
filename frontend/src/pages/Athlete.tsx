@@ -41,8 +41,8 @@ export default function Athlete() {
   return (
     <div className="container stack">
       <header className="titleBlock">
-        <h1>Atleta: {athleteId}</h1>
-        <p>Resumen rapido de sesiones y escenarios para este atleta.</p>
+        <h1>Panel de atleta</h1>
+        <p>Resumen rapido de sesiones y escenarios.</p>
         <div className="quickActions">
           <Link className="btn" to="/history">
             Historial

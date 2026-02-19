@@ -59,7 +59,6 @@ export default function RunDetail() {
         <>
           <section className="surface">
             <div className="chipRow">
-              <span className="chip">Athlete: {data.athlete_id}</span>
               <span className="chip">Metric: {data.metric_key}</span>
               <span className="chip">Confianza ultima: {toPercent(data.confidence_last)}</span>
               <span className="chip">{new Date(data.generated_at_utc).toLocaleString()}</span>

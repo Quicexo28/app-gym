@@ -50,14 +50,18 @@ a {
 }
 
 .container {
-  width: min(1120px, 100%);
+  width: min(1040px, 100%);
   margin: 0 auto;
-  padding: 18px;
+  padding: 20px 18px;
 }
 
 .stack {
   display: grid;
-  gap: 14px;
+  gap: 18px;
+}
+
+.compactStack {
+  gap: 10px;
 }
 
 .titleBlock h1 {
@@ -68,6 +72,7 @@ a {
 .titleBlock p {
   margin: 6px 0 0;
   color: var(--text-soft);
+  max-width: 70ch;
 }
 
 .small,
@@ -90,7 +95,7 @@ a {
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow);
-  padding: 14px;
+  padding: 16px;
 }
 
 .sectionHead h3,
@@ -198,13 +203,39 @@ textarea.input:focus,
 .quickActions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .quickGrid {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.homeHero {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1.2fr 1fr;
+}
+
+.statsGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.statCard {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 20%);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.cleanList {
+  margin: 0;
+  padding-left: 18px;
 }
 
 .statusText {
@@ -441,9 +472,9 @@ textarea.input:focus,
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-elevated), transparent 12%);
   backdrop-filter: blur(10px);
-  padding: 12px 14px 10px;
+  padding: 10px 14px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .topbarRow {
@@ -458,8 +489,10 @@ textarea.input:focus,
   justify-content: flex-end;
 }
 
-.topbarMeta {
-  padding: 0 2px;
+.toolbarGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .brand2 {
@@ -508,14 +541,18 @@ textarea.input:focus,
 }
 
 .athleteInput {
-  width: 100px;
-  min-width: 100px;
+  width: 180px;
+  min-width: 180px;
 }
 
 @media (max-width: 720px) {
   .topbarRow {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .homeHero {
+    grid-template-columns: 1fr;
   }
 
   .setRow {

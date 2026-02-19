@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import { createRun, getSessions, listRuns } from "../api";
 import type { RunListItem } from "../api";
 import type { SessionRecord } from "../api";
@@ -44,9 +45,10 @@ export default function History() {
       .catch(() => setRuns([]));
   }, [athleteId]);
 
-  const sessionsSorted = useMemo(() => {
-    return [...sessions].sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)));
-  }, [sessions]);
+  const sessionsSorted = useMemo(
+    () => [...sessions].sort((a, b) => String(b.start_time).localeCompare(String(a.start_time))),
+    [sessions],
+  );
 
   async function runNow() {
     if (!athleteId) return;
@@ -66,16 +68,33 @@ export default function History() {
     <div className="container stack">
       <header className="titleBlock">
         <h1>Historial</h1>
-        <p>Sesiones y escenarios del atleta activo. Vista compacta para revisar rapido.</p>
+        <p>Vista ordenada de sesiones y runs para el atleta activo.</p>
       </header>
 
       <section className="surface">
-        <div className="chipRow">
-          <span className="chip">Athlete: {athleteId || "-"}</span>
-          <span className="chip">Carga visible: {prefs.weightUnit}</span>
-          <span className="chip">Sesiones: {sessionsSorted.length}</span>
-          <span className="chip">Runs: {runs.length}</span>
+        <div className="sectionHead">
+          <h3>Resumen</h3>
+          <p>Contexto actual y accesos rapidos.</p>
         </div>
+        <div className="statsGrid" style={{ marginTop: 10 }}>
+          <article className="statCard">
+            <div className="smallLabel">Atleta</div>
+            <strong>{athleteId ? "Activo" : "Sin asignar"}</strong>
+          </article>
+          <article className="statCard">
+            <div className="smallLabel">Sesiones</div>
+            <strong>{sessionsSorted.length}</strong>
+          </article>
+          <article className="statCard">
+            <div className="smallLabel">Runs</div>
+            <strong>{runs.length}</strong>
+          </article>
+          <article className="statCard">
+            <div className="smallLabel">Unidad carga</div>
+            <strong>{prefs.weightUnit}</strong>
+          </article>
+        </div>
+
         <div className="quickActions" style={{ marginTop: 12 }}>
           <button className="btn primary" onClick={() => nav("/session/new")} disabled={!athleteId}>
             Nueva sesion
@@ -84,6 +103,7 @@ export default function History() {
             {busy ? "Corriendo..." : "Correr escenarios"}
           </button>
         </div>
+
         {canSwitch && athleteReady && athleteIds.length === 0 ? (
           <div className="message error" style={{ marginTop: 12 }}>
             No tienes atletas asignados. Pide a un admin que te asigne al menos uno.
@@ -94,13 +114,13 @@ export default function History() {
       <section className="surface">
         <div className="sectionHead">
           <h3>Sesiones recientes</h3>
-          <p>Hasta 30 sesiones ordenadas por fecha.</p>
+          <p>Ultimas 30 sesiones, ordenadas por fecha.</p>
         </div>
 
         {sessionsSorted.length === 0 ? (
           <div className="emptyState">Sin sesiones todavia.</div>
         ) : (
-          <div className="stack">
+          <div className="stack compactStack" style={{ marginTop: 10 }}>
             {sessionsSorted.slice(0, 30).map((s, idx) => {
               const volKg = volumeLoadKg(s);
               const exercises = (s.exercises || []).map((e) => e.name).filter(Boolean).join(" - ");
@@ -109,13 +129,11 @@ export default function History() {
                 <article key={idx} className="listItem">
                   <div className="listMain">
                     <strong>{s.start_time ? new Date(s.start_time).toLocaleString() : "Sin fecha"}</strong>
-                    <span className="small">Dur: {s.duration_min ?? "-"} min</span>
-                    <span className="small">
-                      {prefs.effortScale.toUpperCase()}: {s.rpe ?? "-"}
-                    </span>
+                    <span className="small">{`Duracion: ${s.duration_min ?? "-"} min`}</span>
+                    <span className="small">{`${prefs.effortScale.toUpperCase()}: ${s.rpe ?? "-"}`}</span>
                   </div>
                   <div className="listMeta">
-                    <span className="chip">Vol: {formatWeight(volKg, prefs.weightUnit)}</span>
+                    <span className="small">{`Volumen: ${formatWeight(volKg, prefs.weightUnit)}`}</span>
                     <span className="small">{exercises || "Sin ejercicios"}</span>
                   </div>
                 </article>
@@ -128,26 +146,25 @@ export default function History() {
       <section className="surface">
         <div className="sectionHead">
           <h3>Runs recientes</h3>
-          <p>Abre el detalle para ver trade-offs y confianza.</p>
+          <p>Acceso directo a resultados de escenarios.</p>
         </div>
 
         {runs.length === 0 ? (
           <div className="emptyState">Sin runs todavia.</div>
         ) : (
-          <div className="gridCards">
+          <div className="gridCards" style={{ marginTop: 10 }}>
             {runs.slice(0, 12).map((r) => (
               <button
                 key={r.run_id}
                 className="surfaceButton"
                 onClick={() => nav(`/run/${encodeURIComponent(r.run_id)}`)}
               >
-                <div className="chipRow">
-                  <span className="chip">{r.metric_key}</span>
-                  <span className="chip">{new Date(r.generated_at_utc).toLocaleDateString()}</span>
-                </div>
-                <strong>{r.summary?.top_scenario || "run"}</strong>
+                <strong>{r.summary?.top_scenario || "Run"}</strong>
+                <span className="small">{new Date(r.generated_at_utc).toLocaleString()}</span>
                 <span className="small">
-                  Prob top: {typeof r.summary?.top_probability === "number" ? `${Math.round(r.summary.top_probability * 100)}%` : "-"}
+                  {`Prob top: ${
+                    typeof r.summary?.top_probability === "number" ? `${Math.round(r.summary.top_probability * 100)}%` : "-"
+                  }`}
                 </span>
               </button>
             ))}
@@ -157,4 +174,3 @@ export default function History() {
     </div>
   );
 }
-

@@ -34,10 +34,9 @@ function Item({ to, label }: { to: string; label: string }) {
 export default function AppShell() {
   const { athleteId, athleteIds, canSwitch, ready: athleteReady, setAthleteId } = useAthleteAccess();
   const { prefs, resolvedTheme, toggleTheme } = usePreferences();
-  const { user, planLabel, logout } = useAuth();
+  const { logout } = useAuth();
 
-  const themeLabel =
-    prefs.theme === "system" ? `Tema sistema (${resolvedTheme})` : prefs.theme === "dark" ? "Tema oscuro" : "Tema claro";
+  const themeLabel = prefs.theme === "system" ? `Sistema (${resolvedTheme})` : prefs.theme === "dark" ? "Oscuro" : "Claro";
 
   return (
     <div className="shell2">
@@ -50,9 +49,9 @@ export default function AppShell() {
 
           <div className="hstack compact topbarActions">
             {canSwitch ? (
-              <>
+              <div className="toolbarGroup">
                 <label className="smallLabel" htmlFor="athlete-id-input">
-                  Athlete
+                  Atleta
                 </label>
                 <select
                   id="athlete-id-input"
@@ -64,17 +63,17 @@ export default function AppShell() {
                   {athleteIds.length === 0 ? (
                     <option value="">Sin atletas asignados</option>
                   ) : (
-                    athleteIds.map((id) => (
+                    athleteIds.map((id, idx) => (
                       <option key={id} value={id}>
-                        {id}
+                        {`Atleta ${idx + 1}`}
                       </option>
                     ))
                   )}
                 </select>
-              </>
+              </div>
             ) : null}
             <button type="button" className="btn" onClick={toggleTheme}>
-              {themeLabel}
+              Tema: {themeLabel}
             </button>
             <button type="button" className="btn" onClick={logout}>
               Salir
@@ -87,10 +86,6 @@ export default function AppShell() {
             <Item key={item.to} to={item.to} label={item.label} />
           ))}
         </nav>
-
-        <div className="small topbarMeta">
-          {`Cuenta: ${user?.email || "-"} | Plan: ${planLabel || "-"} | Rol: ${user?.role || "-"} | Atleta: ${athleteId || "-"} | Escala: ${prefs.effortScale.toUpperCase()} | Carga: ${prefs.weightUnit}`}
-        </div>
       </header>
 
       <main className="content2">

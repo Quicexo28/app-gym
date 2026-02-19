@@ -349,7 +349,6 @@ export default function NewSession() {
 
         <section className="surface">
           <div className="chipRow">
-            <span className="chip">Athlete: {athleteId}</span>
             <span className="chip">Escala: {prefs.effortScale.toUpperCase()}</span>
             <span className="chip">Carga: {prefs.weightUnit}</span>
             <span className="chip">Rutinas: {sortedRoutines.length}</span>
@@ -415,7 +414,6 @@ export default function NewSession() {
 
       <section className="surface">
         <div className="chipRow">
-          <span className="chip">Athlete: {athleteId}</span>
           <span className="chip">Escala: {prefs.effortScale.toUpperCase()}</span>
           <span className="chip">Carga: {prefs.weightUnit}</span>
           <span className="chip">Rutina: {selectedRoutine?.name || "-"}</span>

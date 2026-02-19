@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import { apiPing } from "../api";
 import { useAthleteAccess } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
@@ -9,7 +10,11 @@ export default function Home() {
   const { prefs, resolvedTheme } = usePreferences();
   const [ping, setPing] = useState<string>("Conectando API...");
   const nav = useNavigate();
-  const themeChip = prefs.theme === "system" ? `system (${resolvedTheme})` : prefs.theme;
+
+  const themeLabel = useMemo(
+    () => (prefs.theme === "system" ? `Sistema (${resolvedTheme})` : prefs.theme === "dark" ? "Oscuro" : "Claro"),
+    [prefs.theme, resolvedTheme],
+  );
 
   useEffect(() => {
     apiPing()
@@ -21,18 +26,62 @@ export default function Home() {
     <div className="container stack">
       <header className="titleBlock">
         <h1>Dashboard</h1>
-        <p>Registro rapido para gym con escenarios probabilisticos. La decision final siempre es humana.</p>
+        <p>Vista principal simplificada para iniciar flujo rapido de registro y analisis.</p>
       </header>
 
-      <section className="surface quickGrid">
-        <div>
-          <div className="smallLabel">Estado</div>
+      <section className="surface homeHero">
+        <div className="stack compactStack">
+          <div className="sectionHead">
+            <h3>Estado actual</h3>
+            <p>Conectividad de API y contexto del atleta activo.</p>
+          </div>
           <div className="statusText">{ping}</div>
+          <div className="statsGrid">
+            <article className="statCard">
+              <div className="smallLabel">Atleta activo</div>
+              <strong>{athleteId ? "Asignado" : "Sin asignar"}</strong>
+            </article>
+            <article className="statCard">
+              <div className="smallLabel">Escala</div>
+              <strong>{prefs.effortScale.toUpperCase()}</strong>
+            </article>
+            <article className="statCard">
+              <div className="smallLabel">Carga</div>
+              <strong>{prefs.weightUnit}</strong>
+            </article>
+          </div>
         </div>
+
+        <div className="stack compactStack">
+          <div className="sectionHead">
+            <h3>Acciones</h3>
+            <p>Atajos principales para operar el sistema sin saturar la vista.</p>
+          </div>
+          <div className="quickActions">
+            <button className="btn primary" onClick={() => nav("/session/new")} disabled={!athleteId}>
+              Nueva sesion
+            </button>
+            <button className="btn" onClick={() => nav("/history")} disabled={!athleteId}>
+              Historial
+            </button>
+            <button className="btn" onClick={() => nav("/routines")}>
+              Rutinas
+            </button>
+            <button className="btn" onClick={() => nav("/profile")}>
+              Perfil
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="surface splitGrid">
         <div>
-          <div className="smallLabel">Atleta activo</div>
+          <div className="sectionHead">
+            <h3>Selector de atleta</h3>
+            <p>Visible solo para coach con atletas asignados.</p>
+          </div>
           {canSwitch ? (
-            <div className="hstack compact">
+            <div className="hstack compact" style={{ marginTop: 10 }}>
               <select
                 className="input athleteInput"
                 value={athleteId}
@@ -42,9 +91,9 @@ export default function Home() {
                 {athleteIds.length === 0 ? (
                   <option value="">Sin atletas asignados</option>
                 ) : (
-                  athleteIds.map((id) => (
+                  athleteIds.map((id, idx) => (
                     <option key={id} value={id}>
-                      {id}
+                      {`Atleta ${idx + 1}`}
                     </option>
                   ))
                 )}
@@ -54,51 +103,33 @@ export default function Home() {
               </button>
             </div>
           ) : (
-            <div className="chipRow">
-              <span className="chip">{athleteId || "-"}</span>
+            <div className="quickActions" style={{ marginTop: 10 }}>
               <button className="btn" onClick={() => nav(`/athlete/${encodeURIComponent(athleteId)}`)} disabled={!athleteId}>
-                Panel atleta
+                Abrir panel de atleta
               </button>
             </div>
           )}
-        </div>
-      </section>
 
-      <section className="surface">
-        <div className="sectionHead">
-          <h3>Acciones rapidas</h3>
-          <p>Flujo recomendado: registrar sesion, revisar historial y correr escenarios.</p>
+          {canSwitch && athleteReady && athleteIds.length === 0 ? (
+            <div className="message error" style={{ marginTop: 12 }}>
+              No tienes atletas asignados. Pide a un admin que te asigne al menos uno.
+            </div>
+          ) : null}
         </div>
-        <div className="quickActions">
-          <button className="btn primary" onClick={() => nav("/session/new")} disabled={!athleteId}>
-            Nueva sesion
-          </button>
-          <button className="btn" onClick={() => nav("/history")} disabled={!athleteId}>
-            Historial
-          </button>
-          <button className="btn" onClick={() => nav("/routines")}>Rutinas</button>
-          <button className="btn" onClick={() => nav("/settings")}>Ajustes</button>
-        </div>
-        {canSwitch && athleteReady && athleteIds.length === 0 ? (
-          <div className="message error" style={{ marginTop: 12 }}>
-            No tienes atletas asignados. Pide a un admin que te asigne al menos uno.
+
+        <div>
+          <div className="sectionHead">
+            <h3>Preferencias activas</h3>
+            <p>Resumen limpio de configuración actual.</p>
           </div>
-        ) : null}
-      </section>
-
-      <section className="surface">
-        <div className="sectionHead">
-          <h3>Preferencias activas</h3>
-          <p>Estas opciones impactan como se muestran y capturan los datos en la app.</p>
-        </div>
-        <div className="chipRow">
-          <span className="chip">Tema: {themeChip}</span>
-          <span className="chip">Esfuerzo: {prefs.effortScale.toUpperCase()}</span>
-          <span className="chip">Carga: {prefs.weightUnit}</span>
-          <span className="chip">Distancia: {prefs.distanceUnit}</span>
+          <ul className="compactList cleanList" style={{ marginTop: 10 }}>
+            <li>{`Tema: ${themeLabel}`}</li>
+            <li>{`Esfuerzo: ${prefs.effortScale.toUpperCase()}`}</li>
+            <li>{`Carga: ${prefs.weightUnit}`}</li>
+            <li>{`Distancia: ${prefs.distanceUnit}`}</li>
+          </ul>
         </div>
       </section>
     </div>
   );
 }
-
