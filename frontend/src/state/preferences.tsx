@@ -2,7 +2,8 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-export type ThemePreference = "light" | "dark";
+export type ThemePreference = "system" | "light" | "dark";
+export type ResolvedTheme = "light" | "dark";
 export type EffortScale = "rpe" | "rir";
 export type WeightUnit = "kg" | "lb";
 export type DistanceUnit = "m" | "mi";
@@ -16,6 +17,7 @@ export type UserPreferences = {
 
 type PreferencesContextValue = {
   prefs: UserPreferences;
+  resolvedTheme: ResolvedTheme;
   setTheme: (theme: ThemePreference) => void;
   setEffortScale: (scale: EffortScale) => void;
   setWeightUnit: (unit: WeightUnit) => void;
@@ -24,9 +26,11 @@ type PreferencesContextValue = {
 };
 
 const KEY = "coach_ai_user_prefs_v1";
+const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
+const THEME_CYCLE: ThemePreference[] = ["system", "light", "dark"];
 
 const DEFAULT_PREFS: UserPreferences = {
-  theme: "light",
+  theme: "system",
   effortScale: "rpe",
   weightUnit: "kg",
   distanceUnit: "m",
@@ -39,8 +43,10 @@ function readStoredPreferences(): UserPreferences {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT_PREFS;
     const parsed = JSON.parse(raw) as Partial<UserPreferences>;
+    const parsedTheme: ThemePreference =
+      parsed.theme === "dark" || parsed.theme === "light" || parsed.theme === "system" ? parsed.theme : "system";
     return {
-      theme: parsed.theme === "dark" ? "dark" : "light",
+      theme: parsedTheme,
       effortScale: parsed.effortScale === "rir" ? "rir" : "rpe",
       weightUnit: parsed.weightUnit === "lb" ? "lb" : "kg",
       distanceUnit: parsed.distanceUnit === "mi" ? "mi" : "m",
@@ -54,28 +60,64 @@ function writeStoredPreferences(next: UserPreferences): void {
   localStorage.setItem(KEY, JSON.stringify(next));
 }
 
-function applyTheme(theme: ThemePreference): void {
-  document.documentElement.setAttribute("data-theme", theme);
+function getSystemTheme(): ResolvedTheme {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return "light";
+  }
+  return window.matchMedia(DARK_SCHEME_QUERY).matches ? "dark" : "light";
+}
+
+function resolveTheme(preference: ThemePreference, systemTheme: ResolvedTheme): ResolvedTheme {
+  if (preference === "system") return systemTheme;
+  return preference;
+}
+
+function applyTheme(preference: ThemePreference, resolved: ResolvedTheme): void {
+  document.documentElement.setAttribute("data-theme", resolved);
+  document.documentElement.setAttribute("data-theme-preference", preference);
 }
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<UserPreferences>(() => readStoredPreferences());
+  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => getSystemTheme());
+  const resolvedTheme = useMemo<ResolvedTheme>(() => resolveTheme(prefs.theme, systemTheme), [prefs.theme, systemTheme]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia(DARK_SCHEME_QUERY);
+
+    const syncFromSystem = () => setSystemTheme(media.matches ? "dark" : "light");
+    syncFromSystem();
+
+    const listener = (event: MediaQueryListEvent) => setSystemTheme(event.matches ? "dark" : "light");
+    media.addEventListener("change", listener);
+    return () => media.removeEventListener("change", listener);
+  }, []);
 
   useEffect(() => {
     writeStoredPreferences(prefs);
-    applyTheme(prefs.theme);
   }, [prefs]);
+
+  useEffect(() => {
+    applyTheme(prefs.theme, resolvedTheme);
+  }, [prefs.theme, resolvedTheme]);
 
   const value = useMemo<PreferencesContextValue>(
     () => ({
       prefs,
+      resolvedTheme,
       setTheme: (theme) => setPrefs((prev) => ({ ...prev, theme })),
       setEffortScale: (effortScale) => setPrefs((prev) => ({ ...prev, effortScale })),
       setWeightUnit: (weightUnit) => setPrefs((prev) => ({ ...prev, weightUnit })),
       setDistanceUnit: (distanceUnit) => setPrefs((prev) => ({ ...prev, distanceUnit })),
-      toggleTheme: () => setPrefs((prev) => ({ ...prev, theme: prev.theme === "dark" ? "light" : "dark" })),
+      toggleTheme: () =>
+        setPrefs((prev) => {
+          const idx = THEME_CYCLE.indexOf(prev.theme);
+          const nextTheme = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+          return { ...prev, theme: nextTheme };
+        }),
     }),
-    [prefs],
+    [prefs, resolvedTheme],
   );
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;

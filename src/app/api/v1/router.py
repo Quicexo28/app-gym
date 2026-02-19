@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints.admin import router as admin_router
 from app.api.v1.endpoints.auth import router as auth_router
+from app.api.v1.endpoints.exercises_catalog import router as exercises_catalog_router
 from app.api.v1.endpoints.me import router as me_router
 from app.api.v1.endpoints.meta import router as meta_router
 from app.api.v1.endpoints.runs import router as runs_router
@@ -17,6 +18,7 @@ api_router.include_router(meta_router)
 api_router.include_router(auth_router)
 api_router.include_router(me_router)
 api_router.include_router(settings_router)
+api_router.include_router(exercises_catalog_router)
 
 api_router.include_router(sessions_router)
 api_router.include_router(runs_router)

@@ -27,6 +27,7 @@ export function labelToBackendPlan(label: PlanLabel): BackendPlan {
 export type AuthUser = {
   id: string;
   email: string;
+  phone_number?: string | null;
   role: Role;
   plan: BackendPlan;
 };
@@ -40,6 +41,45 @@ export type AuthResponse = {
   token: TokenResponse;
   user: AuthUser;
 };
+
+export type ExerciseScope = "global" | "custom";
+
+export type ExerciseCatalogApiItem = {
+  id: string;
+  group: string;
+  family: string;
+  variation?: string | null;
+  subvariation?: string | null;
+  aliases: string[];
+  scope: ExerciseScope;
+  owner_user_id?: string | null;
+  created_at_utc: string;
+};
+
+export type GlobalExerciseExportPayload = {
+  schema: "coach_ai_exercise_catalog_global_v1";
+  exported_at_utc: string;
+  total: number;
+  items: Array<{
+    group: string;
+    family: string;
+    variation?: string | null;
+    subvariation?: string | null;
+    aliases: string[];
+  }>;
+};
+
+export class ApiError extends Error {
+  status: number;
+  detail: string;
+
+  constructor(status: number, detail: string) {
+    super(detail);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
 
 export type SessionSet = {
   reps: number;
@@ -133,8 +173,31 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+    const raw = await res.text();
+    let detail = raw.trim();
+
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { detail?: unknown };
+        if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+          detail = parsed.detail.trim();
+        } else if (
+          parsed.detail &&
+          typeof parsed.detail === "object" &&
+          "message" in parsed.detail &&
+          typeof (parsed.detail as { message?: unknown }).message === "string"
+        ) {
+          detail = String((parsed.detail as { message: string }).message).trim();
+        }
+      } catch {
+        // Keep raw text fallback.
+      }
+    }
+
+    if (!detail) {
+      detail = `${res.status} ${res.statusText}`;
+    }
+    throw new ApiError(res.status, detail);
   }
 
   return (await res.json()) as T;
@@ -144,18 +207,93 @@ export function apiPing(): Promise<{ pong: boolean }> {
   return http("/api/v1/meta/ping");
 }
 
-export function authRegister(email: string, password: string): Promise<AuthResponse> {
+export function authRegister(email: string, password: string, phoneNumber?: string): Promise<AuthResponse> {
   return http("/api/v1/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, phone_number: phoneNumber || null }),
   });
 }
 
-export function authLogin(email: string, password: string): Promise<AuthResponse> {
+export function authLogin(identifier: string, password: string): Promise<AuthResponse> {
   return http("/api/v1/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ identifier, password }),
   });
+}
+
+export function authGoogle(idToken: string): Promise<AuthResponse> {
+  return http("/api/v1/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ id_token: idToken }),
+  });
+}
+
+export function authGuest(): Promise<AuthResponse> {
+  return http("/api/v1/auth/guest", {
+    method: "POST",
+  });
+}
+
+export function getExerciseCatalog(): Promise<ExerciseCatalogApiItem[]> {
+  return http("/api/v1/exercises/catalog");
+}
+
+export function createCustomExercise(payload: {
+  group: string;
+  family: string;
+  variation?: string;
+  subvariation?: string;
+  aliases?: string[];
+}): Promise<ExerciseCatalogApiItem> {
+  return http("/api/v1/exercises/custom", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createGlobalExercise(payload: {
+  group: string;
+  family: string;
+  variation?: string;
+  subvariation?: string;
+  aliases?: string[];
+}): Promise<ExerciseCatalogApiItem> {
+  return http("/api/v1/exercises/global", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteCustomExercise(exerciseId: string): Promise<{ ok: boolean; id: string }> {
+  return http(`/api/v1/exercises/custom/${encodeURIComponent(exerciseId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function deleteGlobalExercise(exerciseId: string): Promise<{ ok: boolean; id: string }> {
+  return http(`/api/v1/exercises/global/${encodeURIComponent(exerciseId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function importGlobalExercises(payload: {
+  mode: "merge" | "replace";
+  items: Array<{
+    group: string;
+    family: string;
+    variation?: string;
+    subvariation?: string;
+    aliases?: string[];
+  }>;
+}): Promise<{ total: number; imported: number; updated: number; skipped: number }> {
+  return http("/api/v1/exercises/global/import", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function exportGlobalExercises(): Promise<GlobalExerciseExportPayload> {
+  return http("/api/v1/exercises/global/export");
 }
 
 export function getMe(): Promise<AuthUser> {

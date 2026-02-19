@@ -11,6 +11,19 @@ Currently, two official plugins are available:
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
+## Auth env (Google)
+
+To enable Google sign-in in the login page, define:
+
+```bash
+cp .env.example .env.local
+```
+
+And set:
+
+- `VITE_GOOGLE_CLIENT_ID=<google oauth client id>`
+- `VITE_ENABLE_GUEST_LOGIN=true` (optional debug quick-login button)
+
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:

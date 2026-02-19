@@ -15,10 +15,17 @@ router = APIRouter(prefix="/me", tags=["auth"])
 class MeResponse(BaseModel):
     id: str
     email: str
+    phone_number: str | None
     role: Role
     plan: Plan
 
 
 @router.get("", response_model=MeResponse)
 def me(user: Annotated[User, Depends(get_current_user)]) -> MeResponse:
-    return MeResponse(id=str(user.id), email=user.email, role=user.role, plan=user.plan)
+    return MeResponse(
+        id=str(user.id),
+        email=user.email,
+        phone_number=user.phone_number,
+        role=user.role,
+        plan=user.plan,
+    )

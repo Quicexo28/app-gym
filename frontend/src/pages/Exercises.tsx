@@ -2,16 +2,14 @@ import { useMemo, useState } from "react";
 
 import {
   ALL_EXERCISE_FILTER as ALL,
+  buildExerciseCatalogBrowser,
+  catalogPathKeyFromParts,
   cleanExerciseText,
-  filterExerciseEntries,
-  getExerciseFilterOptions,
-  normalizeExercisePath,
-  toExerciseCatalogEntries,
   type ExerciseCatalogEntry,
   type ExerciseFilters,
 } from "../lib/exerciseCatalog";
-import { loadExerciseCatalog, saveExerciseCatalog, uid } from "../lib/storage";
-import type { ExerciseCatalogItem } from "../lib/storage";
+import { useExerciseCatalog } from "../state/exerciseCatalog";
+import { useAuth } from "../state/auth";
 
 type MutableNode = {
   label: string;
@@ -73,15 +71,17 @@ function buildTree(items: ExerciseCatalogEntry[]): CatalogNode[] {
       cursor = node.children;
     }
 
-    if (currentNode) {
-      currentNode.items.push(item);
-    }
+    if (currentNode) currentNode.items.push(item);
   }
 
   return freezeNodes(root);
 }
 
-function renderTree(nodes: CatalogNode[], onRemove: (id: string) => void) {
+function renderTree(
+  nodes: CatalogNode[],
+  onRemove: (item: ExerciseCatalogEntry) => void,
+  canRemove: (item: ExerciseCatalogEntry) => boolean,
+) {
   return nodes.map((node) => (
     <details key={node.path.join(" > ")} className="treeNode">
       <summary className="treeSummary">
@@ -97,27 +97,34 @@ function renderTree(nodes: CatalogNode[], onRemove: (id: string) => void) {
                 <div>
                   <strong>{item.name}</strong>
                   <div className="small">{item.path.join(" > ")}</div>
+                  <div className="chipRow" style={{ marginTop: 6 }}>
+                    <span className="chip">{item.scope === "global" ? "Global" : "Personal"}</span>
+                  </div>
                 </div>
-                <button className="btn" onClick={() => onRemove(item.id)}>
-                  Eliminar
-                </button>
+                {canRemove(item) ? (
+                  <button className="btn" onClick={() => onRemove(item)}>
+                    Eliminar
+                  </button>
+                ) : null}
               </article>
             ))}
           </div>
         ) : null}
 
-        {node.children.length > 0 ? renderTree(node.children, onRemove) : null}
+        {node.children.length > 0 ? renderTree(node.children, onRemove, canRemove) : null}
       </div>
     </details>
   ));
 }
 
 export default function Exercises() {
-  const [items, setItems] = useState<ExerciseCatalogItem[]>(() => loadExerciseCatalog());
+  const { isAdmin } = useAuth();
+  const { ready, loading, syncError, items, entries, addCustom, addGlobal, removeItem } = useExerciseCatalog();
   const [group, setGroup] = useState("");
   const [family, setFamily] = useState("");
   const [variation, setVariation] = useState("");
   const [subvariation, setSubvariation] = useState("");
+  const [createScope, setCreateScope] = useState<"custom" | "global">("custom");
 
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
   const [selectedFamily, setSelectedFamily] = useState<string>(ALL);
@@ -126,7 +133,6 @@ export default function Exercises() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
-  const catalogEntries = useMemo(() => toExerciseCatalogEntries(items, "General"), [items]);
   const filters = useMemo<ExerciseFilters>(
     () => ({
       group: selectedGroup,
@@ -137,12 +143,9 @@ export default function Exercises() {
     }),
     [search, selectedFamily, selectedGroup, selectedSubvariation, selectedVariation],
   );
-  const { groupOptions, familyOptions, variationOptions, subvariationOptions } = useMemo(
-    () => getExerciseFilterOptions(catalogEntries, filters),
-    [catalogEntries, filters],
-  );
-  const filteredEntries = useMemo(() => filterExerciseEntries(catalogEntries, filters), [catalogEntries, filters]);
+  const browser = useMemo(() => buildExerciseCatalogBrowser(entries, filters), [entries, filters]);
 
+  const filteredEntries = browser.filteredEntries;
   const tree = useMemo(() => buildTree(filteredEntries), [filteredEntries]);
 
   function resetLowerFilters(level: "group" | "family" | "variation") {
@@ -170,64 +173,104 @@ export default function Exercises() {
     setSearch("");
   }
 
-  function add() {
+  async function add() {
     setError("");
 
     const normalizedGroup = cleanExerciseText(group) || "General";
-    const base = cleanExerciseText(family);
-    const varName = cleanExerciseText(variation);
-    const subName = cleanExerciseText(subvariation);
+    const normalizedFamily = cleanExerciseText(family);
+    const normalizedVariation = cleanExerciseText(variation);
+    const normalizedSubvariation = cleanExerciseText(subvariation);
 
-    if (!base) {
+    if (!normalizedFamily) {
       setError("Debes indicar al menos el ejercicio base.");
       return;
     }
 
-    const path = [normalizedGroup, base, varName, subName].filter(Boolean);
-    const name = [base, varName, subName].filter(Boolean).join(" - ");
-
-    const nextPathKey = path.join(" > ").toLowerCase();
-    const exists = items.some(
-      (item) => normalizeExercisePath(item, "General").join(" > ").toLowerCase() === nextPathKey,
-    );
-    if (exists) {
-      setError("Ese ejercicio ya existe.");
+    if (normalizedSubvariation && !normalizedVariation) {
+      setError("Para usar subvariacion debes indicar antes una variacion.");
       return;
     }
 
-    const next: ExerciseCatalogItem[] = [
-      ...items,
-      {
-        id: uid("ex"),
-        name,
-        group: normalizedGroup,
-        path,
-        created_at_utc: new Date().toISOString(),
-      },
-    ];
+    const nextKey = catalogPathKeyFromParts(
+      normalizedGroup,
+      normalizedFamily,
+      normalizedVariation,
+      normalizedSubvariation,
+    );
 
-    setItems(next);
-    saveExerciseCatalog(next);
-    setFamily("");
-    setVariation("");
-    setSubvariation("");
+    const exists = items.some((item) => {
+      const samePath =
+        catalogPathKeyFromParts(item.group, item.family, item.variation || "", item.subvariation || "") === nextKey;
+      if (!samePath) return false;
+      if (createScope === "global") return item.scope === "global";
+      return item.scope !== "global";
+    });
+    if (exists) {
+      setError("Ese ejercicio ya existe en el catalogo.");
+      return;
+    }
+
+    const payload = {
+      group: normalizedGroup,
+      family: normalizedFamily,
+      variation: normalizedVariation || undefined,
+      subvariation: normalizedSubvariation || undefined,
+    };
+
+    try {
+      if (createScope === "global") {
+        await addGlobal(payload);
+      } else {
+        await addCustom(payload);
+      }
+      setFamily("");
+      setVariation("");
+      setSubvariation("");
+    } catch (cause: unknown) {
+      setError(String((cause as { message?: string })?.message || cause));
+    }
   }
 
-  function remove(id: string) {
-    const next = items.filter((x) => x.id !== id);
-    setItems(next);
-    saveExerciseCatalog(next);
+  async function remove(entry: ExerciseCatalogEntry) {
+    try {
+      const item = items.find((candidate) => candidate.id === entry.id);
+      if (!item) return;
+      await removeItem(item);
+    } catch (cause: unknown) {
+      setError(String((cause as { message?: string })?.message || cause));
+    }
   }
 
   return (
     <div className="container stack">
       <header className="titleBlock">
         <h1>Ejercicios</h1>
-        <p>Catalogo ordenado en jerarquia para mantener consistencia al crear rutinas y sesiones.</p>
+        <p>Catalogo jerarquico para elegir ejercicios de forma consistente y rapida.</p>
       </header>
 
       <section className="surface">
+        {syncError ? <div className="message error">{syncError}</div> : null}
         {error ? <div className="message error">{error}</div> : null}
+        {isAdmin ? (
+          <div className="pillGroup" style={{ marginBottom: 12 }}>
+            <button
+              type="button"
+              className={`pill ${createScope === "custom" ? "active" : ""}`}
+              onClick={() => setCreateScope("custom")}
+            >
+              <span>Ejercicio personal</span>
+              <small>Solo visible para tu cuenta</small>
+            </button>
+            <button
+              type="button"
+              className={`pill ${createScope === "global" ? "active" : ""}`}
+              onClick={() => setCreateScope("global")}
+            >
+              <span>Ejercicio global</span>
+              <small>Visible para todas las cuentas</small>
+            </button>
+          </div>
+        ) : null}
         <div className="splitGrid">
           <div>
             <label className="smallLabel">Grupo</label>
@@ -243,18 +286,13 @@ export default function Exercises() {
           </div>
           <div>
             <label className="smallLabel">Subvariacion (opcional)</label>
-            <input
-              className="input"
-              value={subvariation}
-              onChange={(e) => setSubvariation(e.target.value)}
-              placeholder="En smith"
-            />
+            <input className="input" value={subvariation} onChange={(e) => setSubvariation(e.target.value)} placeholder="En smith" />
           </div>
         </div>
 
         <div className="quickActions" style={{ marginTop: 12 }}>
-          <button className="btn primary" onClick={add}>
-            Agregar ejercicio
+          <button className="btn primary" onClick={() => void add()} disabled={loading || !ready}>
+            {loading ? "Sincronizando..." : createScope === "global" ? "Agregar global" : "Agregar personal"}
           </button>
           <span className="chip">Total catalogo: {items.length}</span>
         </div>
@@ -262,8 +300,8 @@ export default function Exercises() {
 
       <section className="surface">
         <div className="sectionHead">
-          <h3>Lista jerarquica</h3>
-          <p>Busqueda guiada en pasos: general {'>'} base {'>'} variacion {'>'} subvariacion.</p>
+          <h3>Explorador</h3>
+          <p>Filtro jerarquico para navegar desde general hasta objetivo.</p>
         </div>
 
         <div className="splitGrid" style={{ marginTop: 10 }}>
@@ -278,7 +316,7 @@ export default function Exercises() {
               }}
             >
               <option value={ALL}>Todos</option>
-              {groupOptions.map((value) => (
+              {browser.groupOptions.map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
@@ -297,7 +335,7 @@ export default function Exercises() {
               }}
             >
               <option value={ALL}>Todos</option>
-              {familyOptions.map((value) => (
+              {browser.familyOptions.map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
@@ -316,7 +354,7 @@ export default function Exercises() {
               }}
             >
               <option value={ALL}>Todas</option>
-              {variationOptions.map((value) => (
+              {browser.variationOptions.map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
@@ -332,7 +370,7 @@ export default function Exercises() {
               onChange={(e) => setSelectedSubvariation(e.target.value)}
             >
               <option value={ALL}>Todas</option>
-              {subvariationOptions.map((value) => (
+              {browser.subvariationOptions.map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
@@ -342,17 +380,16 @@ export default function Exercises() {
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <label className="smallLabel">Buscar en arbol</label>
+          <label className="smallLabel">Buscar en catalogo</label>
           <input
             className="input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ej: cuadriceps sentadilla smith"
+            placeholder="ej: sentadilla posterior smith"
           />
         </div>
 
         <div className="chipRow" style={{ marginTop: 10 }}>
-          <span className="chip">Catalogo total: {catalogEntries.length}</span>
           <span className="chip">Resultados: {filteredEntries.length}</span>
           <span className="chip">
             Ruta: {[selectedGroup, selectedFamily, selectedVariation, selectedSubvariation].filter((value) => value !== ALL).join(" > ") || "General"}
@@ -368,7 +405,7 @@ export default function Exercises() {
           </div>
         ) : (
           <div className="treeList" style={{ marginTop: 12 }}>
-            {renderTree(tree, remove)}
+            {renderTree(tree, remove, (entry) => isAdmin || entry.scope === "custom")}
           </div>
         )}
       </section>

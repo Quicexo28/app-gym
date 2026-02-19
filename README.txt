@@ -105,3 +105,26 @@ docker compose -f docker-compose.prod.yml up -d api
 
 - `npm run dev` (desde la raiz) usa `frontend/vite.config.ts` y sirve la app real de `frontend/`.
 - `npm run build` y `npm run preview` (desde la raiz) tambien operan sobre `frontend/`.
+
+## Auth status (ready)
+Implemented in current codebase:
+- Register with email + password + optional phone number.
+- Login with identifier (email or phone number) + password.
+- Google sign in via backend token validation (`/api/v1/auth/google`).
+- Friendly UI errors for invalid password, duplicated email, duplicated phone, and invalid input.
+- Password confirmation in sign-up form.
+
+Required configuration:
+- Backend: set `GOOGLE_CLIENT_ID` in `.env`/`.env.prod`.
+- Backend: set `ACCESS_TOKEN_MIN` for session duration in minutes (`43200` = 30 days).
+- Frontend: set `VITE_GOOGLE_CLIENT_ID` in `frontend/.env.local`.
+- Frontend: optional `VITE_ENABLE_GUEST_LOGIN=true` for debug quick access.
+- Database: run migrations (`alembic upgrade head`) before using new auth fields.
+
+Guest login:
+- Endpoint: `POST /api/v1/auth/guest`.
+- Enabled in non-production environments (`ENV != prod`).
+
+Phone format accepted in login/register:
+- E.164-like normalization is applied (digits only, stored as `+<digits>`).
+- Examples: `+5491112345678`, `54 9 11 1234 5678`.

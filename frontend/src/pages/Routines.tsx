@@ -2,23 +2,115 @@ import { useMemo, useState } from "react";
 
 import {
   ALL_EXERCISE_FILTER as ALL,
-  filterExerciseEntries,
-  getExerciseFilterOptions,
-  toExerciseCatalogEntries,
+  buildExerciseCatalogBrowser,
+  type ExerciseCatalogEntry,
   type ExerciseFilters,
 } from "../lib/exerciseCatalog";
-import { loadExerciseCatalog, loadRoutines, saveRoutines, uid } from "../lib/storage";
+import { loadRoutines, saveRoutines, uid } from "../lib/storage";
 import type { RoutineTemplate } from "../lib/storage";
+import { useExerciseCatalog } from "../state/exerciseCatalog";
 
-type EntryLevel = "all" | "base" | "variation" | "subvariation";
+type MutableNode = {
+  label: string;
+  path: string[];
+  children: Map<string, MutableNode>;
+  items: ExerciseCatalogEntry[];
+};
 
-function pathLevel(path: string[]): Exclude<EntryLevel, "all"> {
-  if (path.length <= 2) return "base";
-  if (path.length === 3) return "variation";
-  return "subvariation";
+type CatalogNode = {
+  label: string;
+  path: string[];
+  children: CatalogNode[];
+  items: ExerciseCatalogEntry[];
+  totalItems: number;
+};
+
+function freezeNodes(source: Map<string, MutableNode>): CatalogNode[] {
+  return Array.from(source.values())
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map((node) => {
+      const children = freezeNodes(node.children);
+      const items = [...node.items].sort((a, b) => a.name.localeCompare(b.name));
+      const childCount = children.reduce((acc, child) => acc + child.totalItems, 0);
+
+      return {
+        label: node.label,
+        path: node.path,
+        children,
+        items,
+        totalItems: items.length + childCount,
+      };
+    });
+}
+
+function buildTree(items: ExerciseCatalogEntry[]): CatalogNode[] {
+  const root = new Map<string, MutableNode>();
+
+  for (const item of items) {
+    if (item.path.length === 0) continue;
+
+    let cursor = root;
+    const currentPath: string[] = [];
+    let currentNode: MutableNode | null = null;
+
+    for (const segment of item.path) {
+      currentPath.push(segment);
+      let node = cursor.get(segment);
+      if (!node) {
+        node = {
+          label: segment,
+          path: [...currentPath],
+          children: new Map<string, MutableNode>(),
+          items: [],
+        };
+        cursor.set(segment, node);
+      }
+      currentNode = node;
+      cursor = node.children;
+    }
+
+    if (currentNode) currentNode.items.push(item);
+  }
+
+  return freezeNodes(root);
+}
+
+function renderTree(nodes: CatalogNode[], onAdd: (entry: ExerciseCatalogEntry) => void) {
+  return nodes.map((node) => (
+    <details key={node.path.join(" > ")} className="treeNode">
+      <summary className="treeSummary">
+        <span>{node.label}</span>
+        <span className="chip">{node.totalItems}</span>
+      </summary>
+
+      <div className="treeChildren">
+        {node.items.length > 0 ? (
+          <div className="treeLeafList">
+            {node.items.map((entry) => (
+              <article key={entry.id} className="treeLeaf">
+                <div>
+                  <strong>{entry.name}</strong>
+                  <div className="small">{entry.path.join(" > ")}</div>
+                  <div className="chipRow" style={{ marginTop: 6 }}>
+                    <span className="chip">{entry.scope === "global" ? "Global" : "Personal"}</span>
+                  </div>
+                </div>
+                <button className="btn" onClick={() => onAdd(entry)}>
+                  Agregar
+                </button>
+              </article>
+            ))}
+          </div>
+        ) : null}
+
+        {node.children.length > 0 ? renderTree(node.children, onAdd) : null}
+      </div>
+    </details>
+  ));
 }
 
 export default function Routines() {
+  const { loading, syncError, entries: catalogEntries } = useExerciseCatalog();
   const [items, setItems] = useState<RoutineTemplate[]>(() => loadRoutines());
   const [name, setName] = useState("");
   const [draftExercises, setDraftExercises] = useState<string[]>([]);
@@ -28,15 +120,7 @@ export default function Routines() {
   const [selectedFamily, setSelectedFamily] = useState<string>(ALL);
   const [selectedVariation, setSelectedVariation] = useState<string>(ALL);
   const [selectedSubvariation, setSelectedSubvariation] = useState<string>(ALL);
-  const [selectedLevel, setSelectedLevel] = useState<EntryLevel>("all");
   const [search, setSearch] = useState("");
-  const [selectedExerciseId, setSelectedExerciseId] = useState<string>("");
-
-  const catalogEntries = useMemo(() => toExerciseCatalogEntries(loadExerciseCatalog()), []);
-
-  const sorted = useMemo(() => {
-    return [...items].sort((a, b) => a.name.localeCompare(b.name));
-  }, [items]);
 
   const filters = useMemo<ExerciseFilters>(
     () => ({
@@ -48,28 +132,11 @@ export default function Routines() {
     }),
     [search, selectedFamily, selectedGroup, selectedSubvariation, selectedVariation],
   );
+  const browser = useMemo(() => buildExerciseCatalogBrowser(catalogEntries, filters), [catalogEntries, filters]);
+  const filteredEntries = browser.filteredEntries;
+  const tree = useMemo(() => buildTree(filteredEntries), [filteredEntries]);
 
-  const { groupOptions, familyOptions, variationOptions, subvariationOptions } = useMemo(
-    () => getExerciseFilterOptions(catalogEntries, filters),
-    [catalogEntries, filters],
-  );
-
-  const filteredEntries = useMemo(() => {
-    const narrowed = filterExerciseEntries(catalogEntries, filters);
-    if (selectedLevel === "all") return narrowed;
-    return narrowed.filter((entry) => pathLevel(entry.path) === selectedLevel);
-  }, [catalogEntries, filters, selectedLevel]);
-
-  const effectiveSelectedExerciseId = useMemo(() => {
-    const stillVisible = filteredEntries.some((entry) => entry.id === selectedExerciseId);
-    if (stillVisible) return selectedExerciseId;
-    return filteredEntries[0]?.id || "";
-  }, [filteredEntries, selectedExerciseId]);
-
-  const selectedEntry = useMemo(
-    () => filteredEntries.find((entry) => entry.id === effectiveSelectedExerciseId) || null,
-    [effectiveSelectedExerciseId, filteredEntries],
-  );
+  const sorted = useMemo(() => [...items].sort((a, b) => a.name.localeCompare(b.name)), [items]);
 
   function resetLowerFilters(level: "group" | "family" | "variation") {
     if (level === "group") {
@@ -88,20 +155,15 @@ export default function Routines() {
     setSelectedSubvariation(ALL);
   }
 
-  function addSelectedExercise() {
+  function addSelectedExercise(entry: ExerciseCatalogEntry) {
     setError("");
-    if (!selectedEntry) {
-      setError("Selecciona un ejercicio del listado filtrado.");
-      return;
-    }
-
-    const next = selectedEntry.name;
-    if (draftExercises.some((x) => x.toLowerCase() === next.toLowerCase())) return;
+    const next = entry.name;
+    if (draftExercises.some((value) => value.toLowerCase() === next.toLowerCase())) return;
     setDraftExercises((prev) => [...prev, next]);
   }
 
   function removeDraftExercise(value: string) {
-    setDraftExercises((prev) => prev.filter((x) => x !== value));
+    setDraftExercises((prev) => prev.filter((entry) => entry !== value));
   }
 
   function clearFilters() {
@@ -109,15 +171,14 @@ export default function Routines() {
     setSelectedFamily(ALL);
     setSelectedVariation(ALL);
     setSelectedSubvariation(ALL);
-    setSelectedLevel("all");
     setSearch("");
   }
 
   function addRoutine() {
     setError("");
-    const n = name.trim();
+    const trimmed = name.trim();
 
-    if (!n) {
+    if (!trimmed) {
       setError("Escribe un nombre para la rutina.");
       return;
     }
@@ -127,7 +188,7 @@ export default function Routines() {
       return;
     }
 
-    const exists = items.some((x) => x.name.toLowerCase() === n.toLowerCase());
+    const exists = items.some((entry) => entry.name.toLowerCase() === trimmed.toLowerCase());
     if (exists) {
       setError("Ya existe una rutina con ese nombre.");
       return;
@@ -135,7 +196,7 @@ export default function Routines() {
 
     const next: RoutineTemplate[] = [
       ...items,
-      { id: uid("rt"), name: n, exercises: draftExercises, created_at_utc: new Date().toISOString() },
+      { id: uid("rt"), name: trimmed, exercises: draftExercises, created_at_utc: new Date().toISOString() },
     ];
 
     setItems(next);
@@ -145,7 +206,7 @@ export default function Routines() {
   }
 
   function removeRoutine(id: string) {
-    const next = items.filter((x) => x.id !== id);
+    const next = items.filter((entry) => entry.id !== id);
     setItems(next);
     saveRoutines(next);
   }
@@ -154,12 +215,11 @@ export default function Routines() {
     <div className="container stack">
       <header className="titleBlock">
         <h1>Rutinas</h1>
-        <p>
-          Constructor con filtros anidados: grupo {'>'} ejercicio {'>'} variacion {'>'} subvariacion.
-        </p>
+        <p>Constructor con explorador jerarquico desplegable (grupo {'>'} base {'>'} variacion {'>'} subvariacion).</p>
       </header>
 
       <section className="surface">
+        {syncError ? <div className="message error">{syncError}</div> : null}
         {error ? <div className="message error">{error}</div> : null}
 
         <label className="smallLabel">Nombre de plantilla</label>
@@ -177,7 +237,7 @@ export default function Routines() {
               }}
             >
               <option value={ALL}>Todos</option>
-              {groupOptions.map((group) => (
+              {browser.groupOptions.map((group) => (
                 <option key={group} value={group}>
                   {group}
                 </option>
@@ -196,7 +256,7 @@ export default function Routines() {
               }}
             >
               <option value={ALL}>Todos</option>
-              {familyOptions.map((family) => (
+              {browser.familyOptions.map((family) => (
                 <option key={family} value={family}>
                   {family}
                 </option>
@@ -215,7 +275,7 @@ export default function Routines() {
               }}
             >
               <option value={ALL}>Todas</option>
-              {variationOptions.map((variation) => (
+              {browser.variationOptions.map((variation) => (
                 <option key={variation} value={variation}>
                   {variation}
                 </option>
@@ -231,21 +291,11 @@ export default function Routines() {
               onChange={(e) => setSelectedSubvariation(e.target.value)}
             >
               <option value={ALL}>Todas</option>
-              {subvariationOptions.map((subvariation) => (
+              {browser.subvariationOptions.map((subvariation) => (
                 <option key={subvariation} value={subvariation}>
                   {subvariation}
                 </option>
               ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="smallLabel">Nivel</label>
-            <select className="input" value={selectedLevel} onChange={(e) => setSelectedLevel(e.target.value as EntryLevel)}>
-              <option value="all">Todos</option>
-              <option value="base">Solo base</option>
-              <option value="variation">Solo variaciones</option>
-              <option value="subvariation">Solo subvariaciones</option>
             </select>
           </div>
         </div>
@@ -269,37 +319,24 @@ export default function Routines() {
           <button type="button" className="btn" onClick={clearFilters}>
             Limpiar filtros
           </button>
+          {loading ? <span className="chip">Sincronizando...</span> : null}
         </div>
 
-        <div className="catalogList" style={{ marginTop: 12 }}>
-          {filteredEntries.length === 0 ? (
-            <div className="emptyState">Sin coincidencias para la combinacion de filtros actual.</div>
-          ) : (
-            filteredEntries.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                className={`catalogItem ${effectiveSelectedExerciseId === entry.id ? "active" : ""}`}
-                onClick={() => setSelectedExerciseId(entry.id)}
-              >
-                <strong>{entry.name}</strong>
-                <span className="small">{entry.path.join(" > ")}</span>
-              </button>
-            ))
-          )}
-        </div>
-
-        <div className="quickActions" style={{ marginTop: 12 }}>
-          <button className="btn" onClick={addSelectedExercise} disabled={!selectedEntry}>
-            + Agregar seleccionado
-          </button>
-        </div>
+        {filteredEntries.length === 0 ? (
+          <div className="emptyState" style={{ marginTop: 12 }}>
+            Sin coincidencias para la combinacion de filtros actual.
+          </div>
+        ) : (
+          <div className="treeList" style={{ marginTop: 12 }}>
+            {renderTree(tree, addSelectedExercise)}
+          </div>
+        )}
 
         <div className="chipRow" style={{ marginTop: 10 }}>
           {draftExercises.length === 0 ? <span className="chip">Sin ejercicios aun</span> : null}
-          {draftExercises.map((ex) => (
-            <button key={ex} className="chipButton" onClick={() => removeDraftExercise(ex)}>
-              {ex} x
+          {draftExercises.map((exercise) => (
+            <button key={exercise} className="chipButton" onClick={() => removeDraftExercise(exercise)}>
+              {exercise} x
             </button>
           ))}
         </div>
@@ -322,17 +359,17 @@ export default function Routines() {
           <div className="emptyState">No hay plantillas aun.</div>
         ) : (
           <div className="gridCards">
-            {sorted.map((r) => (
-              <article key={r.id} className="surfaceButton">
-                <strong>{r.name}</strong>
+            {sorted.map((routine) => (
+              <article key={routine.id} className="surfaceButton">
+                <strong>{routine.name}</strong>
                 <div className="chipRow">
-                  {r.exercises.map((ex) => (
-                    <span key={`${r.id}_${ex}`} className="chip">
-                      {ex}
+                  {routine.exercises.map((exercise) => (
+                    <span key={`${routine.id}_${exercise}`} className="chip">
+                      {exercise}
                     </span>
                   ))}
                 </div>
-                <button className="btn" onClick={() => removeRoutine(r.id)}>
+                <button className="btn" onClick={() => removeRoutine(routine.id)}>
                   Eliminar
                 </button>
               </article>

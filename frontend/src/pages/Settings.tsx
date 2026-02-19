@@ -1,8 +1,8 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { adminSwitchPlan, labelToBackendPlan, type PlanLabel, type Role } from "../api";
-import { importLegacyExercises, type LegacyImportMode } from "../lib/legacyImport";
-import { loadExerciseCatalog, saveExerciseCatalog } from "../lib/storage";
+import { adminSwitchPlan, ingestSessions, labelToBackendPlan, type PlanLabel, type Role } from "../api";
+import { parseExerciseImportFile, type LegacyImportMode } from "../lib/legacyImport";
+import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
 
@@ -11,6 +11,19 @@ type Option<T extends string> = {
   value: T;
   hint: string;
 };
+
+const SESSION_IMPORT_SAMPLE = [
+  {
+    athlete_id: "a1",
+    start_time: "2024-01-01T10:00:00Z",
+    duration_min: 60,
+    rpe: 7,
+    modality: "strength",
+    exercises: [{ name: "Bench Press", sets: [{ reps: 8, load_kg: 60 }] }],
+    source: "manual",
+    meta: { note: "baseline" },
+  },
+];
 
 function OptionRow<T extends string>({
   label,
@@ -51,6 +64,7 @@ function OptionRow<T extends string>({
 export default function Settings() {
   const { prefs, setTheme, setEffortScale, setWeightUnit, setDistanceUnit } = usePreferences();
   const { user, planLabel, isAdmin, refreshMe } = useAuth();
+  const { importGlobalCatalog, exportGlobalCatalog } = useExerciseCatalog();
 
   const [switchEmail, setSwitchEmail] = useState("");
   const [switchPlan, setSwitchPlan] = useState<PlanLabel>("standard");
@@ -60,6 +74,15 @@ export default function Settings() {
 
   const [importMode, setImportMode] = useState<LegacyImportMode>("merge");
   const [importMsg, setImportMsg] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+
+  const [sessionImportText, setSessionImportText] = useState<string>(JSON.stringify(SESSION_IMPORT_SAMPLE, null, 2));
+  const [sessionImportBusy, setSessionImportBusy] = useState(false);
+  const [sessionImportError, setSessionImportError] = useState("");
+  const [sessionImportInfo, setSessionImportInfo] = useState("");
+  const [sessionImportResult, setSessionImportResult] = useState("");
+  const [sessionImportShowAdvanced, setSessionImportShowAdvanced] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -92,26 +115,107 @@ export default function Settings() {
     }
   }
 
-  function importLegacyFile(file: File | null) {
+  async function importLegacyFile(file: File | null) {
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const raw = String(reader.result || "");
-        const existing = loadExerciseCatalog();
-        const report = importLegacyExercises(raw, existing, importMode);
-        saveExerciseCatalog(report.items);
+    setImportBusy(true);
+    setImportMsg("");
+    try {
+      const raw = await file.text();
+      const items = parseExerciseImportFile(raw);
+      const result = await importGlobalCatalog({ mode: importMode, items });
+      setImportMsg(
+        `Import global completo: +${result.imported} nuevos, ${result.updated} actualizados, ${result.skipped} duplicados sin cambios. Total procesado: ${result.total}.`,
+      );
+    } catch (e: unknown) {
+      setImportMsg(String((e as { message?: string })?.message || e));
+    } finally {
+      setImportBusy(false);
+    }
+  }
 
-        setImportMsg(
-          `Import completo: +${report.imported} nuevos, ${report.updated} actualizados, ${report.skippedAsDuplicate} duplicados omitidos. Total catalogo: ${report.items.length}.`,
-        );
-      } catch (e: unknown) {
-        setImportMsg(String((e as { message?: string })?.message || e));
-      }
-    };
-    reader.onerror = () => setImportMsg("No se pudo leer el archivo.");
-    reader.readAsText(file);
+  async function exportCatalogFile() {
+    setExportBusy(true);
+    setImportMsg("");
+    try {
+      const payload = await exportGlobalCatalog();
+      const safeStamp = payload.exported_at_utc
+        .replace(/[:]/g, "-")
+        .replace(/\.\d+/, "")
+        .replace("T", "_");
+      const fileName = `global_exercises_${safeStamp}.json`;
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setImportMsg(`Export global generado: ${payload.total} ejercicios (${fileName}).`);
+    } catch (e: unknown) {
+      setImportMsg(String((e as { message?: string })?.message || e));
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  const parsedSessionBatch = useMemo(() => {
+    try {
+      return JSON.parse(sessionImportText) as unknown;
+    } catch {
+      return null;
+    }
+  }, [sessionImportText]);
+
+  const parsedSessionCount = useMemo(() => {
+    if (!Array.isArray(parsedSessionBatch)) return 0;
+    return parsedSessionBatch.length;
+  }, [parsedSessionBatch]);
+
+  async function submitSessionImport() {
+    if (!parsedSessionBatch) {
+      setSessionImportError("JSON invalido. Corrige formato antes de enviar.");
+      setSessionImportInfo("");
+      return;
+    }
+
+    setSessionImportBusy(true);
+    setSessionImportError("");
+    setSessionImportInfo("");
+    setSessionImportResult("");
+    try {
+      const result = await ingestSessions(parsedSessionBatch);
+      setSessionImportInfo("Batch importado correctamente.");
+      setSessionImportResult(JSON.stringify(result, null, 2));
+    } catch (e: unknown) {
+      setSessionImportError(String((e as { message?: string })?.message || e));
+    } finally {
+      setSessionImportBusy(false);
+    }
+  }
+
+  function loadSessionSample() {
+    setSessionImportText(JSON.stringify(SESSION_IMPORT_SAMPLE, null, 2));
+    setSessionImportError("");
+    setSessionImportInfo("");
+    setSessionImportResult("");
+  }
+
+  async function importSessionFile(file: File | null) {
+    if (!file) return;
+    try {
+      const raw = await file.text();
+      setSessionImportText(raw);
+      setSessionImportShowAdvanced(false);
+      setSessionImportError("");
+      setSessionImportInfo("");
+      setSessionImportResult("");
+    } catch {
+      setSessionImportError("No se pudo leer el archivo.");
+      setSessionImportInfo("");
+    }
   }
 
   return (
@@ -160,6 +264,7 @@ export default function Settings() {
         value={prefs.theme}
         onChange={setTheme}
         options={[
+          { label: "Sistema", value: "system", hint: "sigue modo del navegador/SO" },
           { label: "Claro", value: "light", hint: "alto contraste en luz" },
           { label: "Oscuro", value: "dark", hint: "comodidad en noche/gym" },
         ]}
@@ -202,8 +307,8 @@ export default function Settings() {
         <>
           <section className="surface">
             <div className="sectionHead">
-              <h3>Admin: importar catalogo de ejercicios</h3>
-              <p>Importa JSON legacy (ej: exercises_backup_2025-11-15.json) al catalogo local.</p>
+              <h3>Admin: import/export catalogo global</h3>
+              <p>Importa JSON legacy o exportado y descarga snapshots del catalogo global compartido.</p>
             </div>
 
             <div className="pillGroup" style={{ marginTop: 10 }}>
@@ -226,18 +331,92 @@ export default function Settings() {
             </div>
 
             <div className="quickActions" style={{ marginTop: 12 }}>
-              <label className="btn" style={{ cursor: "pointer" }}>
-                Seleccionar JSON
+              <button className="btn" onClick={exportCatalogFile} disabled={importBusy || exportBusy}>
+                {exportBusy ? "Exportando..." : "Exportar JSON global"}
+              </button>
+              <label
+                className="btn"
+                style={{ cursor: importBusy || exportBusy ? "not-allowed" : "pointer", opacity: importBusy || exportBusy ? 0.6 : 1 }}
+              >
+                {importBusy ? "Importando..." : "Seleccionar JSON para importar"}
                 <input
                   type="file"
                   accept="application/json,.json"
                   style={{ display: "none" }}
-                  onChange={(e) => importLegacyFile(e.target.files?.[0] || null)}
+                  disabled={importBusy || exportBusy}
+                  onChange={(e) => {
+                    void importLegacyFile(e.target.files?.[0] || null);
+                    e.currentTarget.value = "";
+                  }}
                 />
               </label>
             </div>
 
             {importMsg ? <div className="message" style={{ marginTop: 12 }}>{importMsg}</div> : null}
+          </section>
+
+          <section className="surface">
+            <div className="sectionHead">
+              <h3>Admin: import batch de sesiones (debug)</h3>
+              <p>Importa lotes JSON al sistema de sesiones sin usar una pestaña separada.</p>
+            </div>
+
+            <div className="quickActions" style={{ marginTop: 12 }}>
+              <button className="btn" onClick={loadSessionSample} disabled={sessionImportBusy}>
+                Cargar ejemplo
+              </button>
+              <label
+                className="btn"
+                style={{ cursor: sessionImportBusy ? "not-allowed" : "pointer", opacity: sessionImportBusy ? 0.6 : 1 }}
+              >
+                Importar archivo .json
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  style={{ display: "none" }}
+                  disabled={sessionImportBusy}
+                  onChange={(e) => {
+                    void importSessionFile(e.target.files?.[0] || null);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              <button className="btn" onClick={() => setSessionImportShowAdvanced((value) => !value)} disabled={sessionImportBusy}>
+                {sessionImportShowAdvanced ? "Ocultar editor avanzado" : "Mostrar editor avanzado"}
+              </button>
+            </div>
+
+            <div className="chipRow" style={{ marginTop: 12 }}>
+              <span className="chip">JSON: {parsedSessionBatch ? "valido" : "invalido"}</span>
+              <span className="chip">Sesiones detectadas: {parsedSessionCount}</span>
+            </div>
+
+            {sessionImportShowAdvanced ? (
+              <div style={{ marginTop: 12 }}>
+                <label className="smallLabel">Editor JSON (avanzado)</label>
+                <textarea
+                  className="input compactTextarea"
+                  value={sessionImportText}
+                  onChange={(e) => setSessionImportText(e.target.value)}
+                />
+              </div>
+            ) : null}
+
+            <div className="quickActions" style={{ marginTop: 12 }}>
+              <button className="btn primary" onClick={submitSessionImport} disabled={!parsedSessionBatch || sessionImportBusy}>
+                {sessionImportBusy ? "Enviando..." : "Enviar batch"}
+              </button>
+            </div>
+
+            {sessionImportError ? <div className="message error" style={{ marginTop: 12 }}>{sessionImportError}</div> : null}
+            {sessionImportInfo ? <div className="message" style={{ marginTop: 12 }}>{sessionImportInfo}</div> : null}
+
+            {sessionImportResult ? (
+              <details style={{ marginTop: 12 }}>
+                <summary>Ver detalle JSON de respuesta</summary>
+                <pre style={{ marginTop: 10 }}>{sessionImportResult}</pre>
+              </details>
+            ) : null}
           </section>
 
           <section className="surface">
@@ -283,10 +462,9 @@ export default function Settings() {
         </>
       ) : (
         <section className="surface">
-          <div className="small">Las funciones admin (import legacy + cambio de plan) solo aparecen con rol admin.</div>
+          <div className="small">Las funciones admin (import/export global, import batch y cambio de plan) solo aparecen con rol admin.</div>
         </section>
       )}
     </div>
   );
 }
-

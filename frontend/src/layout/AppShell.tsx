@@ -15,7 +15,6 @@ const NAV_ITEMS: NavItemDef[] = [
   { to: "/history", label: "Historial" },
   { to: "/exercises", label: "Ejercicios" },
   { to: "/routines", label: "Rutinas" },
-  { to: "/ingest", label: "Importar" },
   { to: "/settings", label: "Ajustes" },
 ];
 
@@ -33,8 +32,11 @@ function Item({ to, label }: { to: string; label: string }) {
 
 export default function AppShell() {
   const [athleteId, setAthleteId] = useAthleteId();
-  const { prefs, toggleTheme } = usePreferences();
+  const { prefs, resolvedTheme, toggleTheme } = usePreferences();
   const { user, planLabel, logout } = useAuth();
+
+  const themeLabel =
+    prefs.theme === "system" ? `Tema sistema (${resolvedTheme})` : prefs.theme === "dark" ? "Tema oscuro" : "Tema claro";
 
   return (
     <div className="shell2">
@@ -57,7 +59,7 @@ export default function AppShell() {
               placeholder="a1"
             />
             <button type="button" className="btn" onClick={toggleTheme}>
-              {prefs.theme === "dark" ? "Tema claro" : "Tema oscuro"}
+              {themeLabel}
             </button>
             <button type="button" className="btn" onClick={logout}>
               Salir

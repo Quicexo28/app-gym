@@ -26,6 +26,8 @@ Minimum required values:
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `ENV=prod`
+- `GOOGLE_CLIENT_ID` (required if Google login is enabled)
+- `ACCESS_TOKEN_MIN` (token lifetime in minutes, e.g. `43200` = 30 days)
 
 Recommended to update:
 - `POSTGRES_PASSWORD`
@@ -59,6 +61,21 @@ Expected:
 - `api` is up/healthy.
 - `/health` returns `{"status":"ok"}`.
 - `/api/v1/meta/ping` returns `{"pong":true}`.
+
+## 3.1) Frontend auth env (Google)
+The React app reads Google client id from `frontend/.env.local` (or build-time env var):
+
+```bash
+cp frontend/.env.example frontend/.env.local
+```
+
+Set:
+- `VITE_GOOGLE_CLIENT_ID=<same value as GOOGLE_CLIENT_ID>`
+- `VITE_ENABLE_GUEST_LOGIN=true` (optional; for debug environments only)
+
+Use the same Google OAuth client id in backend (`GOOGLE_CLIENT_ID`) and frontend (`VITE_GOOGLE_CLIENT_ID`).
+
+Guest login endpoint (`/api/v1/auth/guest`) is disabled automatically when backend runs with `ENV=prod`.
 
 ## 4) Rollback
 For this stage rollback is image-based plus DB restore when schema/data changed.

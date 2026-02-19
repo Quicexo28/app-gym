@@ -6,7 +6,6 @@ import Athlete from "./pages/Athlete";
 import Exercises from "./pages/Exercises";
 import History from "./pages/History";
 import Home from "./pages/Home";
-import Ingest from "./pages/Ingest";
 import Login from "./pages/Login";
 import NewSession from "./pages/NewSession";
 import Routines from "./pages/Routines";
@@ -52,7 +51,6 @@ export default function App() {
         <Route path="history" element={<History />} />
         <Route path="exercises" element={<Exercises />} />
         <Route path="routines" element={<Routines />} />
-        <Route path="ingest" element={<Ingest />} />
         <Route path="settings" element={<Settings />} />
         <Route path="athlete/:athleteId" element={<Athlete />} />
         <Route path="run/:runId" element={<RunDetail />} />

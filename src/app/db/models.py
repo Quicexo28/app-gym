@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -83,6 +83,45 @@ class Run(Base):
     latents: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     suggestions: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     issues: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+
+class ExerciseCatalog(Base):
+    __tablename__ = "exercise_catalog"
+    __table_args__ = (
+        Index(
+            "ix_exercise_catalog_global_path_key",
+            "path_key",
+            unique=True,
+            postgresql_where=text("owner_user_id IS NULL"),
+        ),
+        Index(
+            "ix_exercise_catalog_custom_owner_path_key",
+            "owner_user_id",
+            "path_key",
+            unique=True,
+            postgresql_where=text("owner_user_id IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        index=True,
+        nullable=True,
+    )
+    path_key: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
+
+    group: Mapped[str] = mapped_column(String(120), nullable=False)
+    family: Mapped[str] = mapped_column(String(160), nullable=False)
+    variation: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    subvariation: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    aliases: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    created_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False
+    )
 
 
 import app.db.models_auth  # noqa: F401, E402

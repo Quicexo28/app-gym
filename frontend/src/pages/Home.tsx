@@ -6,9 +6,10 @@ import { usePreferences } from "../state/preferences";
 
 export default function Home() {
   const [athleteId, setAthleteId] = useAthleteId();
-  const { prefs } = usePreferences();
+  const { prefs, resolvedTheme } = usePreferences();
   const [ping, setPing] = useState<string>("Conectando API...");
   const nav = useNavigate();
+  const themeChip = prefs.theme === "system" ? `system (${resolvedTheme})` : prefs.theme;
 
   useEffect(() => {
     apiPing()
@@ -58,7 +59,7 @@ export default function Home() {
           <p>Estas opciones impactan como se muestran y capturan los datos en la app.</p>
         </div>
         <div className="chipRow">
-          <span className="chip">Tema: {prefs.theme}</span>
+          <span className="chip">Tema: {themeChip}</span>
           <span className="chip">Esfuerzo: {prefs.effortScale.toUpperCase()}</span>
           <span className="chip">Carga: {prefs.weightUnit}</span>
           <span className="chip">Distancia: {prefs.distanceUnit}</span>

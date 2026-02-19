@@ -3,6 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 
 import {
+  authGuest,
+  authGoogle,
   authLogin,
   authRegister,
   backendPlanToLabel,
@@ -25,8 +27,10 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isAdmin: boolean;
   planLabel: PlanLabel | null;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
+  loginAsGuest: () => Promise<void>;
+  register: (email: string, password: string, phoneNumber?: string) => Promise<void>;
   refreshMe: () => Promise<void>;
   logout: () => void;
 };
@@ -104,16 +108,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [syncSession]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
-      const payload = await authLogin(email, password);
+    async (identifier: string, password: string) => {
+      const payload = await authLogin(identifier, password);
       syncSession(toSession(payload));
     },
     [syncSession],
   );
 
+  const loginWithGoogle = useCallback(
+    async (idToken: string) => {
+      const payload = await authGoogle(idToken);
+      syncSession(toSession(payload));
+    },
+    [syncSession],
+  );
+
+  const loginAsGuest = useCallback(async () => {
+    const payload = await authGuest();
+    syncSession(toSession(payload));
+  }, [syncSession]);
+
   const register = useCallback(
-    async (email: string, password: string) => {
-      const payload = await authRegister(email, password);
+    async (email: string, password: string, phoneNumber?: string) => {
+      const payload = await authRegister(email, password, phoneNumber);
       syncSession(toSession(payload));
     },
     [syncSession],
@@ -139,11 +156,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: user?.role === "admin",
       planLabel: user ? backendPlanToLabel(user.plan) : null,
       login,
+      loginWithGoogle,
+      loginAsGuest,
       register,
       refreshMe,
       logout,
     };
-  }, [ready, session, login, register, refreshMe, logout]);
+  }, [ready, session, login, loginWithGoogle, loginAsGuest, register, refreshMe, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

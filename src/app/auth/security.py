@@ -14,7 +14,7 @@ PWD_CONTEXT = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-insecure-change-me")
 JWT_ALG = os.environ.get("JWT_ALG", "HS256")
-ACCESS_TOKEN_MIN = int(os.environ.get("ACCESS_TOKEN_MIN", "60"))
+ACCESS_TOKEN_MIN = int(os.environ.get("ACCESS_TOKEN_MIN", "43200"))
 
 
 def hash_password(password: str) -> str:
