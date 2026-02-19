@@ -10,6 +10,7 @@ import {
 } from "../lib/exerciseCatalog";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
+import { useViewMode } from "../state/viewMode";
 
 type MutableNode = {
   label: string;
@@ -119,6 +120,8 @@ function renderTree(
 
 export default function Exercises() {
   const { isAdmin } = useAuth();
+  const { viewMode } = useViewMode();
+  const isAdminMode = isAdmin && viewMode === "admin";
   const { ready, loading, syncError, items, entries, addCustom, addGlobal, removeItem } = useExerciseCatalog();
   const [group, setGroup] = useState("");
   const [family, setFamily] = useState("");
@@ -251,7 +254,7 @@ export default function Exercises() {
       <section className="surface">
         {syncError ? <div className="message error">{syncError}</div> : null}
         {error ? <div className="message error">{error}</div> : null}
-        {isAdmin ? (
+        {isAdminMode ? (
           <div className="pillGroup" style={{ marginBottom: 12 }}>
             <button
               type="button"
@@ -405,7 +408,7 @@ export default function Exercises() {
           </div>
         ) : (
           <div className="treeList" style={{ marginTop: 12 }}>
-            {renderTree(tree, remove, (entry) => isAdmin || entry.scope === "custom")}
+            {renderTree(tree, remove, (entry) => isAdminMode || entry.scope === "custom")}
           </div>
         )}
       </section>

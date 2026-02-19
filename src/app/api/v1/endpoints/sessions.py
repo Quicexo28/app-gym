@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 from app.auth.athlete_access import require_athlete_access, require_athlete_access_many
 from app.auth.deps import get_current_user
 from app.db.engine import get_db
-from app.db.repo import list_sessions_for_athlete, upsert_session
 from app.db.models_auth import User
+from app.db.repo import list_sessions_for_athlete, upsert_session
+from app.planning.service import reconcile_active_assignments_for_athletes
 from coach_ai.training_core import Session as DomainSession
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -23,7 +24,8 @@ def ingest_sessions(
     user: Annotated[User, Depends(get_current_user)],
     db: DbSession,
 ) -> dict:
-    require_athlete_access_many(db, user, (session.athlete_id for session in sessions))
+    athlete_ids = {session.athlete_id for session in sessions}
+    require_athlete_access_many(db, user, athlete_ids)
 
     inserted = 0
     duplicates = 0
@@ -37,7 +39,13 @@ def ingest_sessions(
         else:
             duplicates += 1
 
-    return {"inserted": inserted, "duplicates": duplicates, "results": results}
+    planning_reconcile = reconcile_active_assignments_for_athletes(db, athlete_ids=athlete_ids)
+    return {
+        "inserted": inserted,
+        "duplicates": duplicates,
+        "results": results,
+        "planning_reconcile": planning_reconcile,
+    }
 
 
 @router.get("/{athlete_id}")

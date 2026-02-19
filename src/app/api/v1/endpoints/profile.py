@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.athlete_access import list_accessible_athlete_ids
+from app.auth.athlete_access import personal_athlete_id_for_user
 from app.auth.deps import get_current_user
 from app.auth.types import Plan, Role
 from app.db.engine import get_db
@@ -88,20 +88,17 @@ def _ensure_settings(db: DbSession, user: User) -> UserSettings:
 
 
 def _training_stats_for_user(db: DbSession, user: User) -> TrainingStats:
-    athlete_ids = list_accessible_athlete_ids(db, user)
-    if not athlete_ids:
-        return TrainingStats(
-            sessions_total=0,
-            runs_total=0,
-            last_session_at=None,
-            last_run_at=None,
-        )
+    athlete_id = personal_athlete_id_for_user(user)
 
     sessions_total, last_session_at = db.execute(
-        select(func.count(TrainingSession.id), func.max(TrainingSession.start_time)).where(TrainingSession.athlete_id.in_(athlete_ids))
+        select(func.count(TrainingSession.id), func.max(TrainingSession.start_time)).where(
+            TrainingSession.athlete_id == athlete_id
+        )
     ).one()
     runs_total, last_run_at = db.execute(
-        select(func.count(Run.run_id), func.max(Run.generated_at_utc)).where(Run.athlete_id.in_(athlete_ids))
+        select(func.count(Run.run_id), func.max(Run.generated_at_utc)).where(
+            Run.athlete_id == athlete_id
+        )
     ).one()
 
     return TrainingStats(
@@ -162,4 +159,3 @@ def update_my_profile(
     db.commit()
     db.refresh(row)
     return _to_response(db, user, row)
-

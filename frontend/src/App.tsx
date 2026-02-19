@@ -8,10 +8,12 @@ import History from "./pages/History";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import NewSession from "./pages/NewSession";
+import Planning from "./pages/Planning";
 import Profile from "./pages/Profile";
 import Routines from "./pages/Routines";
 import RunDetail from "./pages/RunDetail";
 import Settings from "./pages/Settings";
+import UsersHub from "./pages/UsersHub";
 import { useAuth } from "./state/auth";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -52,7 +54,9 @@ export default function App() {
         <Route path="session/new" element={<NewSession />} />
         <Route path="history" element={<History />} />
         <Route path="exercises" element={<Exercises />} />
+        <Route path="planning" element={<Planning />} />
         <Route path="routines" element={<Routines />} />
+        <Route path="users" element={<UsersHub />} />
         <Route path="settings" element={<Settings />} />
         <Route path="athlete/:athleteId" element={<Athlete />} />
         <Route path="run/:runId" element={<RunDetail />} />

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.types import Role
+from app.auth.view_mode import ViewMode, get_current_view_mode
 from app.db.models import CoachAthleteAssignment
 from app.db.models_auth import User
 
@@ -17,12 +18,16 @@ def personal_athlete_id_for_user(user: User) -> str:
 
 
 def can_switch_athlete(user: User) -> bool:
-    return user.role == Role.COACH
+    if user.role not in {Role.COACH, Role.ADMIN}:
+        return False
+    mode = get_current_view_mode(user)
+    return mode == ViewMode.COACH
 
 
 def list_accessible_athlete_ids(db: Session, user: User) -> list[str]:
+    own_athlete_id = personal_athlete_id_for_user(user)
     if not can_switch_athlete(user):
-        return [personal_athlete_id_for_user(user)]
+        return [own_athlete_id]
 
     rows = (
         db.execute(
@@ -35,6 +40,8 @@ def list_accessible_athlete_ids(db: Session, user: User) -> list[str]:
     )
     out: list[str] = []
     seen: set[str] = set()
+    out.append(own_athlete_id)
+    seen.add(own_athlete_id)
     for raw in rows:
         athlete_id = (raw or "").strip()
         if not athlete_id or athlete_id in seen:
@@ -62,4 +69,3 @@ def require_athlete_access_many(db: Session, user: User, athlete_ids: Iterable[s
     allowed = set(list_accessible_athlete_ids(db, user))
     if not targets.issubset(allowed):
         raise HTTPException(status_code=403, detail="Athlete access denied.")
-

@@ -17,6 +17,7 @@ import {
 import { toExerciseCatalogEntries, type ExerciseCatalogEntry } from "../lib/exerciseCatalog";
 import { loadExerciseCatalog, saveExerciseCatalog, uid, type ExerciseCatalogItem } from "../lib/storage";
 import { useAuth } from "./auth";
+import { useViewMode } from "./viewMode";
 
 type ExerciseCreateInput = {
   group: string;
@@ -94,6 +95,8 @@ async function migrateLocalCatalogToCustom(items: ExerciseCatalogItem[]): Promis
 
 export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
   const { ready: authReady, isAuthenticated, isAdmin } = useAuth();
+  const { viewMode } = useViewMode();
+  const isAdminMode = isAdmin && viewMode === "admin";
   const [items, setItems] = useState<ExerciseCatalogItem[]>(() => loadExerciseCatalog());
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
@@ -166,13 +169,13 @@ export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
 
   const addGlobal = useCallback(
     async (payload: ExerciseCreateInput) => {
-      if (!isAdmin) {
+      if (!isAdminMode) {
         throw new Error("Solo admin puede crear ejercicios globales.");
       }
       await createGlobalExercise(payload);
       await refresh();
     },
-    [isAdmin, refresh],
+    [isAdminMode, refresh],
   );
 
   const removeItem = useCallback(
@@ -189,7 +192,7 @@ export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
 
   const importGlobalCatalog = useCallback(
     async (payload: ExerciseImportInput): Promise<ExerciseImportResult> => {
-      if (!isAdmin) {
+      if (!isAdminMode) {
         throw new Error("Solo admin puede importar catalogo global.");
       }
 
@@ -208,15 +211,15 @@ export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
       await refresh();
       return result;
     },
-    [isAdmin, refresh],
+    [isAdminMode, refresh],
   );
 
   const exportGlobalCatalog = useCallback(async (): Promise<GlobalExerciseExportPayload> => {
-    if (!isAdmin) {
+    if (!isAdminMode) {
       throw new Error("Solo admin puede exportar catalogo global.");
     }
     return exportGlobalExercises();
-  }, [isAdmin]);
+  }, [isAdminMode]);
 
   const entries = useMemo(() => toExerciseCatalogEntries(items), [items]);
 

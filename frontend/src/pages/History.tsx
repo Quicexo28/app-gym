@@ -22,7 +22,7 @@ function volumeLoadKg(session: SessionRecord): number {
 }
 
 export default function History() {
-  const { athleteIds, canSwitch, ready: athleteReady } = useAthleteAccess();
+  const { subjects, canSwitch, ready: athleteReady, activeSubject } = useAthleteAccess();
   const [athleteId] = useAthleteId();
   const { prefs } = usePreferences();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -78,8 +78,8 @@ export default function History() {
         </div>
         <div className="statsGrid" style={{ marginTop: 10 }}>
           <article className="statCard">
-            <div className="smallLabel">Atleta</div>
-            <strong>{athleteId ? "Activo" : "Sin asignar"}</strong>
+            <div className="smallLabel">Sujeto</div>
+            <strong>{activeSubject?.label || "Sin asignar"}</strong>
           </article>
           <article className="statCard">
             <div className="smallLabel">Sesiones</div>
@@ -104,9 +104,9 @@ export default function History() {
           </button>
         </div>
 
-        {canSwitch && athleteReady && athleteIds.length === 0 ? (
+        {canSwitch && athleteReady && subjects.filter((subject) => subject.kind === "assigned").length === 0 ? (
           <div className="message error" style={{ marginTop: 12 }}>
-            No tienes atletas asignados. Pide a un admin que te asigne al menos uno.
+            No tienes usuarios asignados. Sigues teniendo acceso completo a tus propios entrenos.
           </div>
         ) : null}
       </section>

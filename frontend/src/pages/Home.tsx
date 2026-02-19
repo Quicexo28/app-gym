@@ -4,15 +4,29 @@ import { useNavigate } from "react-router-dom";
 import { apiPing } from "../api";
 import { useAthleteAccess } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
+import { useViewMode } from "../state/viewMode";
 
 export default function Home() {
-  const { athleteId, athleteIds, canSwitch, ready: athleteReady, setAthleteId } = useAthleteAccess();
+  const { athleteId, athleteIds, subjects, activeSubject, selfAthleteId, canSwitch, ready: athleteReady, setAthleteId } =
+    useAthleteAccess();
   const { prefs, resolvedTheme } = usePreferences();
+  const { viewMode } = useViewMode();
   const [ping, setPing] = useState<string>("Conectando API...");
   const nav = useNavigate();
 
+  const isCoachScope = viewMode === "coach" || viewMode === "admin";
+  const assignedSubjectsCount = useMemo(
+    () => subjects.filter((subject) => subject.kind === "assigned").length,
+    [subjects],
+  );
+
   const themeLabel = useMemo(
-    () => (prefs.theme === "system" ? `Sistema (${resolvedTheme})` : prefs.theme === "dark" ? "Oscuro" : "Claro"),
+    () =>
+      prefs.theme === "system"
+        ? `Sistema (${resolvedTheme})`
+        : prefs.theme === "dark"
+          ? "Oscuro"
+          : "Claro",
     [prefs.theme, resolvedTheme],
   );
 
@@ -33,13 +47,13 @@ export default function Home() {
         <div className="stack compactStack">
           <div className="sectionHead">
             <h3>Estado actual</h3>
-            <p>Conectividad de API y contexto del atleta activo.</p>
+            <p>Conectividad de API y contexto activo.</p>
           </div>
           <div className="statusText">{ping}</div>
           <div className="statsGrid">
             <article className="statCard">
-              <div className="smallLabel">Atleta activo</div>
-              <strong>{athleteId ? "Asignado" : "Sin asignar"}</strong>
+              <div className="smallLabel">{isCoachScope ? "Sujeto activo" : "Perfil activo"}</div>
+              <strong>{activeSubject?.label || "Sin asignar"}</strong>
             </article>
             <article className="statCard">
               <div className="smallLabel">Escala</div>
@@ -55,7 +69,7 @@ export default function Home() {
         <div className="stack compactStack">
           <div className="sectionHead">
             <h3>Acciones</h3>
-            <p>Atajos principales para operar el sistema sin saturar la vista.</p>
+            <p>Atajos principales para operar sin saturar la vista.</p>
           </div>
           <div className="quickActions">
             <button className="btn primary" onClick={() => nav("/session/new")} disabled={!athleteId}>
@@ -67,60 +81,98 @@ export default function Home() {
             <button className="btn" onClick={() => nav("/routines")}>
               Rutinas
             </button>
+            <button className="btn" onClick={() => nav("/planning")}>
+              Planificacion
+            </button>
             <button className="btn" onClick={() => nav("/profile")}>
               Perfil
             </button>
+            {isCoachScope ? (
+              <>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    if (!selfAthleteId) return;
+                    setAthleteId(selfAthleteId);
+                    nav("/session/new");
+                  }}
+                  disabled={!selfAthleteId}
+                >
+                  Entrenarme
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    if (!selfAthleteId) return;
+                    setAthleteId(selfAthleteId);
+                    nav("/history");
+                  }}
+                  disabled={!selfAthleteId}
+                >
+                  Mi historial
+                </button>
+                <button className="btn" onClick={() => nav("/users")}>
+                  Usuarios
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </section>
 
-      <section className="surface splitGrid">
-        <div>
-          <div className="sectionHead">
-            <h3>Selector de atleta</h3>
-            <p>Visible solo para coach con atletas asignados.</p>
+      {isCoachScope ? (
+        <section className="surface splitGrid">
+          <div>
+            <div className="sectionHead">
+              <h3>Selector de sujeto</h3>
+              <p>Visible solo para coach/admin.</p>
+            </div>
+            {canSwitch ? (
+              <div className="hstack compact" style={{ marginTop: 10 }}>
+                <select
+                  className="input athleteInput"
+                  value={athleteId}
+                  onChange={(e) => setAthleteId(e.target.value)}
+                  disabled={!athleteReady || athleteIds.length === 0}
+                >
+                  {athleteIds.length === 0 ? (
+                    <option value="">Sin sujetos</option>
+                  ) : (
+                    subjects.map((subject) => (
+                      <option key={subject.id} value={subject.id}>
+                        {subject.label}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            ) : null}
+
+            {canSwitch && athleteReady && assignedSubjectsCount === 0 ? (
+              <div className="message error" style={{ marginTop: 12 }}>
+                No tienes usuarios asignados. Puedes entrenarte en "Mi perfil" o pedir asignaciones a un admin.
+              </div>
+            ) : null}
           </div>
-          {canSwitch ? (
-            <div className="hstack compact" style={{ marginTop: 10 }}>
-              <select
-                className="input athleteInput"
-                value={athleteId}
-                onChange={(e) => setAthleteId(e.target.value)}
-                disabled={!athleteReady || athleteIds.length === 0}
-              >
-                {athleteIds.length === 0 ? (
-                  <option value="">Sin atletas asignados</option>
-                ) : (
-                  athleteIds.map((id, idx) => (
-                    <option key={id} value={id}>
-                      {`Atleta ${idx + 1}`}
-                    </option>
-                  ))
-                )}
-              </select>
-              <button className="btn" onClick={() => nav(`/athlete/${encodeURIComponent(athleteId)}`)} disabled={!athleteId}>
-                Panel atleta
-              </button>
-            </div>
-          ) : (
-            <div className="quickActions" style={{ marginTop: 10 }}>
-              <button className="btn" onClick={() => nav(`/athlete/${encodeURIComponent(athleteId)}`)} disabled={!athleteId}>
-                Abrir panel de atleta
-              </button>
-            </div>
-          )}
 
-          {canSwitch && athleteReady && athleteIds.length === 0 ? (
-            <div className="message error" style={{ marginTop: 12 }}>
-              No tienes atletas asignados. Pide a un admin que te asigne al menos uno.
+          <div>
+            <div className="sectionHead">
+              <h3>Preferencias activas</h3>
+              <p>Resumen limpio de configuracion actual.</p>
             </div>
-          ) : null}
-        </div>
-
-        <div>
+            <ul className="compactList cleanList" style={{ marginTop: 10 }}>
+              <li>{`Tema: ${themeLabel}`}</li>
+              <li>{`Esfuerzo: ${prefs.effortScale.toUpperCase()}`}</li>
+              <li>{`Carga: ${prefs.weightUnit}`}</li>
+              <li>{`Distancia: ${prefs.distanceUnit}`}</li>
+            </ul>
+          </div>
+        </section>
+      ) : (
+        <section className="surface">
           <div className="sectionHead">
             <h3>Preferencias activas</h3>
-            <p>Resumen limpio de configuración actual.</p>
+            <p>Resumen limpio de configuracion actual.</p>
           </div>
           <ul className="compactList cleanList" style={{ marginTop: 10 }}>
             <li>{`Tema: ${themeLabel}`}</li>
@@ -128,8 +180,8 @@ export default function Home() {
             <li>{`Carga: ${prefs.weightUnit}`}</li>
             <li>{`Distancia: ${prefs.distanceUnit}`}</li>
           </ul>
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }

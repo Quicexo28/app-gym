@@ -7,6 +7,7 @@ import { saveRoutines } from "../lib/storage";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
+import { useViewMode } from "../state/viewMode";
 
 type Option<T extends string> = {
   label: string;
@@ -67,7 +68,9 @@ export default function Settings() {
   const nav = useNavigate();
   const { prefs, setTheme, setEffortScale, setWeightUnit, setDistanceUnit } = usePreferences();
   const { user, planLabel, isAdmin, refreshMe, logout } = useAuth();
+  const { viewMode } = useViewMode();
   const { items, removeItem, importGlobalCatalog, exportGlobalCatalog, refresh } = useExerciseCatalog();
+  const isAdminMode = isAdmin && viewMode === "admin";
 
   const [switchEmail, setSwitchEmail] = useState("");
   const [switchPlan, setSwitchPlan] = useState<PlanLabel>("standard");
@@ -290,7 +293,7 @@ export default function Settings() {
     setDangerError("");
     setDangerInfo("");
 
-    if (!isAdmin) {
+    if (!isAdminMode) {
       setDangerError("Solo admin puede borrar ejercicios globales.");
       return;
     }
@@ -427,7 +430,7 @@ export default function Settings() {
         ]}
       />
 
-      {isAdmin ? (
+      {isAdminMode ? (
         <>
           <section className="surface">
             <div className="sectionHead">
@@ -586,7 +589,9 @@ export default function Settings() {
         </>
       ) : (
         <section className="surface">
-          <div className="small">Las funciones admin (import/export global, import batch y cambio de plan) solo aparecen con rol admin.</div>
+          <div className="small">
+            Las funciones admin solo aparecen en modo admin.
+          </div>
         </section>
       )}
 
@@ -603,7 +608,7 @@ export default function Settings() {
           <button className="btn" style={dangerBtnStyle} onClick={clearAllCustomExercises} disabled={dangerBusy}>
             {dangerBusy ? "Procesando..." : "Borrar todos mis ejercicios personalizados"}
           </button>
-          {isAdmin ? (
+          {isAdminMode ? (
             <button className="btn" style={dangerBtnStyle} onClick={clearAllGlobalExercises} disabled={dangerBusy}>
               {dangerBusy ? "Procesando..." : "Admin: borrar todos los ejercicios globales"}
             </button>

@@ -200,6 +200,12 @@ textarea.input:focus,
   cursor: pointer;
 }
 
+.activeChipButton {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 88%);
+}
+
 .quickActions {
   display: flex;
   flex-wrap: wrap;
@@ -562,6 +568,14 @@ textarea.input:focus,
   .setTag {
     grid-column: 1 / -1;
   }
+
+  .planningMosaic {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .planningSquare {
+    min-height: 96px;
+  }
 }
 
 
@@ -580,4 +594,98 @@ textarea.input:focus,
 
 .topbarActions .smallLabel {
   margin: 0;
+}
+
+.planningTopRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.planningEditor {
+  display: grid;
+  gap: 12px;
+}
+
+.planningHeaderCard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
+  display: grid;
+  gap: 4px;
+}
+
+.planningMosaic {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+.planningSquare {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 16%);
+  color: var(--text);
+  text-align: left;
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  cursor: pointer;
+  min-height: 110px;
+}
+
+.planningSquare.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.planningSquareIdx {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.planningInspector {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  display: grid;
+  gap: 8px;
+}
+
+.planningInspector h4 {
+  margin: 0;
+}
+
+.planningModalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(7 14 20 / 48%);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+  padding: 18px;
+}
+
+.planningModalCard {
+  width: min(520px, 100%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: grid;
+  gap: 8px;
 }
