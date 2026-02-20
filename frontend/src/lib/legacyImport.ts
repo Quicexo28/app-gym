@@ -5,6 +5,8 @@ type LegacyVariation = {
   id?: string;
   name?: string;
   subvariations?: LegacyVariation[];
+  executionTypes?: LegacyVariation[];
+  executionType?: LegacyVariation[];
 };
 
 type LegacyExercise = {
@@ -102,6 +104,20 @@ function addCandidate(map: Map<string, Candidate>, candidate: Candidate): void {
   }
 }
 
+function getLegacyVariationChildren(variation: LegacyVariation): LegacyVariation[] {
+  const children: LegacyVariation[] = [];
+  if (Array.isArray(variation.subvariations)) {
+    children.push(...variation.subvariations);
+  }
+  if (Array.isArray(variation.executionTypes)) {
+    children.push(...variation.executionTypes);
+  }
+  if (Array.isArray(variation.executionType)) {
+    children.push(...variation.executionType);
+  }
+  return children;
+}
+
 function collectVariationCandidates(
   map: Map<string, Candidate>,
   baseName: string,
@@ -129,8 +145,9 @@ function collectVariationCandidates(
       created_at_utc: createdAtUtc,
     });
 
-    if (Array.isArray(variation.subvariations) && variation.subvariations.length > 0) {
-      collectVariationCandidates(map, baseName, group, variation.subvariations, nextChain, createdAtUtc);
+    const children = getLegacyVariationChildren(variation);
+    if (children.length > 0) {
+      collectVariationCandidates(map, baseName, group, children, nextChain, createdAtUtc);
     }
   }
 }

@@ -49,6 +49,39 @@ type TreeActions = {
   editingId: string;
 };
 
+type SubvariationChain = {
+  subvariation: string;
+  executionType: string;
+};
+
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+function splitSubvariationChain(value: string): SubvariationChain {
+  const parts = cleanExerciseText(value)
+    .split(">")
+    .map((part) => cleanExerciseText(part))
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return { subvariation: "", executionType: "" };
+  }
+
+  return {
+    subvariation: parts[0] || "",
+    executionType: parts.slice(1).join(" > "),
+  };
+}
+
+function joinSubvariationChain(subvariation: string, executionType: string): string {
+  const normalizedSubvariation = cleanExerciseText(subvariation);
+  const normalizedExecutionType = cleanExerciseText(executionType);
+  if (!normalizedSubvariation) return "";
+  if (!normalizedExecutionType) return normalizedSubvariation;
+  return `${normalizedSubvariation} > ${normalizedExecutionType}`;
+}
+
 function toTreeItems(entries: ExerciseCatalogEntry[], searchTokens: string[]): TreeItem[] {
   return entries.map((entry) => {
     const matchScore = searchTokens.length > 0 ? computeExerciseEntrySearchScore(entry, searchTokens) : 0;
@@ -175,12 +208,14 @@ export default function Exercises() {
   const [family, setFamily] = useState("");
   const [variation, setVariation] = useState("");
   const [subvariation, setSubvariation] = useState("");
+  const [createExecutionType, setCreateExecutionType] = useState("");
   const [createScope, setCreateScope] = useState<"custom" | "global">("custom");
   const [editId, setEditId] = useState("");
   const [editGroup, setEditGroup] = useState("");
   const [editFamily, setEditFamily] = useState("");
   const [editVariation, setEditVariation] = useState("");
   const [editSubvariation, setEditSubvariation] = useState("");
+  const [editExecutionType, setEditExecutionType] = useState("");
 
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
   const [selectedZone, setSelectedZone] = useState<ExerciseBodyZoneFilter>(ALL_EXERCISE_ZONE_FILTER);
@@ -201,7 +236,71 @@ export default function Exercises() {
   const searchTokens = useMemo(() => tokenizeExerciseSearch(search), [search]);
   const treeItems = useMemo(() => toTreeItems(filteredEntries, searchTokens), [filteredEntries, searchTokens]);
   const tree = useMemo(() => buildTree(treeItems, searchTokens.length > 0), [treeItems, searchTokens.length]);
+  const createOptions = useMemo(() => {
+    const groupOptions = uniqueSorted(entries.map((entry) => entry.group));
+
+    const familySource = entries.filter((entry) => (group ? entry.group === group : true));
+    const familyOptions = uniqueSorted(familySource.map((entry) => entry.family));
+
+    const variationSource = familySource.filter((entry) => (family ? entry.family === family : true));
+    const variationOptions = uniqueSorted(variationSource.map((entry) => entry.variation).filter(Boolean));
+
+    const subvariationSource = variationSource.filter((entry) => (variation ? entry.variation === variation : true));
+    const subvariationOptions = uniqueSorted(
+      subvariationSource
+        .map((entry) => splitSubvariationChain(entry.subvariation).subvariation)
+        .filter(Boolean),
+    );
+
+    const executionTypeOptions = uniqueSorted(
+      subvariationSource
+        .map((entry) => splitSubvariationChain(entry.subvariation))
+        .filter((entry) => (subvariation ? entry.subvariation === subvariation : Boolean(entry.subvariation)))
+        .map((entry) => entry.executionType)
+        .filter(Boolean),
+    );
+
+    return {
+      groupOptions,
+      familyOptions,
+      variationOptions,
+      subvariationOptions,
+      executionTypeOptions,
+    };
+  }, [entries, family, group, subvariation, variation]);
   const editingItem = useMemo(() => items.find((item) => item.id === editId) || null, [editId, items]);
+  const editOptions = useMemo(() => {
+    const groupOptions = uniqueSorted(entries.map((entry) => entry.group));
+
+    const familySource = entries.filter((entry) => (editGroup ? entry.group === editGroup : true));
+    const familyOptions = uniqueSorted(familySource.map((entry) => entry.family));
+
+    const variationSource = familySource.filter((entry) => (editFamily ? entry.family === editFamily : true));
+    const variationOptions = uniqueSorted(variationSource.map((entry) => entry.variation).filter(Boolean));
+
+    const subvariationSource = variationSource.filter((entry) => (editVariation ? entry.variation === editVariation : true));
+    const subvariationOptions = uniqueSorted(
+      subvariationSource
+        .map((entry) => splitSubvariationChain(entry.subvariation).subvariation)
+        .filter(Boolean),
+    );
+
+    const executionTypeOptions = uniqueSorted(
+      subvariationSource
+        .map((entry) => splitSubvariationChain(entry.subvariation))
+        .filter((entry) => (editSubvariation ? entry.subvariation === editSubvariation : Boolean(entry.subvariation)))
+        .map((entry) => entry.executionType)
+        .filter(Boolean),
+    );
+
+    return {
+      groupOptions,
+      familyOptions,
+      variationOptions,
+      subvariationOptions,
+      executionTypeOptions,
+    };
+  }, [editFamily, editGroup, editSubvariation, editVariation, entries]);
 
   function clearFilters() {
     setSelectedGroup(ALL);
@@ -215,6 +314,7 @@ export default function Exercises() {
     setEditFamily("");
     setEditVariation("");
     setEditSubvariation("");
+    setEditExecutionType("");
   }
 
   useEffect(() => {
@@ -242,11 +342,65 @@ export default function Exercises() {
   function startEdit(entry: ExerciseCatalogEntry) {
     if (!canEditEntry(entry)) return;
     setError("");
+    const subvariationChain = splitSubvariationChain(entry.subvariation || "");
     setEditId(entry.id);
     setEditGroup(entry.group);
     setEditFamily(entry.family);
     setEditVariation(entry.variation || "");
-    setEditSubvariation(entry.subvariation || "");
+    setEditSubvariation(subvariationChain.subvariation);
+    setEditExecutionType(subvariationChain.executionType);
+  }
+
+  function onEditGroupChange(nextGroup: string) {
+    setEditGroup(nextGroup);
+    setEditFamily("");
+    setEditVariation("");
+    setEditSubvariation("");
+    setEditExecutionType("");
+  }
+
+  function onEditFamilyChange(nextFamily: string) {
+    setEditFamily(nextFamily);
+    setEditVariation("");
+    setEditSubvariation("");
+    setEditExecutionType("");
+  }
+
+  function onEditVariationChange(nextVariation: string) {
+    setEditVariation(nextVariation);
+    setEditSubvariation("");
+    setEditExecutionType("");
+  }
+
+  function onEditSubvariationChange(nextSubvariation: string) {
+    setEditSubvariation(nextSubvariation);
+    setEditExecutionType("");
+  }
+
+  function onCreateGroupChange(nextGroup: string) {
+    setGroup(nextGroup);
+    setFamily("");
+    setVariation("");
+    setSubvariation("");
+    setCreateExecutionType("");
+  }
+
+  function onCreateFamilyChange(nextFamily: string) {
+    setFamily(nextFamily);
+    setVariation("");
+    setSubvariation("");
+    setCreateExecutionType("");
+  }
+
+  function onCreateVariationChange(nextVariation: string) {
+    setVariation(nextVariation);
+    setSubvariation("");
+    setCreateExecutionType("");
+  }
+
+  function onCreateSubvariationChange(nextSubvariation: string) {
+    setSubvariation(nextSubvariation);
+    setCreateExecutionType("");
   }
 
   async function add() {
@@ -256,6 +410,8 @@ export default function Exercises() {
     const normalizedFamily = cleanExerciseText(family);
     const normalizedVariation = cleanExerciseText(variation);
     const normalizedSubvariation = cleanExerciseText(subvariation);
+    const normalizedExecutionType = cleanExerciseText(createExecutionType);
+    const normalizedSubvariationChain = joinSubvariationChain(normalizedSubvariation, normalizedExecutionType);
 
     if (!normalizedFamily) {
       setError("Debes indicar al menos el ejercicio base.");
@@ -267,11 +423,16 @@ export default function Exercises() {
       return;
     }
 
+    if (normalizedExecutionType && !normalizedSubvariation) {
+      setError("Para usar execution type debes indicar antes una subvariacion.");
+      return;
+    }
+
     const nextKey = catalogPathKeyFromParts(
       normalizedGroup,
       normalizedFamily,
       normalizedVariation,
-      normalizedSubvariation,
+      normalizedSubvariationChain,
     );
 
     const exists = items.some((item) => {
@@ -290,7 +451,7 @@ export default function Exercises() {
       group: normalizedGroup,
       family: normalizedFamily,
       variation: normalizedVariation || undefined,
-      subvariation: normalizedSubvariation || undefined,
+      subvariation: normalizedSubvariationChain || undefined,
     };
 
     try {
@@ -299,9 +460,6 @@ export default function Exercises() {
       } else {
         await addCustom(payload);
       }
-      setFamily("");
-      setVariation("");
-      setSubvariation("");
     } catch (cause: unknown) {
       setError(String((cause as { message?: string })?.message || cause));
     }
@@ -331,6 +489,8 @@ export default function Exercises() {
     const normalizedFamily = cleanExerciseText(editFamily);
     const normalizedVariation = cleanExerciseText(editVariation);
     const normalizedSubvariation = cleanExerciseText(editSubvariation);
+    const normalizedExecutionType = cleanExerciseText(editExecutionType);
+    const normalizedSubvariationChain = joinSubvariationChain(normalizedSubvariation, normalizedExecutionType);
 
     if (!normalizedFamily) {
       setError("Debes indicar al menos el ejercicio base.");
@@ -342,11 +502,16 @@ export default function Exercises() {
       return;
     }
 
+    if (normalizedExecutionType && !normalizedSubvariation) {
+      setError("Para usar execution type debes indicar antes una subvariacion.");
+      return;
+    }
+
     const nextKey = catalogPathKeyFromParts(
       normalizedGroup,
       normalizedFamily,
       normalizedVariation,
-      normalizedSubvariation,
+      normalizedSubvariationChain,
     );
     const scope = editingItem.scope === "global" ? "global" : "custom";
 
@@ -368,7 +533,7 @@ export default function Exercises() {
         group: normalizedGroup,
         family: normalizedFamily,
         variation: normalizedVariation || undefined,
-        subvariation: normalizedSubvariation || undefined,
+        subvariation: normalizedSubvariationChain || undefined,
         aliases: editingItem.aliases,
       });
       clearEdit();
@@ -410,19 +575,82 @@ export default function Exercises() {
         <div className="splitGrid">
           <div>
             <label className="smallLabel">Grupo</label>
-            <input className="input" value={group} onChange={(e) => setGroup(e.target.value)} placeholder="Cuadriceps" />
+            <input
+              className="input"
+              list="create-group-options"
+              value={group}
+              onChange={(e) => onCreateGroupChange(e.target.value)}
+              placeholder="Ej: Cuadriceps"
+            />
+            <datalist id="create-group-options">
+              {createOptions.groupOptions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className="smallLabel">Ejercicio base</label>
-            <input className="input" value={family} onChange={(e) => setFamily(e.target.value)} placeholder="Sentadilla" />
+            <input
+              className="input"
+              list="create-family-options"
+              value={family}
+              onChange={(e) => onCreateFamilyChange(e.target.value)}
+              disabled={!group}
+              placeholder="Ej: Sentadilla"
+            />
+            <datalist id="create-family-options">
+              {createOptions.familyOptions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className="smallLabel">Variacion (opcional)</label>
-            <input className="input" value={variation} onChange={(e) => setVariation(e.target.value)} placeholder="Posterior" />
+            <input
+              className="input"
+              list="create-variation-options"
+              value={variation}
+              onChange={(e) => onCreateVariationChange(e.target.value)}
+              disabled={!family}
+              placeholder="Ej: Posterior"
+            />
+            <datalist id="create-variation-options">
+              {createOptions.variationOptions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className="smallLabel">Subvariacion (opcional)</label>
-            <input className="input" value={subvariation} onChange={(e) => setSubvariation(e.target.value)} placeholder="En smith" />
+            <input
+              className="input"
+              list="create-subvariation-options"
+              value={subvariation}
+              onChange={(e) => onCreateSubvariationChange(e.target.value)}
+              disabled={!variation}
+              placeholder="Ej: En smith"
+            />
+            <datalist id="create-subvariation-options">
+              {createOptions.subvariationOptions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+          </div>
+          <div>
+            <label className="smallLabel">Execution type (opcional)</label>
+            <input
+              className="input"
+              list="create-execution-type-options"
+              value={createExecutionType}
+              onChange={(e) => setCreateExecutionType(e.target.value)}
+              disabled={!subvariation}
+              placeholder="Ej: Polea alta"
+            />
+            <datalist id="create-execution-type-options">
+              {createOptions.executionTypeOptions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
           </div>
         </div>
 
@@ -523,19 +751,82 @@ export default function Exercises() {
             <div className="splitGrid" style={{ marginTop: 8 }}>
               <div>
                 <label className="smallLabel">Grupo muscular</label>
-                <input className="input" value={editGroup} onChange={(e) => setEditGroup(e.target.value)} />
+                <input
+                  className="input"
+                  list="edit-group-options"
+                  value={editGroup}
+                  onChange={(e) => onEditGroupChange(e.target.value)}
+                  placeholder="Ej: Cuadriceps"
+                />
+                <datalist id="edit-group-options">
+                  {editOptions.groupOptions.map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
               </div>
               <div>
                 <label className="smallLabel">Ejercicio base</label>
-                <input className="input" value={editFamily} onChange={(e) => setEditFamily(e.target.value)} />
+                <input
+                  className="input"
+                  list="edit-family-options"
+                  value={editFamily}
+                  onChange={(e) => onEditFamilyChange(e.target.value)}
+                  disabled={!editGroup}
+                  placeholder="Ej: Sentadilla"
+                />
+                <datalist id="edit-family-options">
+                  {editOptions.familyOptions.map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
               </div>
               <div>
                 <label className="smallLabel">Variacion (opcional)</label>
-                <input className="input" value={editVariation} onChange={(e) => setEditVariation(e.target.value)} />
+                <input
+                  className="input"
+                  list="edit-variation-options"
+                  value={editVariation}
+                  onChange={(e) => onEditVariationChange(e.target.value)}
+                  disabled={!editFamily}
+                  placeholder="Ej: Posterior"
+                />
+                <datalist id="edit-variation-options">
+                  {editOptions.variationOptions.map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
               </div>
               <div>
                 <label className="smallLabel">Subvariacion (opcional)</label>
-                <input className="input" value={editSubvariation} onChange={(e) => setEditSubvariation(e.target.value)} />
+                <input
+                  className="input"
+                  list="edit-subvariation-options"
+                  value={editSubvariation}
+                  onChange={(e) => onEditSubvariationChange(e.target.value)}
+                  disabled={!editVariation}
+                  placeholder="Ej: En smith"
+                />
+                <datalist id="edit-subvariation-options">
+                  {editOptions.subvariationOptions.map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="smallLabel">Execution type (opcional)</label>
+                <input
+                  className="input"
+                  list="edit-execution-type-options"
+                  value={editExecutionType}
+                  onChange={(e) => setEditExecutionType(e.target.value)}
+                  disabled={!editSubvariation}
+                  placeholder="Ej: Polea alta"
+                />
+                <datalist id="edit-execution-type-options">
+                  {editOptions.executionTypeOptions.map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
               </div>
             </div>
 
