@@ -116,8 +116,25 @@ export default function NewSession() {
   const [error, setError] = useState<string>("");
 
   useEffect(() => {
-    setRoutines(loadRoutines());
-  }, []);
+    if (!athleteId) {
+      setRoutines([]);
+      setRoutineId("");
+      setRoutineExercises([]);
+      setStep("pick_routine");
+      setTimerRunning(false);
+      setTimerFinished(false);
+      setRemainingSec(0);
+      return;
+    }
+
+    setRoutines(loadRoutines(athleteId));
+    setRoutineId("");
+    setRoutineExercises([]);
+    setStep("pick_routine");
+    setTimerRunning(false);
+    setTimerFinished(false);
+    setRemainingSec(0);
+  }, [athleteId]);
 
   useEffect(() => {
     setEffort((prev) => {

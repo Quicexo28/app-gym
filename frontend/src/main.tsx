@@ -6,6 +6,7 @@ import { AthleteProvider } from "./state/athlete";
 import { AuthProvider } from "./state/auth";
 import { ExerciseCatalogProvider } from "./state/exerciseCatalog";
 import { PreferencesProvider } from "./state/preferences";
+import { UndoProvider } from "./state/undo";
 import { ViewModeProvider } from "./state/viewMode";
 import "./styles.css";
 
@@ -16,9 +17,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <AthleteProvider>
           <PreferencesProvider>
             <ExerciseCatalogProvider>
-              <BrowserRouter>
-                <App />
-              </BrowserRouter>
+              <UndoProvider>
+                <BrowserRouter>
+                  <App />
+                </BrowserRouter>
+              </UndoProvider>
             </ExerciseCatalogProvider>
           </PreferencesProvider>
         </AthleteProvider>

@@ -13,6 +13,7 @@ from app.auth.types import Plan, Role
 from app.db.engine import get_db
 from app.db.models import Run, TrainingSession
 from app.db.models_auth import User, UserSettings
+from app.profile import build_profile_gamification
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 DbSession = Session
@@ -32,12 +33,33 @@ class TrainingStats(BaseModel):
     last_run_at: str | None
 
 
+class BasicLiftsPrKg(BaseModel):
+    back_squat: float | None
+    bench_press: float | None
+    deadlift: float | None
+
+
+class PlanningProgress(BaseModel):
+    completed_days_total: int
+    current_streak_days: int
+    longest_streak_days: int
+
+
+class ProfileGamification(BaseModel):
+    planning: PlanningProgress
+    basic_lifts_pr_kg: BasicLiftsPrKg
+    unlocked_achievements: list[str]
+    unlocked_medals: list[str]
+    next_targets: list[str]
+
+
 class ProfileResponse(BaseModel):
     email: str
     role: Role
     plan: Plan
     profile: ProfileData
     training_stats: TrainingStats
+    gamification: ProfileGamification
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -110,6 +132,8 @@ def _training_stats_for_user(db: DbSession, user: User) -> TrainingStats:
 
 
 def _to_response(db: DbSession, user: User, row: UserSettings) -> ProfileResponse:
+    athlete_id = personal_athlete_id_for_user(user)
+    gamification_payload = build_profile_gamification(db, athlete_id=athlete_id)
     return ProfileResponse(
         email=user.email,
         role=user.role,
@@ -121,6 +145,7 @@ def _to_response(db: DbSession, user: User, row: UserSettings) -> ProfileRespons
             medals=_clean_list([str(value) for value in (row.profile_medals or [])]),
         ),
         training_stats=_training_stats_for_user(db, user),
+        gamification=ProfileGamification.model_validate(gamification_payload),
     )
 
 

@@ -43,6 +43,8 @@ export type RoutineTemplate = {
   name: string;
   exercises: RoutineExerciseTemplate[];
   created_at_utc: string;
+  shared_routine_id?: string;
+  updated_at_utc?: string;
 };
 
 export type RoutineExerciseTemplate = {
@@ -56,10 +58,28 @@ export type RoutineExerciseTemplate = {
 const KEY_EXERCISES_V1 = "coach_ai_exercise_catalog_v1";
 const KEY_EXERCISES_V2 = "coach_ai_exercise_catalog_v2";
 const KEY_ROUTINES = "coach_ai_routines_v1";
+const ROUTINES_SCHEMA = "coach_ai_routines_v2";
+const DEFAULT_ROUTINES_SCOPE = "__global__";
 const DEFAULT_TARGET_SETS = 3;
 const DEFAULT_TARGET_REPS_MIN = 8;
 const DEFAULT_TARGET_REPS_MAX = 12;
 const DEFAULT_REST_SECONDS = 90;
+
+type RoutinesStoreV2 = {
+  schema: typeof ROUTINES_SCHEMA;
+  scopes: Record<string, RoutineTemplate[]>;
+};
+
+export type RoutinePropagationTarget = {
+  athlete_id: string;
+  routine_id: string;
+  routine_name: string;
+};
+
+export type RoutinePropagationResult = {
+  updated_count: number;
+  athlete_ids: string[];
+};
 
 function clean(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -199,15 +219,21 @@ function normalizeRoutineTemplate(raw: unknown): RoutineTemplate | null {
     name?: unknown;
     exercises?: unknown;
     created_at_utc?: unknown;
+    shared_routine_id?: unknown;
+    updated_at_utc?: unknown;
   };
   const name = clean(source.name);
   if (!name) return null;
   const created = clean(source.created_at_utc) || new Date().toISOString();
+  const sharedRoutineId = clean(source.shared_routine_id) || uid("srt");
+  const updatedAt = clean(source.updated_at_utc);
   return {
     id: clean(source.id) || uid("rt"),
     name,
     exercises: normalizeRoutineExerciseList(source.exercises),
     created_at_utc: created,
+    shared_routine_id: sharedRoutineId,
+    updated_at_utc: updatedAt || undefined,
   };
 }
 
@@ -339,15 +365,85 @@ export function saveExerciseCatalog(items: ExerciseCatalogItem[]): void {
   saveJSON(KEY_EXERCISES_V2, normalized);
 }
 
-export function loadRoutines(): RoutineTemplate[] {
+function normalizeRoutineScopeKey(athleteId?: string | null): string {
+  const normalized = clean(athleteId);
+  return normalized || DEFAULT_ROUTINES_SCOPE;
+}
+
+function normalizeRoutineList(raw: unknown): RoutineTemplate[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: RoutineTemplate[] = [];
+  for (const entry of raw) {
+    const next = normalizeRoutineTemplate(entry);
+    if (!next) continue;
+    if (seen.has(next.id)) continue;
+    seen.add(next.id);
+    out.push(next);
+  }
+  return out;
+}
+
+function normalizeRoutinesStore(rawValue: unknown): RoutinesStoreV2 {
+  const scopes: Record<string, RoutineTemplate[]> = {};
+
+  const assignScope = (scopeRaw: string, itemsRaw: unknown) => {
+    const scope = normalizeRoutineScopeKey(scopeRaw);
+    scopes[scope] = normalizeRoutineList(itemsRaw);
+  };
+
+  if (Array.isArray(rawValue)) {
+    assignScope(DEFAULT_ROUTINES_SCOPE, rawValue);
+    return { schema: ROUTINES_SCHEMA, scopes };
+  }
+
+  if (rawValue && typeof rawValue === "object") {
+    const source = rawValue as { schema?: unknown; scopes?: unknown };
+    const sourceScopes =
+      source.schema === ROUTINES_SCHEMA && source.scopes && typeof source.scopes === "object" && !Array.isArray(source.scopes)
+        ? source.scopes
+        : rawValue;
+
+    if (sourceScopes && typeof sourceScopes === "object" && !Array.isArray(sourceScopes)) {
+      for (const [scope, maybeList] of Object.entries(sourceScopes as Record<string, unknown>)) {
+        if (scope === "schema") continue;
+        if (scope === "scopes" && maybeList && typeof maybeList === "object" && !Array.isArray(maybeList)) {
+          for (const [innerScope, innerList] of Object.entries(maybeList as Record<string, unknown>)) {
+            assignScope(innerScope, innerList);
+          }
+          continue;
+        }
+        assignScope(scope, maybeList);
+      }
+    }
+  }
+
+  return { schema: ROUTINES_SCHEMA, scopes };
+}
+
+function cloneRoutineList(items: RoutineTemplate[]): RoutineTemplate[] {
+  return items.map((entry) => ({
+    ...entry,
+    exercises: entry.exercises.map((exercise) => ({ ...exercise })),
+  }));
+}
+
+function cloneRoutineForScope(template: RoutineTemplate): RoutineTemplate {
+  return {
+    ...template,
+    id: uid("rt"),
+    created_at_utc: new Date().toISOString(),
+    updated_at_utc: undefined,
+    exercises: template.exercises.map((exercise) => ({ ...exercise })),
+  };
+}
+
+function readRoutinesStore(): RoutinesStoreV2 {
   const rawValue = loadJSON<unknown>(KEY_ROUTINES, []);
-  const raw = Array.isArray(rawValue) ? rawValue : [];
-  const normalized = raw
-    .map((entry) => normalizeRoutineTemplate(entry))
-    .filter((entry): entry is RoutineTemplate => Boolean(entry));
+  const normalized = normalizeRoutinesStore(rawValue);
 
   try {
-    if (JSON.stringify(raw) !== JSON.stringify(normalized)) {
+    if (JSON.stringify(rawValue) !== JSON.stringify(normalized)) {
       saveJSON(KEY_ROUTINES, normalized);
     }
   } catch {
@@ -357,11 +453,128 @@ export function loadRoutines(): RoutineTemplate[] {
   return normalized;
 }
 
-export function saveRoutines(items: RoutineTemplate[]): void {
-  const normalized = items
-    .map((entry) => normalizeRoutineTemplate(entry))
-    .filter((entry): entry is RoutineTemplate => Boolean(entry));
-  saveJSON(KEY_ROUTINES, normalized);
+function writeRoutinesStore(store: RoutinesStoreV2): void {
+  saveJSON(KEY_ROUTINES, normalizeRoutinesStore(store));
+}
+
+function routineMatchesByIdentity(source: RoutineTemplate, candidate: RoutineTemplate): boolean {
+  if (source.shared_routine_id && candidate.shared_routine_id && source.shared_routine_id === candidate.shared_routine_id) {
+    return true;
+  }
+  return normalizeKey(source.name) === normalizeKey(candidate.name);
+}
+
+function resolveCandidateScopes(store: RoutinesStoreV2, athleteIds?: string[]): string[] {
+  if (Array.isArray(athleteIds) && athleteIds.length > 0) {
+    return Array.from(new Set(athleteIds.map((value) => normalizeRoutineScopeKey(value)))).filter(Boolean);
+  }
+  return Object.keys(store.scopes).filter((scope) => scope !== DEFAULT_ROUTINES_SCOPE);
+}
+
+export function loadRoutines(athleteId?: string | null): RoutineTemplate[] {
+  const store = readRoutinesStore();
+  const scope = normalizeRoutineScopeKey(athleteId);
+  const hasScope = Object.prototype.hasOwnProperty.call(store.scopes, scope);
+
+  if (!hasScope && scope !== DEFAULT_ROUTINES_SCOPE) {
+    const defaults = store.scopes[DEFAULT_ROUTINES_SCOPE] || [];
+    if (defaults.length > 0) {
+      store.scopes[scope] = defaults.map((entry) => cloneRoutineForScope(entry));
+      writeRoutinesStore(store);
+    }
+  }
+
+  return cloneRoutineList(store.scopes[scope] || []);
+}
+
+export function saveRoutines(items: RoutineTemplate[], athleteId?: string | null): void {
+  const scope = normalizeRoutineScopeKey(athleteId);
+  const store = readRoutinesStore();
+  store.scopes[scope] = normalizeRoutineList(items);
+  writeRoutinesStore(store);
+}
+
+export function listRoutinePropagationTargets(params: {
+  source_athlete_id?: string | null;
+  source_routine_id: string;
+  athlete_ids?: string[];
+}): RoutinePropagationTarget[] {
+  const store = readRoutinesStore();
+  const sourceScope = normalizeRoutineScopeKey(params.source_athlete_id);
+  const sourceList = store.scopes[sourceScope] || [];
+  const sourceRoutine = sourceList.find((entry) => entry.id === params.source_routine_id);
+  if (!sourceRoutine) return [];
+
+  const targets: RoutinePropagationTarget[] = [];
+  const candidateScopes = resolveCandidateScopes(store, params.athlete_ids);
+
+  for (const scope of candidateScopes) {
+    if (scope === sourceScope) continue;
+    const routines = store.scopes[scope] || [];
+    for (const routine of routines) {
+      if (!routineMatchesByIdentity(sourceRoutine, routine)) continue;
+      targets.push({
+        athlete_id: scope,
+        routine_id: routine.id,
+        routine_name: routine.name,
+      });
+      break;
+    }
+  }
+
+  return targets.sort((a, b) => a.athlete_id.localeCompare(b.athlete_id));
+}
+
+export function propagateRoutineUpdate(params: {
+  source_athlete_id?: string | null;
+  source_routine_id: string;
+  next_name: string;
+  next_exercises: RoutineExerciseTemplate[];
+  athlete_ids?: string[];
+}): RoutinePropagationResult {
+  const store = readRoutinesStore();
+  const sourceScope = normalizeRoutineScopeKey(params.source_athlete_id);
+  const sourceList = store.scopes[sourceScope] || [];
+  const sourceRoutine = sourceList.find((entry) => entry.id === params.source_routine_id);
+  if (!sourceRoutine) return { updated_count: 0, athlete_ids: [] };
+
+  const normalizedExercises = normalizeRoutineExerciseList(params.next_exercises);
+  const nextName = clean(params.next_name) || sourceRoutine.name;
+  const updatedAt = new Date().toISOString();
+  const candidateScopes = resolveCandidateScopes(store, params.athlete_ids);
+  const touchedAthletes = new Set<string>();
+  let updatedCount = 0;
+
+  for (const scope of candidateScopes) {
+    if (scope === sourceScope) continue;
+    const routines = store.scopes[scope] || [];
+    let scopeChanged = false;
+    store.scopes[scope] = routines.map((routine) => {
+      if (!routineMatchesByIdentity(sourceRoutine, routine)) return routine;
+      scopeChanged = true;
+      updatedCount += 1;
+      return {
+        ...routine,
+        name: nextName,
+        exercises: normalizedExercises.map((exercise) => ({ ...exercise })),
+        shared_routine_id: sourceRoutine.shared_routine_id || routine.shared_routine_id || uid("srt"),
+        updated_at_utc: updatedAt,
+      };
+    });
+
+    if (scopeChanged) {
+      touchedAthletes.add(scope);
+    }
+  }
+
+  if (updatedCount > 0) {
+    writeRoutinesStore(store);
+  }
+
+  return {
+    updated_count: updatedCount,
+    athlete_ids: Array.from(touchedAthletes).sort((a, b) => a.localeCompare(b)),
+  };
 }
 
 export function uid(prefix = "id"): string {

@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 
+import UndoBar from "../components/UndoBar";
 import { useAthleteAccess } from "../state/athlete";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
@@ -16,6 +17,7 @@ function buildNavItems(mode: "admin" | "coach" | "user_plus" | "user_normal"): N
       { to: "/home", label: "Dashboard" },
       { to: "/users", label: "Usuarios" },
       { to: "/session/new", label: "Nueva sesion" },
+      { to: "/measurements", label: "Medidas" },
       { to: "/exercises", label: "Ejercicios" },
       { to: "/planning", label: "Planificacion" },
       { to: "/settings", label: "Ajustes" },
@@ -27,6 +29,7 @@ function buildNavItems(mode: "admin" | "coach" | "user_plus" | "user_normal"): N
       { to: "/home", label: "Dashboard" },
       { to: "/users", label: "Usuarios" },
       { to: "/session/new", label: "Nueva sesion" },
+      { to: "/measurements", label: "Medidas" },
       { to: "/exercises", label: "Ejercicios" },
       { to: "/planning", label: "Planificacion" },
       { to: "/history", label: "Historial" },
@@ -40,6 +43,7 @@ function buildNavItems(mode: "admin" | "coach" | "user_plus" | "user_normal"): N
     { to: "/home", label: "Dashboard" },
     { to: "/session/new", label: "Nueva sesion" },
     { to: "/history", label: "Historial" },
+    { to: "/measurements", label: "Medidas" },
     { to: "/exercises", label: "Ejercicios" },
     { to: "/planning", label: "Planificacion" },
     { to: "/routines", label: "Rutinas" },
@@ -144,6 +148,7 @@ export default function AppShell() {
       <main className="content2">
         <Outlet />
       </main>
+      <UndoBar />
     </div>
   );
 }

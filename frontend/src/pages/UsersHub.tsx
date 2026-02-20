@@ -28,7 +28,7 @@ export default function UsersHub() {
 
   const selfSubject = useMemo(() => subjects.find((subject) => subject.kind === "self") || null, [subjects]);
   const assignedSubjects = useMemo(() => subjects.filter((subject) => subject.kind === "assigned"), [subjects]);
-  const localRoutines = useMemo(() => loadRoutines(), []);
+  const localRoutines = useMemo(() => loadRoutines(athleteId), [athleteId]);
   const isCoachScope = viewMode === "coach" || viewMode === "admin";
 
   useEffect(() => {
@@ -158,6 +158,9 @@ export default function UsersHub() {
           <button className="btn" onClick={() => nav("/routines")}>
             Mi rutinas
           </button>
+          <button className="btn" onClick={() => nav("/measurements")} disabled={!athleteId}>
+            Medidas
+          </button>
           <button className="btn" onClick={() => nav("/planning")}>
             Planificacion
           </button>
@@ -185,24 +188,23 @@ export default function UsersHub() {
 
         {!loading && tab === "routines" ? (
           <div style={{ marginTop: 12 }}>
-            {activeSubject?.kind === "self" ? (
-              localRoutines.length === 0 ? (
-                <div className="emptyState">No hay rutinas locales guardadas.</div>
-              ) : (
-                <div className="gridCards">
-                  {localRoutines.map((routine) => (
-                    <article key={routine.id} className="surfaceButton">
-                      <strong>{routine.name}</strong>
-                      <span className="small">{`Ejercicios: ${routine.exercises.length}`}</span>
-                    </article>
-                  ))}
-                </div>
-              )
+            {localRoutines.length === 0 ? (
+              <div className="emptyState">No hay rutinas guardadas para este sujeto.</div>
             ) : (
-              <div className="emptyState">
-                La asignacion/edicion colaborativa de rutinas por usuario se mostrara aqui en el siguiente paso backend.
+              <div className="gridCards">
+                {localRoutines.map((routine) => (
+                  <article key={routine.id} className="surfaceButton">
+                    <strong>{routine.name}</strong>
+                    <span className="small">{`Ejercicios: ${routine.exercises.length}`}</span>
+                  </article>
+                ))}
               </div>
             )}
+            <div className="quickActions" style={{ marginTop: 10 }}>
+              <button className="btn" onClick={() => nav("/routines")} disabled={!athleteId}>
+                Editar rutinas del sujeto activo
+              </button>
+            </div>
           </div>
         ) : null}
 

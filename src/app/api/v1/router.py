@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints.admin import router as admin_router
 from app.api.v1.endpoints.athletes import router as athletes_router
 from app.api.v1.endpoints.auth import router as auth_router
+from app.api.v1.endpoints.body_metrics import router as body_metrics_router
 from app.api.v1.endpoints.exercises_catalog import router as exercises_catalog_router
 from app.api.v1.endpoints.me import router as me_router
 from app.api.v1.endpoints.meta import router as meta_router
@@ -24,6 +25,7 @@ api_router.include_router(auth_router)
 api_router.include_router(me_router)
 api_router.include_router(view_mode_router)
 api_router.include_router(athletes_router)
+api_router.include_router(body_metrics_router)
 api_router.include_router(profile_router)
 api_router.include_router(settings_router)
 api_router.include_router(exercises_catalog_router)

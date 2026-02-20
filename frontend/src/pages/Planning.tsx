@@ -268,7 +268,7 @@ export default function Planning() {
   const [assignmentMetrics, setAssignmentMetrics] = useState<PlanningAssignmentMetrics | null>(null);
   const [loadingAssignments, setLoadingAssignments] = useState(false);
 
-  const routines = useMemo<RoutineTemplate[]>(() => loadRoutines(), []);
+  const routines = useMemo<RoutineTemplate[]>(() => loadRoutines(athleteId), [athleteId]);
   const routineMap = useMemo(() => new Map(routines.map((routine) => [routine.id, routine])), [routines]);
   const microTemplateMap = useMemo(
     () => new Map(templates.micro.map((item) => [item.id, item])),
@@ -401,6 +401,19 @@ export default function Planning() {
     if (selectedMacroSlot <= macroBuilder.duration) return;
     setSelectedMacroSlot(macroBuilder.duration);
   }, [selectedMacroSlot, macroBuilder.duration]);
+
+  useEffect(() => {
+    setMicroBuilder((current) => {
+      let changed = false;
+      const nextSlots = current.slots.map((slot) => {
+        if (!slot.routineId || routineMap.has(slot.routineId)) return slot;
+        changed = true;
+        return { ...slot, routineId: "" };
+      });
+      if (!changed) return current;
+      return { ...current, slots: nextSlots };
+    });
+  }, [routineMap]);
 
   function parseDurationInput(raw: string, fallback: number): number {
     const parsed = Math.floor(Number(raw));

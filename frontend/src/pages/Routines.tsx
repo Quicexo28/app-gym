@@ -12,9 +12,17 @@ import {
   type ExerciseCatalogEntry,
   type ExerciseFilters,
 } from "../lib/exerciseCatalog";
-import { loadRoutines, saveRoutines, uid } from "../lib/storage";
+import {
+  listRoutinePropagationTargets,
+  loadRoutines,
+  propagateRoutineUpdate,
+  saveRoutines,
+  uid,
+} from "../lib/storage";
 import type { RoutineExerciseTemplate, RoutineTemplate } from "../lib/storage";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
+import { useAthleteAccess } from "../state/athlete";
+import { useViewMode } from "../state/viewMode";
 
 type MutableNode = {
   label: string;
@@ -128,6 +136,16 @@ function formatRestSeconds(restSeconds: number): string {
   return `${restSeconds}s`;
 }
 
+function toDraftExercise(exercise: RoutineExerciseTemplate): DraftRoutineExercise {
+  return {
+    name: exercise.name,
+    target_sets: exercise.target_sets,
+    target_reps_min: String(exercise.target_reps_min),
+    target_reps_max: String(exercise.target_reps_max),
+    ...splitRestSeconds(exercise.rest_seconds),
+  };
+}
+
 function freezeNodes(source: Map<string, MutableNode>, rankBySimilarity: boolean): CatalogNode[] {
   const nodes = Array.from(source.values()).map((node) => {
     const children = freezeNodes(node.children, rankBySimilarity);
@@ -235,11 +253,15 @@ function renderTree(
 }
 
 export default function Routines() {
+  const { athleteId, activeSubject, subjects } = useAthleteAccess();
+  const { viewMode } = useViewMode();
   const { loading, syncError, entries: catalogEntries } = useExerciseCatalog();
-  const [items, setItems] = useState<RoutineTemplate[]>(() => loadRoutines());
+  const [items, setItems] = useState<RoutineTemplate[]>([]);
   const [name, setName] = useState("");
   const [draftExercises, setDraftExercises] = useState<DraftRoutineExercise[]>([]);
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
@@ -260,8 +282,10 @@ export default function Routines() {
   const treeItems = useMemo(() => toTreeItems(filteredEntries, searchTokens), [filteredEntries, searchTokens]);
   const tree = useMemo(() => buildTree(treeItems, searchTokens.length > 0), [treeItems, searchTokens.length]);
   const nonLeafPathKeys = useMemo(() => buildNonLeafPathKeys(catalogEntries), [catalogEntries]);
+  const subjectLabelById = useMemo(() => new Map(subjects.map((subject) => [subject.id, subject.label])), [subjects]);
 
   const sorted = useMemo(() => [...items].sort((a, b) => a.name.localeCompare(b.name)), [items]);
+  const isEditing = Boolean(editingRoutineId);
   const hasIncompleteRepsRange = useMemo(
     () =>
       draftExercises.some(
@@ -270,6 +294,22 @@ export default function Routines() {
     [draftExercises],
   );
   const canSaveRoutine = name.trim().length > 0 && draftExercises.length > 0 && !hasIncompleteRepsRange;
+
+  useEffect(() => {
+    if (!athleteId) {
+      setItems([]);
+      setName("");
+      setDraftExercises([]);
+      setEditingRoutineId(null);
+      return;
+    }
+    setItems(loadRoutines(athleteId));
+    setName("");
+    setDraftExercises([]);
+    setEditingRoutineId(null);
+    setError("");
+    setFeedback("");
+  }, [athleteId]);
 
   function isLeafEntry(entry: ExerciseCatalogEntry): boolean {
     return !nonLeafPathKeys.has(pathKey(entry.path));
@@ -342,9 +382,30 @@ export default function Routines() {
     setSearch("");
   }
 
-  function addRoutine() {
+  function resetDraft() {
+    setName("");
+    setDraftExercises([]);
+    setEditingRoutineId(null);
+  }
+
+  function startEditRoutine(routine: RoutineTemplate) {
+    setEditingRoutineId(routine.id);
+    setName(routine.name);
+    setDraftExercises(routine.exercises.map((exercise) => toDraftExercise(exercise)));
     setError("");
+    setFeedback("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function saveRoutineDraft() {
+    setError("");
+    setFeedback("");
     const trimmed = name.trim();
+
+    if (!athleteId) {
+      setError("Selecciona un sujeto activo para gestionar rutinas.");
+      return;
+    }
 
     if (!trimmed) {
       setError("Escribe un nombre para la rutina.");
@@ -364,7 +425,9 @@ export default function Routines() {
       return;
     }
 
-    const exists = items.some((entry) => entry.name.toLowerCase() === trimmed.toLowerCase());
+    const exists = items.some(
+      (entry) => entry.name.toLowerCase() === trimmed.toLowerCase() && entry.id !== editingRoutineId,
+    );
     if (exists) {
       setError("Ya existe una rutina con ese nombre.");
       return;
@@ -383,48 +446,150 @@ export default function Routines() {
       };
     });
 
+    const timestamp = new Date().toISOString();
+
+    if (editingRoutineId) {
+      const previous = items.find((entry) => entry.id === editingRoutineId);
+      if (!previous) {
+        setError("No se encontro la rutina seleccionada para editar.");
+        return;
+      }
+
+      const next = items.map((entry) =>
+        entry.id !== editingRoutineId
+          ? entry
+          : {
+              ...entry,
+              name: trimmed,
+              exercises: normalizedExercises,
+              shared_routine_id: entry.shared_routine_id || uid("srt"),
+              updated_at_utc: timestamp,
+            },
+      );
+
+      let propagationResult:
+        | {
+            updated_count: number;
+            athlete_ids: string[];
+          }
+        | null = null;
+      const isCoachScope = viewMode === "coach" || viewMode === "admin";
+      if (isCoachScope) {
+        const candidateAthleteIds = subjects.map((subject) => subject.id).filter((id) => id !== athleteId);
+        const targets = listRoutinePropagationTargets({
+          source_athlete_id: athleteId,
+          source_routine_id: editingRoutineId,
+          athlete_ids: candidateAthleteIds,
+        });
+
+        if (targets.length > 0) {
+          const preview = targets
+            .slice(0, 3)
+            .map((target) => subjectLabelById.get(target.athlete_id) || target.athlete_id)
+            .join(", ");
+          const previewSuffix = targets.length > 3 ? ", ..." : "";
+          const shouldPropagate = window.confirm(
+            `Desea actualizar esta rutina para todos tus usuarios que la posean?\nCoincidencias: ${targets.length} (${preview}${previewSuffix})`,
+          );
+
+          if (shouldPropagate) {
+            propagationResult = propagateRoutineUpdate({
+              source_athlete_id: athleteId,
+              source_routine_id: editingRoutineId,
+              next_name: trimmed,
+              next_exercises: normalizedExercises,
+              athlete_ids: candidateAthleteIds,
+            });
+          }
+        }
+      }
+
+      setItems(next);
+      saveRoutines(next, athleteId);
+      resetDraft();
+
+      if (propagationResult && propagationResult.updated_count > 0) {
+        const updatedLabels = propagationResult.athlete_ids
+          .map((id) => subjectLabelById.get(id) || id)
+          .join(", ");
+        setFeedback(`Rutina actualizada en ${propagationResult.athlete_ids.length} usuario(s): ${updatedLabels}.`);
+      } else {
+        setFeedback("Rutina actualizada.");
+      }
+      return;
+    }
+
     const next: RoutineTemplate[] = [
       ...items,
-      { id: uid("rt"), name: trimmed, exercises: normalizedExercises, created_at_utc: new Date().toISOString() },
+      {
+        id: uid("rt"),
+        name: trimmed,
+        exercises: normalizedExercises,
+        created_at_utc: timestamp,
+        shared_routine_id: uid("srt"),
+        updated_at_utc: timestamp,
+      },
     ];
 
     setItems(next);
-    saveRoutines(next);
-    setName("");
-    setDraftExercises([]);
+    saveRoutines(next, athleteId);
+    resetDraft();
+    setFeedback("Rutina guardada.");
   }
 
   function removeRoutine(id: string) {
+    if (!athleteId) return;
     const next = items.filter((entry) => entry.id !== id);
     setItems(next);
-    saveRoutines(next);
+    saveRoutines(next, athleteId);
+    if (editingRoutineId === id) {
+      resetDraft();
+    }
+    setFeedback("Rutina eliminada.");
   }
 
   return (
     <div className="container stack">
       <header className="titleBlock">
         <h1>Rutinas</h1>
-        <p>Constructor con explorador jerarquico desplegable (grupo {'>'} base {'>'} variacion {'>'} subvariacion).</p>
+        <p>
+          {activeSubject
+            ? `Gestiona rutinas del sujeto activo (${activeSubject.label}) y edita cualquier campo de la plantilla.`
+            : "Selecciona un sujeto activo para gestionar sus rutinas."}
+        </p>
       </header>
 
       <section className="surface">
         {syncError ? <div className="message error">{syncError}</div> : null}
         {error ? <div className="message error">{error}</div> : null}
+        {feedback ? <div className="message">{feedback}</div> : null}
 
-        <label className="smallLabel">Nombre de plantilla</label>
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Push A" />
+        {!athleteId ? (
+          <div className="emptyState">No hay sujeto seleccionado.</div>
+        ) : (
+          <>
+            <label className="smallLabel">Nombre de rutina</label>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Push A" />
 
-        <div className="quickActions" style={{ marginTop: 12 }}>
-          <button className="btn" onClick={() => setPickerOpen(true)}>
-            Agregar nuevo ejercicio
-          </button>
-          <button className="btn primary" onClick={addRoutine} disabled={!canSaveRoutine}>
-            Guardar plantilla
-          </button>
-          <span className="chip">Asignados: {draftExercises.length}</span>
-          <span className="chip">Total: {items.length}</span>
-          {loading ? <span className="chip">Sincronizando...</span> : null}
-        </div>
+            <div className="quickActions" style={{ marginTop: 12 }}>
+              <button className="btn" onClick={() => setPickerOpen(true)} disabled={!athleteId}>
+                Agregar nuevo ejercicio
+              </button>
+              <button className="btn primary" onClick={saveRoutineDraft} disabled={!canSaveRoutine || !athleteId}>
+                {isEditing ? "Guardar cambios" : "Guardar rutina"}
+              </button>
+              {isEditing ? (
+                <button className="btn" onClick={resetDraft}>
+                  Cancelar edicion
+                </button>
+              ) : null}
+              <span className="chip">Asignados: {draftExercises.length}</span>
+              <span className="chip">Total: {items.length}</span>
+              <span className="chip">{`Sujeto: ${activeSubject?.label || athleteId}`}</span>
+              {loading ? <span className="chip">Sincronizando...</span> : null}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="surface">
@@ -676,11 +841,11 @@ export default function Routines() {
       <section className="surface">
         <div className="sectionHead">
           <h3>Plantillas guardadas</h3>
-          <p>Toca una para ver contenido. Eliminar quita solo la plantilla local.</p>
+          <p>Selecciona "Editar" para modificar nombre, ejercicios, series, repeticiones y descansos.</p>
         </div>
 
         {sorted.length === 0 ? (
-          <div className="emptyState">No hay plantillas aun.</div>
+          <div className="emptyState">No hay plantillas para este sujeto.</div>
         ) : (
           <div className="gridCards">
             {sorted.map((routine) => (
@@ -693,9 +858,15 @@ export default function Routines() {
                     </span>
                   ))}
                 </div>
-                <button className="btn" onClick={() => removeRoutine(routine.id)}>
-                  Eliminar
-                </button>
+                <div className="quickActions">
+                  <button className="btn" onClick={() => startEditRoutine(routine)}>
+                    Editar
+                  </button>
+                  <button className="btn" onClick={() => removeRoutine(routine.id)}>
+                    Eliminar
+                  </button>
+                  {editingRoutineId === routine.id ? <span className="chip">En edicion</span> : null}
+                </div>
               </article>
             ))}
           </div>

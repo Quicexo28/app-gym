@@ -543,6 +543,47 @@ textarea.input:focus,
   padding-bottom: 0;
 }
 
+.undoBar {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 90;
+  width: min(760px, calc(100% - 24px));
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 48%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--accent) 10%);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.undoBarMain {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.undoBarMessage {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.undoBarActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.undoBarBtn {
+  white-space: nowrap;
+}
+
 .topnav2 {
   display: flex;
   gap: 8px;
@@ -604,6 +645,17 @@ textarea.input:focus,
 
   .planningSquare {
     min-height: 96px;
+  }
+
+  .undoBar {
+    bottom: 10px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .undoBarActions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 
@@ -713,4 +765,40 @@ textarea.input:focus,
 
 .planningInspector h4 {
   margin: 0;
+}
+
+.bodyMetricGroup {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 16%);
+  display: grid;
+  gap: 10px;
+}
+
+.bodyMetricGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.bodyMetricField {
+  display: grid;
+  gap: 6px;
+}
+
+.bodyMetricInputRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bodyMetricInputRow .input {
+  flex: 1;
+}
+
+.bodyMetricHistoryGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }

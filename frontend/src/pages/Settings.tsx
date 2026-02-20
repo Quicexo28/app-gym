@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { adminSwitchPlan, deleteMyAccount, ingestSessions, labelToBackendPlan, type PlanLabel, type Role } from "../api";
 import { parseExerciseImportFile, type LegacyImportMode } from "../lib/legacyImport";
 import { saveRoutines } from "../lib/storage";
+import { useAthleteAccess } from "../state/athlete";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
@@ -66,6 +67,7 @@ function OptionRow<T extends string>({
 
 export default function Settings() {
   const nav = useNavigate();
+  const { athleteId, activeSubject } = useAthleteAccess();
   const { prefs, setTheme, setEffortScale, setWeightUnit, setDistanceUnit } = usePreferences();
   const { user, planLabel, isAdmin, refreshMe, logout } = useAuth();
   const { viewMode } = useViewMode();
@@ -239,7 +241,16 @@ export default function Settings() {
     setDangerError("");
     setDangerInfo("");
 
-    const ok = requestDangerConfirmation("Esta accion borra TODAS tus rutinas locales.", "BORRAR RUTINAS");
+    if (!athleteId) {
+      setDangerError("Selecciona un sujeto activo para borrar rutinas.");
+      return;
+    }
+
+    const subjectLabel = activeSubject?.label || athleteId;
+    const ok = requestDangerConfirmation(
+      `Esta accion borra TODAS las rutinas locales del sujeto activo (${subjectLabel}).`,
+      "BORRAR RUTINAS",
+    );
     if (!ok) {
       setDangerError("Confirmacion cancelada.");
       return;
@@ -247,8 +258,8 @@ export default function Settings() {
 
     setDangerBusy(true);
     try {
-      saveRoutines([]);
-      setDangerInfo("Rutinas locales eliminadas.");
+      saveRoutines([], athleteId);
+      setDangerInfo(`Rutinas locales eliminadas para ${subjectLabel}.`);
     } catch (e: unknown) {
       setDangerError(String((e as { message?: string })?.message || e));
     } finally {

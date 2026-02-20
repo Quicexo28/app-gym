@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { getMyProfile, updateMyProfile, type ProfileResponse } from "../api";
 
@@ -11,6 +11,13 @@ function fromMultiline(value: string): string[] {
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function formatKg(value?: number | null): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return "-";
+  }
+  return `${value} kg`;
 }
 
 export default function Profile() {
@@ -63,17 +70,11 @@ export default function Profile() {
     }
   }
 
-  const suggestedMedals = useMemo(() => {
-    const stats = data?.training_stats;
-    if (!stats) return [];
-    const badges: string[] = [];
-    if (stats.sessions_total >= 1) badges.push("Primer Entreno");
-    if (stats.sessions_total >= 10) badges.push("Constancia 10");
-    if (stats.sessions_total >= 30) badges.push("Disciplina 30");
-    if (stats.runs_total >= 5) badges.push("Analista 5");
-    if (stats.runs_total >= 20) badges.push("Analista 20");
-    return badges;
-  }, [data?.training_stats]);
+  const autoAchievements = data?.gamification.unlocked_achievements || [];
+  const autoMedals = data?.gamification.unlocked_medals || [];
+  const nextTargets = data?.gamification.next_targets || [];
+  const planningProgress = data?.gamification.planning;
+  const liftsPrs = data?.gamification.basic_lifts_pr_kg;
 
   return (
     <div className="container stack">
@@ -181,6 +182,66 @@ export default function Profile() {
 
           <section className="surface">
             <div className="sectionHead">
+              <h3>Sistema de logros automaticos</h3>
+              <p>Se desbloquea por dias cumplidos de planificacion, rachas y PR en basicos.</p>
+            </div>
+
+            <div className="chipRow" style={{ marginTop: 10 }}>
+              <span className="chip">Dias de plan completados: {planningProgress?.completed_days_total ?? 0}</span>
+              <span className="chip">Racha actual: {planningProgress?.current_streak_days ?? 0} dias</span>
+              <span className="chip">Mejor racha: {planningProgress?.longest_streak_days ?? 0} dias</span>
+            </div>
+
+            <div className="splitGrid" style={{ marginTop: 12 }}>
+              <article className="surfaceButton">
+                <strong>PR basicos (kg)</strong>
+                <div className="chipRow">
+                  <span className="chip">{`Sentadilla posterior libre: ${formatKg(liftsPrs?.back_squat)}`}</span>
+                  <span className="chip">{`Press banca plano: ${formatKg(liftsPrs?.bench_press)}`}</span>
+                  <span className="chip">{`Peso muerto convencional: ${formatKg(liftsPrs?.deadlift)}`}</span>
+                </div>
+              </article>
+
+              <article className="surfaceButton">
+                <strong>Logros desbloqueados</strong>
+                <div className="chipRow">
+                  {autoAchievements.length === 0 ? <span className="chip">Aun sin logros automaticos</span> : null}
+                  {autoAchievements.map((achievement) => (
+                    <span key={achievement} className="chip">
+                      {achievement}
+                    </span>
+                  ))}
+                </div>
+              </article>
+
+              <article className="surfaceButton">
+                <strong>Medallas desbloqueadas</strong>
+                <div className="chipRow">
+                  {autoMedals.length === 0 ? <span className="chip">Aun sin medallas automaticas</span> : null}
+                  {autoMedals.map((medal) => (
+                    <span key={medal} className="chip">
+                      {medal}
+                    </span>
+                  ))}
+                </div>
+              </article>
+
+              <article className="surfaceButton">
+                <strong>Proximos objetivos</strong>
+                <div className="chipRow">
+                  {nextTargets.length === 0 ? <span className="chip">No hay objetivos pendientes</span> : null}
+                  {nextTargets.map((target) => (
+                    <span key={target} className="chip">
+                      {target}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section className="surface">
+            <div className="sectionHead">
               <h3>Vista publica del perfil</h3>
               <p>Preview de logros y medallas visibles.</p>
             </div>
@@ -216,12 +277,12 @@ export default function Profile() {
               </article>
 
               <article className="surfaceButton">
-                <strong>Medallas sugeridas por actividad</strong>
+                <strong>Medallas automaticas</strong>
                 <div className="chipRow">
-                  {suggestedMedals.length === 0 ? <span className="chip">Aun sin sugerencias</span> : null}
-                  {suggestedMedals.map((badge) => (
-                    <span key={badge} className="chip">
-                      {badge}
+                  {autoMedals.length === 0 ? <span className="chip">Aun sin medallas automaticas</span> : null}
+                  {autoMedals.map((medal) => (
+                    <span key={medal} className="chip">
+                      {medal}
                     </span>
                   ))}
                 </div>
@@ -233,4 +294,3 @@ export default function Profile() {
     </div>
   );
 }
-

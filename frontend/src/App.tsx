@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import AppShell from "./layout/AppShell";
 import Athlete from "./pages/Athlete";
+import BodyMetrics from "./pages/BodyMetrics";
 import Exercises from "./pages/Exercises";
 import History from "./pages/History";
 import Home from "./pages/Home";
@@ -53,6 +54,7 @@ export default function App() {
         <Route path="profile" element={<Profile />} />
         <Route path="session/new" element={<NewSession />} />
         <Route path="history" element={<History />} />
+        <Route path="measurements" element={<BodyMetrics />} />
         <Route path="exercises" element={<Exercises />} />
         <Route path="planning" element={<Planning />} />
         <Route path="routines" element={<Routines />} />

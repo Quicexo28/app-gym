@@ -84,6 +84,49 @@ class CoachAthleteAssignment(Base):
     )
 
 
+class BodyMeasurement(Base):
+    __tablename__ = "body_measurements"
+    __table_args__ = (
+        Index("ix_body_measurements_athlete_measured_at", "athlete_id", "measured_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    athlete_id: Mapped[str] = mapped_column(
+        ForeignKey("athletes.athlete_id"),
+        index=True,
+        nullable=False,
+    )
+    measured_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        index=True,
+        nullable=False,
+    )
+    measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+
+    # Stored in metric units for consistency.
+    weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    height_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    neck_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    shoulders_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    chest_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    waist_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hip_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    arm_relaxed_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    arm_flexed_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    forearm_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thigh_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    calf_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    body_fat_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=now_utc,
+        nullable=False,
+    )
+
+
 class TrainingSession(Base):
     __tablename__ = "sessions"
     __table_args__ = (

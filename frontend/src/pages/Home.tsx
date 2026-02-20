@@ -78,6 +78,9 @@ export default function Home() {
             <button className="btn" onClick={() => nav("/history")} disabled={!athleteId}>
               Historial
             </button>
+            <button className="btn" onClick={() => nav("/measurements")} disabled={!athleteId}>
+              Medidas
+            </button>
             <button className="btn" onClick={() => nav("/routines")}>
               Rutinas
             </button>
@@ -110,6 +113,9 @@ export default function Home() {
                   disabled={!selfAthleteId}
                 >
                   Mi historial
+                </button>
+                <button className="btn" onClick={() => nav("/measurements")} disabled={!athleteId}>
+                  Medidas
                 </button>
                 <button className="btn" onClick={() => nav("/users")}>
                   Usuarios
