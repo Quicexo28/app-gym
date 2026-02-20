@@ -88,17 +88,28 @@ UI/UX de “gym-first” (ejercicios/rutinas/historial) está en etapa de diseñ
 
 ## Docker: dev vs production
 
-- Dev stack: `docker-compose.yml` (bind mount + reload para iterar rapido).
-- Production stack: `docker-compose.prod.yml` (API + Postgres, sin reload, migracion separada).
+- Dev stack: `docker-compose.yml` (Postgres + API + Frontend Vite con bind mount y reload).
+- Production stack: `docker-compose.prod.yml` (Postgres + API + Web estatico).
 - Guia operativa de produccion: `docs/docker-production.md`.
+
+Flujo de desarrollo (un solo comando):
+
+```bash
+docker compose up --build
+```
+
+Servicios:
+- Frontend: `http://localhost:5173`
+- API: `http://localhost:8000`
+- Postgres: `localhost:5432`
 
 Flujo de deploy de produccion:
 
 ```bash
-docker compose -f docker-compose.prod.yml build api
+docker compose -f docker-compose.prod.yml build api web
 docker compose -f docker-compose.prod.yml up -d db
 docker compose -f docker-compose.prod.yml run --rm migrate
-docker compose -f docker-compose.prod.yml up -d api
+docker compose -f docker-compose.prod.yml up -d api web
 ```
 
 ## Frontend (dev/build)

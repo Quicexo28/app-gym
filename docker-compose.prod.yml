@@ -42,6 +42,22 @@ services:
       retries: 10
       start_period: 10s
 
+  web:
+    image: coach-ai-engineer-web:prod
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_ENABLE_GUEST_LOGIN: ${VITE_ENABLE_GUEST_LOGIN:-false}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
   migrate:
     image: coach-ai-engineer-api:prod
     env_file:

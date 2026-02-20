@@ -22,8 +22,6 @@ DbSession = Session
 class ProfileData(BaseModel):
     username: str | None
     bio: str | None
-    achievements: list[str]
-    medals: list[str]
 
 
 class TrainingStats(BaseModel):
@@ -65,8 +63,6 @@ class ProfileResponse(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     username: str | None = Field(default=None, max_length=64)
     bio: str | None = Field(default=None, max_length=280)
-    achievements: list[str] | None = None
-    medals: list[str] | None = None
 
 
 def _clean_text(value: str | None) -> str | None:
@@ -74,27 +70,6 @@ def _clean_text(value: str | None) -> str | None:
         return None
     cleaned = " ".join(value.split()).strip()
     return cleaned or None
-
-
-def _clean_list(values: list[str] | None, *, item_max_len: int = 80, max_items: int = 30) -> list[str]:
-    if not values:
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in values:
-        cleaned = " ".join(str(raw).split()).strip()
-        if not cleaned:
-            continue
-        if len(cleaned) > item_max_len:
-            cleaned = cleaned[:item_max_len].rstrip()
-        key = cleaned.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(cleaned)
-        if len(out) >= max_items:
-            break
-    return out
 
 
 def _ensure_settings(db: DbSession, user: User) -> UserSettings:
@@ -141,8 +116,6 @@ def _to_response(db: DbSession, user: User, row: UserSettings) -> ProfileRespons
         profile=ProfileData(
             username=row.profile_username,
             bio=row.profile_bio,
-            achievements=_clean_list([str(value) for value in (row.profile_achievements or [])]),
-            medals=_clean_list([str(value) for value in (row.profile_medals or [])]),
         ),
         training_stats=_training_stats_for_user(db, user),
         gamification=ProfileGamification.model_validate(gamification_payload),
@@ -174,12 +147,6 @@ def update_my_profile(
 
     if payload.bio is not None:
         row.profile_bio = _clean_text(payload.bio)
-
-    if payload.achievements is not None:
-        row.profile_achievements = _clean_list(payload.achievements)
-
-    if payload.medals is not None:
-        row.profile_medals = _clean_list(payload.medals)
 
     db.commit()
     db.refresh(row)

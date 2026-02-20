@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ALL_EXERCISE_FILTER as ALL,
@@ -22,6 +22,7 @@ import {
 import type { RoutineExerciseTemplate, RoutineTemplate } from "../lib/storage";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAthleteAccess } from "../state/athlete";
+import { useUndo } from "../state/undo";
 import { useViewMode } from "../state/viewMode";
 
 type MutableNode = {
@@ -146,6 +147,13 @@ function toDraftExercise(exercise: RoutineExerciseTemplate): DraftRoutineExercis
   };
 }
 
+function cloneRoutine(source: RoutineTemplate): RoutineTemplate {
+  return {
+    ...source,
+    exercises: source.exercises.map((exercise) => ({ ...exercise })),
+  };
+}
+
 function freezeNodes(source: Map<string, MutableNode>, rankBySimilarity: boolean): CatalogNode[] {
   const nodes = Array.from(source.values()).map((node) => {
     const children = freezeNodes(node.children, rankBySimilarity);
@@ -256,6 +264,7 @@ export default function Routines() {
   const { athleteId, activeSubject, subjects } = useAthleteAccess();
   const { viewMode } = useViewMode();
   const { loading, syncError, entries: catalogEntries } = useExerciseCatalog();
+  const { registerUndo } = useUndo();
   const [items, setItems] = useState<RoutineTemplate[]>([]);
   const [name, setName] = useState("");
   const [draftExercises, setDraftExercises] = useState<DraftRoutineExercise[]>([]);
@@ -267,6 +276,7 @@ export default function Routines() {
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
   const [selectedZone, setSelectedZone] = useState<ExerciseBodyZoneFilter>(ALL_EXERCISE_ZONE_FILTER);
   const [search, setSearch] = useState("");
+  const athleteIdRef = useRef<string | null>(athleteId);
 
   const filters = useMemo<ExerciseFilters>(
     () => ({
@@ -294,6 +304,10 @@ export default function Routines() {
     [draftExercises],
   );
   const canSaveRoutine = name.trim().length > 0 && draftExercises.length > 0 && !hasIncompleteRepsRange;
+
+  useEffect(() => {
+    athleteIdRef.current = athleteId;
+  }, [athleteId]);
 
   useEffect(() => {
     if (!athleteId) {
@@ -449,11 +463,13 @@ export default function Routines() {
     const timestamp = new Date().toISOString();
 
     if (editingRoutineId) {
+      const sourceAthleteId = athleteId;
       const previous = items.find((entry) => entry.id === editingRoutineId);
       if (!previous) {
         setError("No se encontro la rutina seleccionada para editar.");
         return;
       }
+      const previousRoutine = cloneRoutine(previous);
 
       const next = items.map((entry) =>
         entry.id !== editingRoutineId
@@ -467,6 +483,7 @@ export default function Routines() {
             },
       );
 
+      const propagationSnapshots: Array<{ athlete_id: string; routine: RoutineTemplate }> = [];
       let propagationResult:
         | {
             updated_count: number;
@@ -493,6 +510,14 @@ export default function Routines() {
           );
 
           if (shouldPropagate) {
+            for (const target of targets) {
+              const targetRoutine = loadRoutines(target.athlete_id).find((entry) => entry.id === target.routine_id);
+              if (!targetRoutine) continue;
+              propagationSnapshots.push({
+                athlete_id: target.athlete_id,
+                routine: cloneRoutine(targetRoutine),
+              });
+            }
             propagationResult = propagateRoutineUpdate({
               source_athlete_id: athleteId,
               source_routine_id: editingRoutineId,
@@ -507,6 +532,46 @@ export default function Routines() {
       setItems(next);
       saveRoutines(next, athleteId);
       resetDraft();
+
+      registerUndo({
+        message:
+          propagationResult && propagationResult.updated_count > 0
+            ? `Se actualizaron ${propagationResult.updated_count} rutina(s).`
+            : "Rutina actualizada.",
+        onUndo: async () => {
+          const sourceRoutines = loadRoutines(sourceAthleteId);
+          let sourceRestored = false;
+          const restoredSource = sourceRoutines.map((entry) => {
+            if (entry.id !== previousRoutine.id) return entry;
+            sourceRestored = true;
+            return cloneRoutine(previousRoutine);
+          });
+          if (!sourceRestored) {
+            restoredSource.push(cloneRoutine(previousRoutine));
+          }
+          saveRoutines(restoredSource, sourceAthleteId);
+
+          for (const snapshot of propagationSnapshots) {
+            const targetRoutines = loadRoutines(snapshot.athlete_id);
+            let targetRestored = false;
+            const restoredTarget = targetRoutines.map((entry) => {
+              if (entry.id !== snapshot.routine.id) return entry;
+              targetRestored = true;
+              return cloneRoutine(snapshot.routine);
+            });
+            if (!targetRestored) {
+              restoredTarget.push(cloneRoutine(snapshot.routine));
+            }
+            saveRoutines(restoredTarget, snapshot.athlete_id);
+          }
+
+          if (athleteIdRef.current === sourceAthleteId) {
+            setItems(loadRoutines(sourceAthleteId));
+          }
+          setFeedback("Cambios de rutina deshechos.");
+          setError("");
+        },
+      });
 
       if (propagationResult && propagationResult.updated_count > 0) {
         const updatedLabels = propagationResult.athlete_ids
@@ -539,6 +604,9 @@ export default function Routines() {
 
   function removeRoutine(id: string) {
     if (!athleteId) return;
+    const sourceAthleteId = athleteId;
+    const removedRoutine = items.find((entry) => entry.id === id);
+    if (!removedRoutine) return;
     const next = items.filter((entry) => entry.id !== id);
     setItems(next);
     saveRoutines(next, athleteId);
@@ -546,6 +614,20 @@ export default function Routines() {
       resetDraft();
     }
     setFeedback("Rutina eliminada.");
+    registerUndo({
+      message: `Rutina "${removedRoutine.name}" eliminada.`,
+      onUndo: async () => {
+        const current = loadRoutines(sourceAthleteId);
+        if (current.some((entry) => entry.id === removedRoutine.id)) return;
+        const restored = [...current, cloneRoutine(removedRoutine)];
+        saveRoutines(restored, sourceAthleteId);
+        if (athleteIdRef.current === sourceAthleteId) {
+          setItems(restored);
+        }
+        setFeedback("Rutina restaurada.");
+        setError("");
+      },
+    });
   }
 
   return (

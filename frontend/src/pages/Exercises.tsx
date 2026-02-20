@@ -17,6 +17,7 @@ import {
 } from "../lib/exerciseCatalog";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
+import { useUndo } from "../state/undo";
 import { useViewMode } from "../state/viewMode";
 
 type MutableNode = {
@@ -202,6 +203,7 @@ function renderTree(nodes: CatalogNode[], actions: TreeActions, expandAll: boole
 export default function Exercises() {
   const { isAdmin } = useAuth();
   const { viewMode } = useViewMode();
+  const { registerUndo } = useUndo();
   const isAdminMode = isAdmin && viewMode === "admin";
   const { ready, loading, syncError, items, entries, addCustom, addGlobal, updateItem, removeItem } = useExerciseCatalog();
   const [group, setGroup] = useState("");
@@ -470,6 +472,30 @@ export default function Exercises() {
       const item = items.find((candidate) => candidate.id === entry.id);
       if (!item) return;
       await removeItem(item);
+      registerUndo({
+        message: `Ejercicio "${entry.name}" eliminado.`,
+        onUndo: async () => {
+          try {
+            const payload = {
+              group: item.group,
+              family: item.family,
+              variation: item.variation,
+              subvariation: item.subvariation,
+              aliases: item.aliases,
+            };
+            if (item.scope === "global") {
+              await addGlobal(payload);
+            } else {
+              await addCustom(payload);
+            }
+            setError("");
+          } catch (cause: unknown) {
+            const message = String((cause as { message?: string })?.message || cause);
+            setError(message);
+            throw cause;
+          }
+        },
+      });
       if (editId === entry.id) {
         clearEdit();
       }

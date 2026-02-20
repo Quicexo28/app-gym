@@ -127,6 +127,34 @@ class BodyMeasurement(Base):
     )
 
 
+class GamificationConfig(Base):
+    __tablename__ = "gamification_configs"
+    __table_args__ = (
+        UniqueConstraint("scope", name="uq_gamification_config_scope"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    scope: Mapped[str] = mapped_column(String(32), index=True, nullable=False, default="global")
+    config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    updated_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        index=True,
+        nullable=False,
+    )
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=now_utc,
+        nullable=False,
+    )
+    updated_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=now_utc,
+        onupdate=now_utc,
+        nullable=False,
+    )
+
+
 class TrainingSession(Base):
     __tablename__ = "sessions"
     __table_args__ = (

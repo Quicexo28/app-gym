@@ -4,7 +4,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from app.db.engine import get_db
 from app.db.models import CoachAthleteAssignment
 from app.db.repo import ensure_athlete
 from app.db.models_auth import User
+from app.profile import default_gamification_config, get_gamification_config, upsert_gamification_config
 
 router = APIRouter(prefix="/admin/dev", tags=["admin"])
 DbSession = Session
@@ -29,6 +30,31 @@ class SwitchPlanRequest(BaseModel):
 class CoachAthleteAssignmentRequest(BaseModel):
     coach_email: str
     athlete_id: str
+
+
+class RewardTierPayload(BaseModel):
+    threshold: float = Field(gt=0)
+    achievement: str = Field(min_length=1, max_length=120)
+    medal: str = Field(min_length=1, max_length=120)
+
+
+class LiftTierPayload(BaseModel):
+    back_squat: list[RewardTierPayload] = Field(default_factory=list)
+    bench_press: list[RewardTierPayload] = Field(default_factory=list)
+    deadlift: list[RewardTierPayload] = Field(default_factory=list)
+
+
+class GamificationConfigPayload(BaseModel):
+    streak_tiers: list[RewardTierPayload] = Field(default_factory=list)
+    planning_days_tiers: list[RewardTierPayload] = Field(default_factory=list)
+    lift_tiers: LiftTierPayload
+    trilogy_achievement: str = Field(min_length=1, max_length=120)
+    trilogy_medal: str = Field(min_length=1, max_length=120)
+
+
+class GamificationConfigResponse(BaseModel):
+    config: GamificationConfigPayload
+    defaults: GamificationConfigPayload
 
 
 @router.post("/switch-plan")
@@ -146,3 +172,31 @@ def remove_coach_athlete(
     db.delete(row)
     db.commit()
     return {"ok": True, "deleted": True, "coach_email": coach.email, "athlete_id": athlete_id}
+
+
+@router.get("/gamification-config", response_model=GamificationConfigResponse)
+def get_admin_gamification_config(
+    admin: Annotated[User, Depends(require_role(Role.ADMIN))],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> GamificationConfigResponse:
+    _ = admin
+    current = get_gamification_config(db)
+    defaults = default_gamification_config()
+    return GamificationConfigResponse(
+        config=GamificationConfigPayload.model_validate(current),
+        defaults=GamificationConfigPayload.model_validate(defaults),
+    )
+
+
+@router.put("/gamification-config", response_model=GamificationConfigPayload)
+def update_admin_gamification_config(
+    payload: GamificationConfigPayload,
+    admin: Annotated[User, Depends(require_role(Role.ADMIN))],
+    db: Annotated[DbSession, Depends(get_db)],
+) -> GamificationConfigPayload:
+    saved = upsert_gamification_config(
+        db,
+        payload=payload.model_dump(),
+        updated_by_user_id=admin.id,
+    )
+    return GamificationConfigPayload.model_validate(saved)

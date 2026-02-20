@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -9,7 +10,13 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import CycleAssignment, CycleAssignmentBlock, CycleBlockStatus, TrainingSession
+from app.db.models import (
+    CycleAssignment,
+    CycleAssignmentBlock,
+    CycleBlockStatus,
+    GamificationConfig,
+    TrainingSession,
+)
 
 
 BASIC_LIFT_KEYS = ("back_squat", "bench_press", "deadlift")
@@ -62,9 +69,92 @@ LIFT_TIERS: dict[str, tuple[RewardTier, ...]] = {
         RewardTier(180, "Peso muerto 180 kg", "Peso Muerto Titanio"),
     ),
 }
+DEFAULT_TRILOGY_ACHIEVEMENT = "Trilogia basica desbloqueada"
+DEFAULT_TRILOGY_MEDAL = "Basicos de Acero"
+
+
+def default_gamification_config() -> dict[str, Any]:
+    return {
+        "streak_tiers": [_tier_to_payload(tier) for tier in STREAK_TIERS],
+        "planning_days_tiers": [_tier_to_payload(tier) for tier in PLANNING_DAYS_TIERS],
+        "lift_tiers": {
+            lift_key: [_tier_to_payload(tier) for tier in tiers]
+            for lift_key, tiers in LIFT_TIERS.items()
+        },
+        "trilogy_achievement": DEFAULT_TRILOGY_ACHIEVEMENT,
+        "trilogy_medal": DEFAULT_TRILOGY_MEDAL,
+    }
+
+
+def normalize_gamification_config(payload: dict[str, Any] | None) -> dict[str, Any]:
+    defaults = default_gamification_config()
+    if not isinstance(payload, dict):
+        return defaults
+
+    normalized: dict[str, Any] = copy.deepcopy(defaults)
+
+    normalized["streak_tiers"] = _normalize_tier_list(payload.get("streak_tiers"), defaults["streak_tiers"])
+    normalized["planning_days_tiers"] = _normalize_tier_list(
+        payload.get("planning_days_tiers"),
+        defaults["planning_days_tiers"],
+    )
+
+    raw_lift_tiers = payload.get("lift_tiers")
+    if isinstance(raw_lift_tiers, dict):
+        lift_tiers: dict[str, list[dict[str, Any]]] = {}
+        for lift_key in BASIC_LIFT_KEYS:
+            lift_tiers[lift_key] = _normalize_tier_list(
+                raw_lift_tiers.get(lift_key),
+                defaults["lift_tiers"][lift_key],
+            )
+        normalized["lift_tiers"] = lift_tiers
+
+    trilogy_achievement = _clean_text(payload.get("trilogy_achievement"), max_len=120)
+    trilogy_medal = _clean_text(payload.get("trilogy_medal"), max_len=120)
+    if trilogy_achievement:
+        normalized["trilogy_achievement"] = trilogy_achievement
+    if trilogy_medal:
+        normalized["trilogy_medal"] = trilogy_medal
+
+    return normalized
+
+
+def get_gamification_config(db: Session) -> dict[str, Any]:
+    row = db.execute(
+        select(GamificationConfig).where(GamificationConfig.scope == "global")
+    ).scalar_one_or_none()
+    if row is None:
+        return default_gamification_config()
+    return normalize_gamification_config(row.config)
+
+
+def upsert_gamification_config(
+    db: Session,
+    *,
+    payload: dict[str, Any],
+    updated_by_user_id,
+) -> dict[str, Any]:
+    normalized = normalize_gamification_config(payload)
+    row = db.execute(
+        select(GamificationConfig).where(GamificationConfig.scope == "global")
+    ).scalar_one_or_none()
+    if row is None:
+        row = GamificationConfig(
+            scope="global",
+            config=normalized,
+            updated_by_user_id=updated_by_user_id,
+        )
+        db.add(row)
+    else:
+        row.config = normalized
+        row.updated_by_user_id = updated_by_user_id
+    db.commit()
+    db.refresh(row)
+    return normalize_gamification_config(row.config)
 
 
 def build_profile_gamification(db: Session, *, athlete_id: str) -> dict[str, Any]:
+    config_payload = get_gamification_config(db)
     completed_days = _planning_completed_days(db, athlete_id=athlete_id)
     current_streak, longest_streak = compute_streak_metrics(
         completed_days,
@@ -76,6 +166,7 @@ def build_profile_gamification(db: Session, *, athlete_id: str) -> dict[str, Any
         completed_days_total=len(completed_days),
         current_streak_days=current_streak,
         lift_prs_kg=lift_prs,
+        config_payload=config_payload,
     )
 
     return {
@@ -262,38 +353,49 @@ def _build_reward_snapshot(
     completed_days_total: int,
     current_streak_days: int,
     lift_prs_kg: dict[str, float | None],
+    config_payload: dict[str, Any] | None = None,
 ) -> tuple[list[str], list[str], list[str]]:
+    config = normalize_gamification_config(config_payload)
+    streak_tiers = _tiers_from_payload(config["streak_tiers"])
+    planning_days_tiers = _tiers_from_payload(config["planning_days_tiers"])
+    lift_tiers = {
+        lift_key: _tiers_from_payload(config["lift_tiers"][lift_key])
+        for lift_key in BASIC_LIFT_KEYS
+    }
+
     achievements: list[str] = []
     medals: list[str] = []
     next_targets: list[str] = []
 
-    streak_tier = _highest_unlocked_tier(float(current_streak_days), STREAK_TIERS)
+    streak_tier = _highest_unlocked_tier(float(current_streak_days), streak_tiers)
     if streak_tier is not None:
         achievements.append(streak_tier.achievement)
         medals.append(streak_tier.medal)
-    next_streak_tier = _next_tier(float(current_streak_days), STREAK_TIERS)
+    next_streak_tier = _next_tier(float(current_streak_days), streak_tiers)
     if next_streak_tier is not None:
         next_targets.append(
             f"Racha actual {current_streak_days} dias -> objetivo {int(next_streak_tier.threshold)} dias"
         )
 
-    completed_days_tier = _highest_unlocked_tier(float(completed_days_total), PLANNING_DAYS_TIERS)
+    completed_days_tier = _highest_unlocked_tier(float(completed_days_total), planning_days_tiers)
     if completed_days_tier is not None:
         achievements.append(completed_days_tier.achievement)
         medals.append(completed_days_tier.medal)
-    next_completed_days_tier = _next_tier(float(completed_days_total), PLANNING_DAYS_TIERS)
+    next_completed_days_tier = _next_tier(float(completed_days_total), planning_days_tiers)
     if next_completed_days_tier is not None:
         next_targets.append(
             f"Dias de plan completados {completed_days_total} -> objetivo {int(next_completed_days_tier.threshold)}"
         )
 
     for lift_key in BASIC_LIFT_KEYS:
-        tiers = LIFT_TIERS[lift_key]
+        tiers = lift_tiers[lift_key]
         best_pr = lift_prs_kg.get(lift_key)
         current_value = float(best_pr) if best_pr is not None else 0.0
         tier = _highest_unlocked_tier(current_value, tiers)
         if tier is not None:
-            achievements.append(f"{LIFT_LABELS[lift_key]}: PR {best_pr:g} kg")
+            achievements.append(tier.achievement)
+            if best_pr is not None:
+                achievements.append(f"{LIFT_LABELS[lift_key]}: PR {best_pr:g} kg")
             medals.append(tier.medal)
 
         next_tier = _next_tier(current_value, tiers)
@@ -304,9 +406,9 @@ def _build_reward_snapshot(
             f"{LIFT_LABELS[lift_key]}: {current_label} -> objetivo {next_tier.threshold:g} kg"
         )
 
-    if all((lift_prs_kg.get(lift_key) or 0.0) >= LIFT_TIERS[lift_key][0].threshold for lift_key in BASIC_LIFT_KEYS):
-        achievements.append("Trilogia basica desbloqueada")
-        medals.append("Basicos de Acero")
+    if all((lift_prs_kg.get(lift_key) or 0.0) >= lift_tiers[lift_key][0].threshold for lift_key in BASIC_LIFT_KEYS):
+        achievements.append(str(config["trilogy_achievement"]))
+        medals.append(str(config["trilogy_medal"]))
 
     return (
         _dedupe_texts(achievements),
@@ -339,6 +441,78 @@ def _round_kg(value: float | None) -> float | None:
     if value is None:
         return None
     return round(value, 1)
+
+
+def _tier_to_payload(tier: RewardTier) -> dict[str, Any]:
+    return {
+        "threshold": float(tier.threshold),
+        "achievement": tier.achievement,
+        "medal": tier.medal,
+    }
+
+
+def _tiers_from_payload(payload: list[dict[str, Any]]) -> tuple[RewardTier, ...]:
+    out: list[RewardTier] = []
+    for item in payload:
+        threshold = _to_non_negative_float(item.get("threshold"))
+        achievement = _clean_text(item.get("achievement"), max_len=120)
+        medal = _clean_text(item.get("medal"), max_len=120)
+        if threshold is None or threshold <= 0:
+            continue
+        if not achievement or not medal:
+            continue
+        out.append(RewardTier(threshold=threshold, achievement=achievement, medal=medal))
+    out.sort(key=lambda item: item.threshold)
+    return tuple(out)
+
+
+def _normalize_tier_list(raw: Any, fallback: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return copy.deepcopy(fallback)
+
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[float, str, str]] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        threshold = _to_non_negative_float(item.get("threshold"))
+        achievement = _clean_text(item.get("achievement"), max_len=120)
+        medal = _clean_text(item.get("medal"), max_len=120)
+        if threshold is None or threshold <= 0:
+            continue
+        if not achievement or not medal:
+            continue
+
+        normalized = {
+            "threshold": float(threshold),
+            "achievement": achievement,
+            "medal": medal,
+        }
+        dedupe_key = (
+            normalized["threshold"],
+            normalized["achievement"].lower(),
+            normalized["medal"].lower(),
+        )
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        out.append(normalized)
+
+    if not out:
+        return copy.deepcopy(fallback)
+    out.sort(key=lambda row: float(row["threshold"]))
+    return out
+
+
+def _clean_text(value: Any, *, max_len: int) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = " ".join(value.split()).strip()
+    if not cleaned:
+        return None
+    if len(cleaned) > max_len:
+        cleaned = cleaned[:max_len].rstrip()
+    return cleaned or None
 
 
 def _highest_unlocked_tier(value: float, tiers: tuple[RewardTier, ...]) -> RewardTier | None:

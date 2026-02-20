@@ -45,5 +45,25 @@ services:
       retries: 10
       start_period: 15s
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+      VITE_ENABLE_GUEST_LOGIN: ${VITE_ENABLE_GUEST_LOGIN:-true}
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - coach_ai_frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+
 volumes:
   coach_ai_pg:
+  coach_ai_frontend_node_modules:

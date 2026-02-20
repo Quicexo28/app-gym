@@ -10,7 +10,21 @@ Ejecuta todo desde la raiz del proyecto: `c:\proyecto gym\coach-ai-engineer-boil
 .\run_api.ps1 -NoReload
 ```
 
-## 2) Frontend
+## 2) Docker (dev)
+
+```powershell
+docker compose up --build
+docker compose down
+docker compose logs -f api
+docker compose logs -f frontend
+```
+
+Servicios:
+- Frontend: `http://localhost:5173`
+- API: `http://localhost:8000`
+- Postgres: `localhost:5432`
+
+## 3) Frontend
 
 ```powershell
 npm run dev
@@ -18,7 +32,7 @@ npm run build
 npm run preview
 ```
 
-## 3) Migraciones DB (Alembic)
+## 4) Migraciones DB (Alembic)
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -26,7 +40,7 @@ alembic upgrade head
 alembic revision --autogenerate -m "descripcion_del_cambio"
 ```
 
-## 4) Calidad (tests + lint)
+## 5) Calidad (tests + lint)
 
 ```powershell
 pytest -q
@@ -34,9 +48,9 @@ ruff check . --fix
 ruff format .
 ```
 
-## 5) Admin
+## 6) Admin
 
-### 5.0 Comando corto para volver admin
+### 6.0 Comando corto para volver admin
 
 ```powershell
 .\make_admin.ps1
@@ -44,7 +58,7 @@ ruff format .
 .\make_admin.ps1 -Email "usuario@dominio.com" -Plan coach
 ```
 
-### 5.1 Recuperar admin directo en DB (si te quedaste sin permisos)
+### 6.1 Recuperar admin directo en DB (si te quedaste sin permisos)
 
 Este bloque deja a `santiagoquicenoqp@gmail.com` con `role=admin` y `plan=coach`.
 
@@ -74,7 +88,7 @@ with SessionLocal() as db:
 '@ | python -
 ```
 
-### 5.2 Login para obtener token
+### 6.2 Login para obtener token
 
 ```powershell
 $authBody = @{
@@ -92,7 +106,7 @@ $token = $auth.access_token
 $headers = @{ Authorization = "Bearer $token" }
 ```
 
-### 5.3 Cambiar plan/rol de cualquier usuario (requiere token admin)
+### 6.3 Cambiar plan/rol de cualquier usuario (requiere token admin)
 
 ```powershell
 $payload = @{
@@ -109,7 +123,7 @@ Invoke-RestMethod `
   -Body $payload
 ```
 
-### 5.4 Asignar atleta a coach (requiere token admin)
+### 6.4 Asignar atleta a coach (requiere token admin)
 
 ```powershell
 $assign = @{
@@ -125,7 +139,7 @@ Invoke-RestMethod `
   -Body $assign
 ```
 
-### 5.5 Ver atletas asignados a un coach (requiere token admin)
+### 6.5 Ver atletas asignados a un coach (requiere token admin)
 
 ```powershell
 Invoke-RestMethod `
@@ -134,7 +148,7 @@ Invoke-RestMethod `
   -Headers $headers
 ```
 
-### 5.6 Remover asignacion coach-atleta (requiere token admin)
+### 6.6 Remover asignacion coach-atleta (requiere token admin)
 
 ```powershell
 $remove = @{

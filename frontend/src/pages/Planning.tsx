@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createPlanningAssignment,
@@ -25,6 +25,7 @@ import {
 } from "../api";
 import { loadRoutines, type RoutineTemplate } from "../lib/storage";
 import { useAthleteAccess } from "../state/athlete";
+import { useUndo } from "../state/undo";
 
 type PlanningTab = "micro" | "meso" | "macro" | "assignments" | "tracking";
 type BuilderLevel = "micro" | "meso" | "macro";
@@ -232,6 +233,8 @@ function TreeNode({ node }: { node: PlanningTemplateTree }) {
 
 export default function Planning() {
   const { athleteId, subjects } = useAthleteAccess();
+  const { registerUndo } = useUndo();
+  const pendingDeleteTimerByTemplateRef = useRef<Map<string, number>>(new Map());
   const [tab, setTab] = useState<PlanningTab>("micro");
 
   const [templates, setTemplates] = useState<Record<CycleLevel, PlanningTemplateItem[]>>({
@@ -305,7 +308,12 @@ export default function Planning() {
         getPlanningTemplates("meso"),
         getPlanningTemplates("macro"),
       ]);
-      setTemplates({ micro, meso, macro });
+      const pendingDeletes = pendingDeleteTimerByTemplateRef.current;
+      setTemplates({
+        micro: micro.filter((item) => !pendingDeletes.has(item.id)),
+        meso: meso.filter((item) => !pendingDeletes.has(item.id)),
+        macro: macro.filter((item) => !pendingDeletes.has(item.id)),
+      });
     } catch (cause: unknown) {
       setTemplatesError(String((cause as { message?: string })?.message || cause));
     } finally {
@@ -584,14 +592,64 @@ export default function Planning() {
   }
   async function deleteTemplateItem(templateId: string) {
     if (!window.confirm("Confirma eliminar esta plantilla.")) return;
-    try {
-      await deletePlanningTemplate(templateId);
-      setFeedback("Plantilla eliminada.");
-      await refreshTemplates();
-      if (treeData?.id === templateId) setTreeData(null);
-    } catch (cause: unknown) {
-      setTemplatesError(String((cause as { message?: string })?.message || cause));
+    const template =
+      templates.micro.find((item) => item.id === templateId) ||
+      templates.meso.find((item) => item.id === templateId) ||
+      templates.macro.find((item) => item.id === templateId) ||
+      null;
+    if (!template) return;
+
+    const level = template.level;
+    setTemplates((prev) => ({
+      ...prev,
+      [level]: prev[level].filter((entry) => entry.id !== templateId),
+    }));
+    if (treeData?.id === templateId) {
+      setTreeData(null);
     }
+    setTemplatesError("");
+    setFeedback("Plantilla eliminada. Puedes deshacer.");
+
+    const timeoutMs = 7000;
+    const commitDelayMs = timeoutMs + 200;
+    const timerId = window.setTimeout(async () => {
+      pendingDeleteTimerByTemplateRef.current.delete(templateId);
+      try {
+        await deletePlanningTemplate(templateId);
+      } catch (cause: unknown) {
+        setTemplates((prev) => {
+          if (prev[level].some((entry) => entry.id === templateId)) return prev;
+          return {
+            ...prev,
+            [level]: [...prev[level], template],
+          };
+        });
+        setTemplatesError(String((cause as { message?: string })?.message || cause));
+      }
+    }, commitDelayMs);
+    pendingDeleteTimerByTemplateRef.current.set(templateId, timerId);
+
+    registerUndo({
+      message: `Plantilla "${template.name}" eliminada.`,
+      timeoutMs,
+      onUndo: async () => {
+        const pendingTimer = pendingDeleteTimerByTemplateRef.current.get(templateId);
+        if (pendingTimer) {
+          window.clearTimeout(pendingTimer);
+          pendingDeleteTimerByTemplateRef.current.delete(templateId);
+        }
+
+        setTemplates((prev) => {
+          if (prev[level].some((entry) => entry.id === templateId)) return prev;
+          return {
+            ...prev,
+            [level]: [...prev[level], template],
+          };
+        });
+        setTemplatesError("");
+        setFeedback("Eliminacion de plantilla deshecha.");
+      },
+    });
   }
 
   async function submitAssignment() {

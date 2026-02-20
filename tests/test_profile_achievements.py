@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.profile.achievements import _build_reward_snapshot, compute_streak_metrics, normalize_basic_lift_key
+from app.profile.achievements import (
+    _build_reward_snapshot,
+    compute_streak_metrics,
+    normalize_basic_lift_key,
+    normalize_gamification_config,
+)
 
 
 def test_normalize_basic_lift_key_detects_expected_basics() -> None:
@@ -62,3 +67,36 @@ def test_build_reward_snapshot_reports_unlocked_and_next_targets() -> None:
     assert any("Sentadilla posterior libre" in item for item in achievements)
     assert any("objetivo 14 dias" in target for target in next_targets)
     assert any("objetivo 120 kg" in target for target in next_targets)
+
+
+def test_build_reward_snapshot_supports_custom_titles_from_config() -> None:
+    raw_config = {
+        "streak_tiers": [{"threshold": 2, "achievement": "Racha Mini", "medal": "Mini Medal"}],
+        "planning_days_tiers": [{"threshold": 3, "achievement": "Plan Mini", "medal": "Plan Medal"}],
+        "lift_tiers": {
+            "back_squat": [{"threshold": 20, "achievement": "SQ20", "medal": "SQ Medal"}],
+            "bench_press": [{"threshold": 20, "achievement": "BP20", "medal": "BP Medal"}],
+            "deadlift": [{"threshold": 20, "achievement": "DL20", "medal": "DL Medal"}],
+        },
+        "trilogy_achievement": "Tri Ready",
+        "trilogy_medal": "Tri Medal",
+    }
+    config = normalize_gamification_config(raw_config)
+
+    achievements, medals, _ = _build_reward_snapshot(
+        completed_days_total=5,
+        current_streak_days=3,
+        lift_prs_kg={
+            "back_squat": 25.0,
+            "bench_press": 25.0,
+            "deadlift": 25.0,
+        },
+        config_payload=config,
+    )
+
+    assert "Racha Mini" in achievements
+    assert "Plan Mini" in achievements
+    assert "SQ20" in achievements
+    assert "Tri Ready" in achievements
+    assert "Mini Medal" in medals
+    assert "Tri Medal" in medals

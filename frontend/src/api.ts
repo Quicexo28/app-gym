@@ -439,8 +439,6 @@ export type ViewModeResponse = {
 export type ProfileData = {
   username?: string | null;
   bio?: string | null;
-  achievements: string[];
-  medals: string[];
 };
 
 export type ProfileTrainingStats = {
@@ -477,6 +475,29 @@ export type ProfileResponse = {
   profile: ProfileData;
   training_stats: ProfileTrainingStats;
   gamification: ProfileGamification;
+};
+
+export type GamificationTier = {
+  threshold: number;
+  achievement: string;
+  medal: string;
+};
+
+export type GamificationConfig = {
+  streak_tiers: GamificationTier[];
+  planning_days_tiers: GamificationTier[];
+  lift_tiers: {
+    back_squat: GamificationTier[];
+    bench_press: GamificationTier[];
+    deadlift: GamificationTier[];
+  };
+  trilogy_achievement: string;
+  trilogy_medal: string;
+};
+
+export type GamificationConfigResponse = {
+  config: GamificationConfig;
+  defaults: GamificationConfig;
 };
 
 let authToken: string | null = null;
@@ -724,10 +745,19 @@ export function getMyProfile(): Promise<ProfileResponse> {
 export function updateMyProfile(payload: {
   username?: string | null;
   bio?: string | null;
-  achievements?: string[];
-  medals?: string[];
 }): Promise<ProfileResponse> {
   return http("/api/v1/profile/me", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getAdminGamificationConfig(): Promise<GamificationConfigResponse> {
+  return http("/api/v1/admin/dev/gamification-config");
+}
+
+export function updateAdminGamificationConfig(payload: GamificationConfig): Promise<GamificationConfig> {
+  return http("/api/v1/admin/dev/gamification-config", {
     method: "PUT",
     body: JSON.stringify(payload),
   });

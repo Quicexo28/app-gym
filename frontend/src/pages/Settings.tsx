@@ -1,19 +1,39 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { adminSwitchPlan, deleteMyAccount, ingestSessions, labelToBackendPlan, type PlanLabel, type Role } from "../api";
+import {
+  adminSwitchPlan,
+  deleteMyAccount,
+  getAdminGamificationConfig,
+  ingestSessions,
+  labelToBackendPlan,
+  updateAdminGamificationConfig,
+  type GamificationConfig,
+  type GamificationTier,
+  type PlanLabel,
+  type Role,
+} from "../api";
 import { parseExerciseImportFile, type LegacyImportMode } from "../lib/legacyImport";
-import { saveRoutines } from "../lib/storage";
+import { loadRoutines, saveRoutines } from "../lib/storage";
 import { useAthleteAccess } from "../state/athlete";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
+import { useUndo } from "../state/undo";
 import { useViewMode } from "../state/viewMode";
 
 type Option<T extends string> = {
   label: string;
   value: T;
   hint: string;
+};
+type TierBucketKey = "streak_tiers" | "planning_days_tiers";
+type LiftTierKey = "back_squat" | "bench_press" | "deadlift";
+
+const LIFT_TIER_LABELS: Record<LiftTierKey, string> = {
+  back_squat: "Sentadilla posterior libre",
+  bench_press: "Press banca plano",
+  deadlift: "Peso muerto convencional",
 };
 
 const SESSION_IMPORT_SAMPLE = [
@@ -65,13 +85,101 @@ function OptionRow<T extends string>({
   );
 }
 
+function cloneGamificationConfig(config: GamificationConfig): GamificationConfig {
+  return {
+    streak_tiers: config.streak_tiers.map((tier) => ({ ...tier })),
+    planning_days_tiers: config.planning_days_tiers.map((tier) => ({ ...tier })),
+    lift_tiers: {
+      back_squat: config.lift_tiers.back_squat.map((tier) => ({ ...tier })),
+      bench_press: config.lift_tiers.bench_press.map((tier) => ({ ...tier })),
+      deadlift: config.lift_tiers.deadlift.map((tier) => ({ ...tier })),
+    },
+    trilogy_achievement: config.trilogy_achievement,
+    trilogy_medal: config.trilogy_medal,
+  };
+}
+
+function nextTierThreshold(tiers: GamificationTier[]): number {
+  if (tiers.length === 0) return 1;
+  return Math.max(...tiers.map((tier) => Number(tier.threshold) || 0)) + 1;
+}
+
+function TierEditor({
+  title,
+  tiers,
+  onTierChange,
+  onTierAdd,
+  onTierRemove,
+}: {
+  title: string;
+  tiers: GamificationTier[];
+  onTierChange: (index: number, patch: Partial<GamificationTier>) => void;
+  onTierAdd: () => void;
+  onTierRemove: (index: number) => void;
+}) {
+  return (
+    <article className="surfaceButton" style={{ alignItems: "stretch" }}>
+      <div className="sectionHead">
+        <h4>{title}</h4>
+        <p>Umbral + texto de logro + medalla.</p>
+      </div>
+
+      <div className="stack compactStack" style={{ marginTop: 8 }}>
+        {tiers.map((tier, index) => (
+          <div key={`${title}_${index}`} className="splitGrid">
+            <div>
+              <label className="smallLabel">Umbral</label>
+              <input
+                type="number"
+                className="input"
+                min="0.1"
+                step="0.1"
+                value={tier.threshold}
+                onChange={(e) => onTierChange(index, { threshold: Number(e.target.value) || 0 })}
+              />
+            </div>
+            <div>
+              <label className="smallLabel">Logro</label>
+              <input
+                className="input"
+                value={tier.achievement}
+                onChange={(e) => onTierChange(index, { achievement: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="smallLabel">Medalla</label>
+              <input
+                className="input"
+                value={tier.medal}
+                onChange={(e) => onTierChange(index, { medal: e.target.value })}
+              />
+            </div>
+            <div style={{ display: "flex", alignItems: "end" }}>
+              <button className="btn" type="button" onClick={() => onTierRemove(index)}>
+                Quitar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="quickActions" style={{ marginTop: 10 }}>
+        <button className="btn" type="button" onClick={onTierAdd}>
+          + Agregar fila
+        </button>
+      </div>
+    </article>
+  );
+}
+
 export default function Settings() {
   const nav = useNavigate();
   const { athleteId, activeSubject } = useAthleteAccess();
   const { prefs, setTheme, setEffortScale, setWeightUnit, setDistanceUnit } = usePreferences();
   const { user, planLabel, isAdmin, refreshMe, logout } = useAuth();
+  const { registerUndo } = useUndo();
   const { viewMode } = useViewMode();
-  const { items, removeItem, importGlobalCatalog, exportGlobalCatalog, refresh } = useExerciseCatalog();
+  const { items, addCustom, removeItem, importGlobalCatalog, exportGlobalCatalog, refresh } = useExerciseCatalog();
   const isAdminMode = isAdmin && viewMode === "admin";
 
   const [switchEmail, setSwitchEmail] = useState("");
@@ -92,6 +200,13 @@ export default function Settings() {
   const [sessionImportResult, setSessionImportResult] = useState("");
   const [sessionImportShowAdvanced, setSessionImportShowAdvanced] = useState(false);
 
+  const [gamificationConfig, setGamificationConfig] = useState<GamificationConfig | null>(null);
+  const [gamificationDefaults, setGamificationDefaults] = useState<GamificationConfig | null>(null);
+  const [gamificationLoading, setGamificationLoading] = useState(false);
+  const [gamificationBusy, setGamificationBusy] = useState(false);
+  const [gamificationMsg, setGamificationMsg] = useState("");
+  const [gamificationError, setGamificationError] = useState("");
+
   const [dangerBusy, setDangerBusy] = useState(false);
   const [dangerError, setDangerError] = useState("");
   const [dangerInfo, setDangerInfo] = useState("");
@@ -102,6 +217,29 @@ export default function Settings() {
     setSwitchEmail(user.email);
     if (planLabel) setSwitchPlan(planLabel);
   }, [user, planLabel]);
+
+  useEffect(() => {
+    if (!isAdminMode) return;
+    let cancelled = false;
+    setGamificationLoading(true);
+    setGamificationError("");
+    getAdminGamificationConfig()
+      .then((res) => {
+        if (cancelled) return;
+        setGamificationConfig(cloneGamificationConfig(res.config));
+        setGamificationDefaults(cloneGamificationConfig(res.defaults));
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setGamificationError(String((cause as { message?: string })?.message || cause));
+      })
+      .finally(() => {
+        if (!cancelled) setGamificationLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdminMode]);
 
   async function submitSwitchPlan() {
     if (!switchEmail.trim()) {
@@ -126,6 +264,124 @@ export default function Settings() {
     } finally {
       setSwitchBusy(false);
     }
+  }
+
+  function updateTierList(list: GamificationTier[], index: number, patch: Partial<GamificationTier>): GamificationTier[] {
+    return list.map((tier, rowIndex) => (rowIndex === index ? { ...tier, ...patch } : tier));
+  }
+
+  function updateTierBucket(bucket: TierBucketKey, index: number, patch: Partial<GamificationTier>) {
+    setGamificationConfig((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        [bucket]: updateTierList(current[bucket], index, patch),
+      };
+    });
+    setGamificationMsg("");
+    setGamificationError("");
+  }
+
+  function addTierBucketRow(bucket: TierBucketKey) {
+    setGamificationConfig((current) => {
+      if (!current) return current;
+      const nextRow: GamificationTier = {
+        threshold: nextTierThreshold(current[bucket]),
+        achievement: "Nuevo logro",
+        medal: "Nueva medalla",
+      };
+      return {
+        ...current,
+        [bucket]: [...current[bucket], nextRow],
+      };
+    });
+    setGamificationMsg("");
+    setGamificationError("");
+  }
+
+  function removeTierBucketRow(bucket: TierBucketKey, index: number) {
+    setGamificationConfig((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        [bucket]: current[bucket].filter((_, rowIndex) => rowIndex !== index),
+      };
+    });
+    setGamificationMsg("");
+    setGamificationError("");
+  }
+
+  function updateLiftTier(lift: LiftTierKey, index: number, patch: Partial<GamificationTier>) {
+    setGamificationConfig((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        lift_tiers: {
+          ...current.lift_tiers,
+          [lift]: updateTierList(current.lift_tiers[lift], index, patch),
+        },
+      };
+    });
+    setGamificationMsg("");
+    setGamificationError("");
+  }
+
+  function addLiftTierRow(lift: LiftTierKey) {
+    setGamificationConfig((current) => {
+      if (!current) return current;
+      const nextRow: GamificationTier = {
+        threshold: nextTierThreshold(current.lift_tiers[lift]),
+        achievement: `Nuevo logro ${LIFT_TIER_LABELS[lift]}`,
+        medal: `Nueva medalla ${LIFT_TIER_LABELS[lift]}`,
+      };
+      return {
+        ...current,
+        lift_tiers: {
+          ...current.lift_tiers,
+          [lift]: [...current.lift_tiers[lift], nextRow],
+        },
+      };
+    });
+    setGamificationMsg("");
+    setGamificationError("");
+  }
+
+  function removeLiftTierRow(lift: LiftTierKey, index: number) {
+    setGamificationConfig((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        lift_tiers: {
+          ...current.lift_tiers,
+          [lift]: current.lift_tiers[lift].filter((_, rowIndex) => rowIndex !== index),
+        },
+      };
+    });
+    setGamificationMsg("");
+    setGamificationError("");
+  }
+
+  async function saveGamificationRules() {
+    if (!gamificationConfig) return;
+    setGamificationBusy(true);
+    setGamificationError("");
+    setGamificationMsg("");
+    try {
+      const saved = await updateAdminGamificationConfig(gamificationConfig);
+      setGamificationConfig(cloneGamificationConfig(saved));
+      setGamificationMsg("Configuracion de logros/medallas guardada.");
+    } catch (cause: unknown) {
+      setGamificationError(String((cause as { message?: string })?.message || cause));
+    } finally {
+      setGamificationBusy(false);
+    }
+  }
+
+  function loadGamificationDefaults() {
+    if (!gamificationDefaults) return;
+    setGamificationConfig(cloneGamificationConfig(gamificationDefaults));
+    setGamificationMsg("Valores recomendados cargados. Guarda para aplicarlos.");
+    setGamificationError("");
   }
 
   async function importLegacyFile(file: File | null) {
@@ -256,10 +512,24 @@ export default function Settings() {
       return;
     }
 
+    const sourceAthleteId = athleteId;
+    const previousRoutines = loadRoutines(sourceAthleteId).map((routine) => ({
+      ...routine,
+      exercises: routine.exercises.map((exercise) => ({ ...exercise })),
+    }));
+
     setDangerBusy(true);
     try {
-      saveRoutines([], athleteId);
+      saveRoutines([], sourceAthleteId);
       setDangerInfo(`Rutinas locales eliminadas para ${subjectLabel}.`);
+      registerUndo({
+        message: `Rutinas locales eliminadas (${subjectLabel}).`,
+        onUndo: async () => {
+          saveRoutines(previousRoutines, sourceAthleteId);
+          setDangerError("");
+          setDangerInfo(`Rutinas restauradas para ${subjectLabel}: ${previousRoutines.length}.`);
+        },
+      });
     } catch (e: unknown) {
       setDangerError(String((e as { message?: string })?.message || e));
     } finally {
@@ -272,6 +542,13 @@ export default function Settings() {
     setDangerInfo("");
 
     const customItems = items.filter((item) => item.scope === "custom");
+    const customSnapshots = customItems.map((item) => ({
+      group: item.group,
+      family: item.family,
+      variation: item.variation,
+      subvariation: item.subvariation,
+      aliases: item.aliases,
+    }));
     if (customItems.length === 0) {
       setDangerInfo("No hay ejercicios personalizados para borrar.");
       return;
@@ -293,6 +570,23 @@ export default function Settings() {
       }
       await refresh();
       setDangerInfo(`Ejercicios personalizados eliminados: ${customItems.length}.`);
+      registerUndo({
+        message: `Ejercicios personalizados eliminados (${customItems.length}).`,
+        onUndo: async () => {
+          try {
+            for (const payload of customSnapshots) {
+              await addCustom(payload);
+            }
+            await refresh();
+            setDangerError("");
+            setDangerInfo(`Ejercicios personalizados restaurados: ${customSnapshots.length}.`);
+          } catch (cause: unknown) {
+            const message = String((cause as { message?: string })?.message || cause);
+            setDangerError(message);
+            throw cause;
+          }
+        },
+      });
     } catch (e: unknown) {
       setDangerError(String((e as { message?: string })?.message || e));
     } finally {
@@ -309,7 +603,13 @@ export default function Settings() {
       return;
     }
 
-    const globalCount = items.filter((item) => item.scope === "global").length;
+    const globalItems = items
+      .filter((item) => item.scope === "global")
+      .map((item) => ({
+        ...item,
+        aliases: item.aliases ? [...item.aliases] : undefined,
+      }));
+    const globalCount = globalItems.length;
     const ok = requestDangerConfirmation(
       `Esta accion borra TODOS los ejercicios globales (${globalCount}).`,
       "BORRAR EJERCICIOS GLOBALES",
@@ -324,6 +624,21 @@ export default function Settings() {
       await importGlobalCatalog({ mode: "replace", items: [] });
       await refresh();
       setDangerInfo("Ejercicios globales eliminados.");
+      registerUndo({
+        message: `Ejercicios globales eliminados (${globalCount}).`,
+        onUndo: async () => {
+          try {
+            await importGlobalCatalog({ mode: "replace", items: globalItems });
+            await refresh();
+            setDangerError("");
+            setDangerInfo(`Ejercicios globales restaurados: ${globalCount}.`);
+          } catch (cause: unknown) {
+            const message = String((cause as { message?: string })?.message || cause);
+            setDangerError(message);
+            throw cause;
+          }
+        },
+      });
     } catch (e: unknown) {
       setDangerError(String((e as { message?: string })?.message || e));
     } finally {
@@ -443,6 +758,104 @@ export default function Settings() {
 
       {isAdminMode ? (
         <>
+          <section className="surface">
+            <div className="sectionHead">
+              <h3>Admin: logros y medallas automaticos</h3>
+              <p>Agrega, edita y configura las reglas del sistema de logros global.</p>
+            </div>
+
+            {gamificationLoading ? (
+              <div className="emptyState" style={{ marginTop: 12 }}>
+                Cargando configuracion...
+              </div>
+            ) : null}
+
+            {!gamificationLoading && gamificationConfig ? (
+              <div className="stack" style={{ marginTop: 12 }}>
+                <div className="gridCards">
+                  <TierEditor
+                    title="Rachas"
+                    tiers={gamificationConfig.streak_tiers}
+                    onTierChange={(index, patch) => updateTierBucket("streak_tiers", index, patch)}
+                    onTierAdd={() => addTierBucketRow("streak_tiers")}
+                    onTierRemove={(index) => removeTierBucketRow("streak_tiers", index)}
+                  />
+                  <TierEditor
+                    title="Dias completados de planificacion"
+                    tiers={gamificationConfig.planning_days_tiers}
+                    onTierChange={(index, patch) => updateTierBucket("planning_days_tiers", index, patch)}
+                    onTierAdd={() => addTierBucketRow("planning_days_tiers")}
+                    onTierRemove={(index) => removeTierBucketRow("planning_days_tiers", index)}
+                  />
+                </div>
+
+                <div className="gridCards">
+                  {(Object.keys(LIFT_TIER_LABELS) as LiftTierKey[]).map((liftKey) => (
+                    <TierEditor
+                      key={liftKey}
+                      title={LIFT_TIER_LABELS[liftKey]}
+                      tiers={gamificationConfig.lift_tiers[liftKey]}
+                      onTierChange={(index, patch) => updateLiftTier(liftKey, index, patch)}
+                      onTierAdd={() => addLiftTierRow(liftKey)}
+                      onTierRemove={(index) => removeLiftTierRow(liftKey, index)}
+                    />
+                  ))}
+                </div>
+
+                <article className="surfaceButton">
+                  <div className="sectionHead">
+                    <h4>Bonus trilogia basica</h4>
+                    <p>Se desbloquea cuando los 3 basicos superan el primer umbral.</p>
+                  </div>
+                  <div className="splitGrid" style={{ marginTop: 10 }}>
+                    <div>
+                      <label className="smallLabel">Logro</label>
+                      <input
+                        className="input"
+                        value={gamificationConfig.trilogy_achievement}
+                        onChange={(e) => {
+                          const nextValue = e.target.value;
+                          setGamificationConfig((current) =>
+                            current ? { ...current, trilogy_achievement: nextValue } : current,
+                          );
+                          setGamificationMsg("");
+                          setGamificationError("");
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="smallLabel">Medalla</label>
+                      <input
+                        className="input"
+                        value={gamificationConfig.trilogy_medal}
+                        onChange={(e) => {
+                          const nextValue = e.target.value;
+                          setGamificationConfig((current) =>
+                            current ? { ...current, trilogy_medal: nextValue } : current,
+                          );
+                          setGamificationMsg("");
+                          setGamificationError("");
+                        }}
+                      />
+                    </div>
+                  </div>
+                </article>
+
+                <div className="quickActions">
+                  <button className="btn primary" onClick={saveGamificationRules} disabled={gamificationBusy}>
+                    {gamificationBusy ? "Guardando..." : "Guardar reglas de logros"}
+                  </button>
+                  <button className="btn" onClick={loadGamificationDefaults} disabled={gamificationBusy || !gamificationDefaults}>
+                    Restaurar recomendados
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {gamificationError ? <div className="message error" style={{ marginTop: 12 }}>{gamificationError}</div> : null}
+            {gamificationMsg ? <div className="message" style={{ marginTop: 12 }}>{gamificationMsg}</div> : null}
+          </section>
+
           <section className="surface">
             <div className="sectionHead">
               <h3>Admin: import/export catalogo global</h3>

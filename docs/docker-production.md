@@ -2,14 +2,15 @@
 
 ## Scope
 - Deploy target: single cloud VM using `docker compose`.
-- Components: `api` + `db` (frontend can be deployed as static app separately).
+- Components: `api` + `db` + `web` (frontend estatico servido por Nginx).
 - TLS/ingress: external proxy (outside this compose).
 - Migration strategy: run one-shot migration job before starting API.
 - Availability target: brief downtime accepted.
 
 ## Files
 - `Dockerfile.prod`: production image for the API.
-- `docker-compose.prod.yml`: production stack (`db`, `migrate`, `api`).
+- `frontend/Dockerfile.prod`: production image for el frontend estatico.
+- `docker-compose.prod.yml`: production stack (`db`, `migrate`, `api`, `web`).
 - `.env.prod.example`: template for production environment values.
 - `deploy/deploy_prod.sh`: one-command deploy script for the VM.
 - `deploy/install_systemd_service.sh`: optional boot-time systemd service setup.
@@ -36,15 +37,18 @@ Recommended to update:
 - `POSTGRES_USER`
 - `POSTGRES_DB`
 - `API_PORT`
+- `WEB_PORT`
+- `VITE_API_BASE_URL`
+- `VITE_GOOGLE_CLIENT_ID`
 
 ## 2) Deploy sequence
 Run from repo root:
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml build api
+docker compose --env-file .env.prod -f docker-compose.prod.yml build api web
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm migrate
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api web
 ```
 
 Notes:
@@ -62,25 +66,21 @@ chmod +x deploy/deploy_prod.sh
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 curl -f http://127.0.0.1:${API_PORT:-8000}/health
 curl -f http://127.0.0.1:${API_PORT:-8000}/api/v1/meta/ping
+curl -f http://127.0.0.1:${WEB_PORT:-8080}
 ```
 
 Expected:
 - `db` is healthy.
 - `api` is up/healthy.
+- `web` is up/healthy.
 - `/health` returns `{"status":"ok"}`.
 - `/api/v1/meta/ping` returns `{"pong":true}`.
 
-## 3.1) Frontend auth env (Google + API URL)
-The React app reads Google client id from `frontend/.env.local` (or build-time env var):
-
-```bash
-cp frontend/.env.example frontend/.env.local
-```
-
-Set:
+## 3.1) Frontend build env (Google + API URL)
+Set in `.env.prod`:
 - `VITE_API_BASE_URL=https://api.tu-dominio.com` (or empty for same-origin reverse proxy)
 - `VITE_GOOGLE_CLIENT_ID=<same value as GOOGLE_CLIENT_ID>`
-- `VITE_ENABLE_GUEST_LOGIN=true` (optional; for debug environments only)
+- `VITE_ENABLE_GUEST_LOGIN=false` (recommended in production)
 
 Use the same Google OAuth client id in backend (`GOOGLE_CLIENT_ID`) and frontend (`VITE_GOOGLE_CLIENT_ID`).
 
@@ -100,9 +100,9 @@ This removes dependency on your local PC and Docker Desktop.
 For this stage rollback is image-based plus DB restore when schema/data changed.
 
 1. Switch API image tag back to previous stable image.
-2. Restart API:
+2. Restart API + Web:
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api web
 ```
 3. If schema changes are incompatible, restore the DB backup taken before deploy.
 
