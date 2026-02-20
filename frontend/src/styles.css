@@ -319,11 +319,44 @@ textarea.input:focus,
   gap: 8px;
 }
 
+.setRowCard {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--bg-elevated);
+  display: grid;
+  gap: 8px;
+}
+
 .setRow {
   display: grid;
   gap: 8px;
   grid-template-columns: auto 1fr 1fr auto;
   align-items: center;
+}
+
+.setRowMeta {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.setInlineCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.setInlineCheck input {
+  margin: 0;
+}
+
+.setRpeField {
+  width: min(180px, 100%);
 }
 
 .setTag {
@@ -673,6 +706,14 @@ textarea.input:focus,
 
   .setTag {
     grid-column: 1 / -1;
+  }
+
+  .setRowMeta {
+    align-items: stretch;
+  }
+
+  .setRpeField {
+    width: 100%;
   }
 
   .planningEditor {
