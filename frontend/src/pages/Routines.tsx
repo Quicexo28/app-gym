@@ -224,40 +224,77 @@ function renderTree(
   onAdd: (entry: ExerciseCatalogEntry) => void,
   canAdd: (entry: ExerciseCatalogEntry) => boolean,
   expandAll: boolean,
+  onSelectGroup: (group: string) => void,
+  depth: number,
+  activeRootLabel: string | null,
 ) {
-  return nodes.map((node) => (
-    <details key={node.path.join(" > ")} className="treeNode" open={expandAll}>
-      <summary className="treeSummary">
-        <span>{node.label}</span>
-        <span className="chip">{node.totalItems}</span>
-      </summary>
+  return nodes.map((node) => {
+    const isRoot = depth === 1;
+    const isSelectedRoot = isRoot && activeRootLabel === node.label;
+    const isSiblingRoot = isRoot && activeRootLabel !== null && !isSelectedRoot;
+    const isInSelectedBranch = activeRootLabel !== null && node.path[0] === activeRootLabel;
+    const depthClass = depth >= 4 ? "treeNodeDepth4" : `treeNodeDepth${depth}`;
+    const nodeClassName = [
+      "treeNode",
+      depthClass,
+      isInSelectedBranch ? "treeNodeFocused" : "",
+      isSelectedRoot ? "treeNodeSelectedRoot" : "",
+      isSiblingRoot ? "treeNodeSiblingCollapsed" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const isOpen = isRoot && activeRootLabel !== null ? isSelectedRoot : expandAll;
 
-      <div className="treeChildren">
-        {node.items.filter((item) => canAdd(item.entry)).length > 0 ? (
-          <div className="treeLeafList">
-            {node.items
-              .filter((item) => canAdd(item.entry))
-              .map((item) => (
-              <article key={item.entry.id} className="treeLeaf">
-                <div>
-                  <strong>{item.entry.name}</strong>
-                  <div className="small">{item.treePath.join(" > ")}</div>
-                  <div className="chipRow" style={{ marginTop: 6 }}>
-                    <span className="chip">{item.entry.scope === "global" ? "Global" : "Personal"}</span>
-                  </div>
-                </div>
-                <button className="btn" onClick={() => onAdd(item.entry)}>
-                  Agregar
-                </button>
-              </article>
-            ))}
-          </div>
-        ) : null}
+    return (
+      <details
+        key={node.path.join(" > ")}
+        className={nodeClassName}
+        open={isOpen}
+      >
+        <summary
+          className={`treeSummary ${isRoot ? "treeSummarySelectable" : ""} ${isSelectedRoot ? "treeSummarySelected" : ""}`}
+          onClick={
+            isRoot
+              ? (event) => {
+                  event.preventDefault();
+                  onSelectGroup(node.label);
+                }
+              : undefined
+          }
+        >
+          <span>{node.label}</span>
+          <span className="chip">{node.totalItems}</span>
+        </summary>
 
-        {node.children.length > 0 ? renderTree(node.children, onAdd, canAdd, expandAll) : null}
-      </div>
-    </details>
-  ));
+        <div className="treeChildren">
+          {node.items.filter((item) => canAdd(item.entry)).length > 0 ? (
+            <div className="treeLeafList">
+              {node.items
+                .filter((item) => canAdd(item.entry))
+                .map((item) => (
+                  <article key={item.entry.id} className="treeLeaf">
+                    <div>
+                      <strong>{item.entry.name}</strong>
+                      <div className="small">{item.treePath.join(" > ")}</div>
+                      <div className="chipRow" style={{ marginTop: 6 }}>
+                        <span className="chip">{item.entry.scope === "global" ? "Global" : "Personal"}</span>
+                      </div>
+                    </div>
+                    <button className="btn" onClick={() => onAdd(item.entry)}>
+                      Agregar
+                    </button>
+                  </article>
+                ))}
+            </div>
+          ) : null}
+
+          {node.children.length > 0
+            ? renderTree(node.children, onAdd, canAdd, expandAll, onSelectGroup, depth + 1, activeRootLabel)
+            : null}
+        </div>
+      </details>
+    );
+  });
 }
 
 export default function Routines() {
@@ -280,17 +317,21 @@ export default function Routines() {
 
   const filters = useMemo<ExerciseFilters>(
     () => ({
-      group: selectedGroup,
+      group: ALL,
       zone: selectedZone,
       search,
     }),
-    [search, selectedGroup, selectedZone],
+    [search, selectedZone],
   );
   const browser = useMemo(() => buildExerciseCatalogBrowser(catalogEntries, filters), [catalogEntries, filters]);
   const filteredEntries = browser.filteredEntries;
   const searchTokens = useMemo(() => tokenizeExerciseSearch(search), [search]);
   const treeItems = useMemo(() => toTreeItems(filteredEntries, searchTokens), [filteredEntries, searchTokens]);
   const tree = useMemo(() => buildTree(treeItems, searchTokens.length > 0), [treeItems, searchTokens.length]);
+  const activeRootLabel = useMemo(() => {
+    if (selectedGroup === ALL) return null;
+    return tree.some((node) => node.label === selectedGroup) ? selectedGroup : null;
+  }, [selectedGroup, tree]);
   const nonLeafPathKeys = useMemo(() => buildNonLeafPathKeys(catalogEntries), [catalogEntries]);
   const subjectLabelById = useMemo(() => new Map(subjects.map((subject) => [subject.id, subject.label])), [subjects]);
 
@@ -394,6 +435,10 @@ export default function Routines() {
     setSelectedGroup(ALL);
     setSelectedZone(ALL_EXERCISE_ZONE_FILTER);
     setSearch("");
+  }
+
+  function selectGroupFromTree(groupValue: string) {
+    setSelectedGroup((prev) => (prev === groupValue ? ALL : groupValue));
   }
 
   function resetDraft() {
@@ -862,23 +907,6 @@ export default function Routines() {
                   <option value={EXERCISE_ZONE_LOWER}>Inferior</option>
                 </select>
               </div>
-
-              <div>
-                <label className="smallLabel">Grupo muscular</label>
-                <select
-                  className="input"
-                  value={selectedGroup}
-                  onChange={(e) => setSelectedGroup(e.target.value)}
-                >
-                  <option value={ALL}>Todos</option>
-                  {browser.groupOptions.map((group) => (
-                    <option key={group} value={group}>
-                      {group}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
             </div>
 
             <div style={{ marginTop: 12 }}>
@@ -913,7 +941,7 @@ export default function Routines() {
               </div>
             ) : (
               <div className="treeList" style={{ marginTop: 12 }}>
-                {renderTree(tree, addSelectedExercise, isLeafEntry, searchTokens.length > 0)}
+                {renderTree(tree, addSelectedExercise, isLeafEntry, searchTokens.length > 0, selectGroupFromTree, 1, activeRootLabel)}
               </div>
             )}
           </section>

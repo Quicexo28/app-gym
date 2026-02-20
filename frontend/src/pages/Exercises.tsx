@@ -48,6 +48,7 @@ type TreeActions = {
   onRemove: (item: ExerciseCatalogEntry) => void;
   canRemove: (item: ExerciseCatalogEntry) => boolean;
   editingId: string;
+  onSelectGroup: (group: string) => void;
 };
 
 type SubvariationChain = {
@@ -156,48 +157,86 @@ function buildTree(items: TreeItem[], rankBySimilarity: boolean): CatalogNode[] 
   return freezeNodes(root, rankBySimilarity);
 }
 
-function renderTree(nodes: CatalogNode[], actions: TreeActions, expandAll: boolean) {
-  const { onEdit, canEdit, onRemove, canRemove, editingId } = actions;
-  return nodes.map((node) => (
-    <details key={node.path.join(" > ")} className="treeNode" open={expandAll}>
-      <summary className="treeSummary">
-        <span>{node.label}</span>
-        <span className="chip">{node.totalItems}</span>
-      </summary>
+function renderTree(
+  nodes: CatalogNode[],
+  actions: TreeActions,
+  expandAll: boolean,
+  depth: number,
+  activeRootLabel: string | null,
+) {
+  const { onEdit, canEdit, onRemove, canRemove, editingId, onSelectGroup } = actions;
+  return nodes.map((node) => {
+    const isRoot = depth === 1;
+    const isSelectedRoot = isRoot && activeRootLabel === node.label;
+    const isSiblingRoot = isRoot && activeRootLabel !== null && !isSelectedRoot;
+    const isInSelectedBranch = activeRootLabel !== null && node.path[0] === activeRootLabel;
+    const depthClass = depth >= 4 ? "treeNodeDepth4" : `treeNodeDepth${depth}`;
+    const nodeClassName = [
+      "treeNode",
+      depthClass,
+      isInSelectedBranch ? "treeNodeFocused" : "",
+      isSelectedRoot ? "treeNodeSelectedRoot" : "",
+      isSiblingRoot ? "treeNodeSiblingCollapsed" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const isOpen = isRoot && activeRootLabel !== null ? isSelectedRoot : expandAll;
 
-      <div className="treeChildren">
-        {node.items.length > 0 ? (
-          <div className="treeLeafList">
-            {node.items.map((item) => (
-              <article key={item.entry.id} className="treeLeaf">
-                <div>
-                  <strong>{item.entry.name}</strong>
-                  <div className="small">{item.treePath.join(" > ")}</div>
-                  <div className="chipRow" style={{ marginTop: 6 }}>
-                    <span className="chip">{item.entry.scope === "global" ? "Global" : "Personal"}</span>
+    return (
+      <details
+        key={node.path.join(" > ")}
+        className={nodeClassName}
+        open={isOpen}
+      >
+        <summary
+          className={`treeSummary ${isRoot ? "treeSummarySelectable" : ""} ${isSelectedRoot ? "treeSummarySelected" : ""}`}
+          onClick={
+            isRoot
+              ? (event) => {
+                  event.preventDefault();
+                  onSelectGroup(node.label);
+                }
+              : undefined
+          }
+        >
+          <span>{node.label}</span>
+          <span className="chip">{node.totalItems}</span>
+        </summary>
+
+        <div className="treeChildren">
+          {node.items.length > 0 ? (
+            <div className="treeLeafList">
+              {node.items.map((item) => (
+                <article key={item.entry.id} className="treeLeaf">
+                  <div>
+                    <strong>{item.entry.name}</strong>
+                    <div className="small">{item.treePath.join(" > ")}</div>
+                    <div className="chipRow" style={{ marginTop: 6 }}>
+                      <span className="chip">{item.entry.scope === "global" ? "Global" : "Personal"}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="hstack compact">
-                  {canEdit(item.entry) ? (
-                    <button className="btn" onClick={() => onEdit(item.entry)}>
-                      {editingId === item.entry.id ? "Editando..." : "Editar"}
-                    </button>
-                  ) : null}
-                  {canRemove(item.entry) ? (
-                    <button className="btn" onClick={() => onRemove(item.entry)}>
-                      Eliminar
-                    </button>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : null}
+                  <div className="hstack compact">
+                    {canEdit(item.entry) ? (
+                      <button className="btn" onClick={() => onEdit(item.entry)}>
+                        {editingId === item.entry.id ? "Editando..." : "Editar"}
+                      </button>
+                    ) : null}
+                    {canRemove(item.entry) ? (
+                      <button className="btn" onClick={() => onRemove(item.entry)}>
+                        Eliminar
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
 
-        {node.children.length > 0 ? renderTree(node.children, actions, expandAll) : null}
-      </div>
-    </details>
-  ));
+          {node.children.length > 0 ? renderTree(node.children, actions, expandAll, depth + 1, activeRootLabel) : null}
+        </div>
+      </details>
+    );
+  });
 }
 
 export default function Exercises() {
@@ -226,11 +265,11 @@ export default function Exercises() {
 
   const filters = useMemo<ExerciseFilters>(
     () => ({
-      group: selectedGroup,
+      group: ALL,
       zone: selectedZone,
       search,
     }),
-    [search, selectedGroup, selectedZone],
+    [search, selectedZone],
   );
   const browser = useMemo(() => buildExerciseCatalogBrowser(entries, filters), [entries, filters]);
 
@@ -238,6 +277,10 @@ export default function Exercises() {
   const searchTokens = useMemo(() => tokenizeExerciseSearch(search), [search]);
   const treeItems = useMemo(() => toTreeItems(filteredEntries, searchTokens), [filteredEntries, searchTokens]);
   const tree = useMemo(() => buildTree(treeItems, searchTokens.length > 0), [treeItems, searchTokens.length]);
+  const activeRootLabel = useMemo(() => {
+    if (selectedGroup === ALL) return null;
+    return tree.some((node) => node.label === selectedGroup) ? selectedGroup : null;
+  }, [selectedGroup, tree]);
   const createOptions = useMemo(() => {
     const groupOptions = uniqueSorted(entries.map((entry) => entry.group));
 
@@ -308,6 +351,10 @@ export default function Exercises() {
     setSelectedGroup(ALL);
     setSelectedZone(ALL_EXERCISE_ZONE_FILTER);
     setSearch("");
+  }
+
+  function selectGroupFromTree(groupValue: string) {
+    setSelectedGroup((prev) => (prev === groupValue ? ALL : groupValue));
   }
 
   function clearEdit() {
@@ -703,22 +750,6 @@ export default function Exercises() {
               <option value={EXERCISE_ZONE_LOWER}>Inferior</option>
             </select>
           </div>
-
-          <div>
-            <label className="smallLabel">Grupo muscular</label>
-            <select
-              className="input"
-              value={selectedGroup}
-              onChange={(e) => setSelectedGroup(e.target.value)}
-            >
-              <option value={ALL}>Todos</option>
-              {browser.groupOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
         <div style={{ marginTop: 12 }}>
@@ -752,7 +783,8 @@ export default function Exercises() {
               onRemove: remove,
               canRemove: canEditEntry,
               editingId: editId,
-            }, searchTokens.length > 0)}
+              onSelectGroup: selectGroupFromTree,
+            }, searchTokens.length > 0, 1, activeRootLabel)}
           </div>
         )}
       </section>

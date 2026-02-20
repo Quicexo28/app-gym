@@ -242,12 +242,22 @@ textarea.input:focus,
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+  transition: opacity 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .activeChipButton {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
   background: color-mix(in srgb, var(--accent), var(--bg-elevated) 88%);
+}
+
+.chipButton.dimmedChipButton {
+  opacity: 0.6;
+}
+
+.chipButton.dimmedChipButton:hover,
+.chipButton.dimmedChipButton:focus-visible {
+  opacity: 0.78;
 }
 
 .quickActions {
@@ -460,6 +470,44 @@ textarea.input:focus,
   border-radius: 12px;
   background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 20%);
   overflow: hidden;
+  transition: opacity 0.2s ease, filter 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.treeNodeDepth1 {
+  --tree-node-opacity: 0.72;
+  --tree-node-saturation: 0.75;
+}
+
+.treeNodeDepth2 {
+  --tree-node-opacity: 0.8;
+  --tree-node-saturation: 0.82;
+}
+
+.treeNodeDepth3 {
+  --tree-node-opacity: 0.9;
+  --tree-node-saturation: 0.9;
+}
+
+.treeNodeDepth4 {
+  --tree-node-opacity: 1;
+  --tree-node-saturation: 1;
+}
+
+.treeNodeFocused {
+  opacity: var(--tree-node-opacity, 1);
+  filter: saturate(var(--tree-node-saturation, 1));
+}
+
+.treeNodeSiblingCollapsed {
+  opacity: 0.44;
+  filter: saturate(0.7);
+}
+
+.treeNodeSelectedRoot {
+  position: relative;
+  z-index: 2;
+  border-color: color-mix(in srgb, var(--accent), var(--border) 55%);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent), transparent 82%);
 }
 
 .treeSummary {
@@ -471,6 +519,15 @@ textarea.input:focus,
   justify-content: space-between;
   gap: 8px;
   font-weight: 700;
+}
+
+.treeSummarySelectable {
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.treeSummarySelected {
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 88%);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .treeSummary::-webkit-details-marker {

@@ -40,7 +40,7 @@ export type ExerciseCatalogEntry = {
   scope: "global" | "custom";
   owner_user_id: string | null;
   path: string[];
-  depth: 2 | 3 | 4;
+  depth: 2 | 3 | 4 | 5;
   searchText: string;
   created_at_utc: string;
 };
@@ -266,13 +266,30 @@ export function getExerciseBodyZone(group: string): ExerciseBodyZone {
   return EXERCISE_ZONE_UPPER;
 }
 
+function splitSubvariationChain(value: string): { subvariation: string; executionType: string } {
+  const parts = cleanExerciseText(value)
+    .split(">")
+    .map((part) => cleanExerciseText(part))
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return { subvariation: "", executionType: "" };
+  }
+
+  return {
+    subvariation: parts[0] || "",
+    executionType: parts.slice(1).join(" > "),
+  };
+}
+
 export function catalogPathFromParts(group: string, family: string, variation = "", subvariation = ""): string[] {
   const path = [cleanExerciseText(group), cleanExerciseText(family)];
   const variationClean = cleanExerciseText(variation);
-  const subvariationClean = cleanExerciseText(subvariation);
+  const { subvariation: subvariationClean, executionType } = splitSubvariationChain(subvariation);
 
   if (variationClean) path.push(variationClean);
   if (subvariationClean) path.push(subvariationClean);
+  if (executionType) path.push(executionType);
   return path.filter(Boolean);
 }
 
@@ -302,7 +319,7 @@ export function toExerciseCatalogEntries(items: ExerciseCatalogItem[]): Exercise
       const path = catalogPathFromParts(group, family, variation, subvariation);
       const name = formatCatalogName(family, variation, subvariation) || family;
       const searchable = [name, ...path, ...aliases].filter(Boolean).join(" ");
-      const depth = path.length <= 2 ? 2 : path.length === 3 ? 3 : 4;
+      const depth = Math.min(5, Math.max(2, path.length)) as 2 | 3 | 4 | 5;
 
       return {
         id: item.id,
