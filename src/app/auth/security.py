@@ -6,6 +6,7 @@ from typing import Any
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from passlib.exc import UnknownHashError
 
 from app.auth.types import Plan, Role
 
@@ -22,7 +23,10 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return PWD_CONTEXT.verify(password, password_hash)
+    try:
+        return PWD_CONTEXT.verify(password, password_hash)
+    except (UnknownHashError, ValueError, TypeError):
+        return False
 
 
 def create_access_token(*, sub: str, role: Role, plan: Plan) -> str:

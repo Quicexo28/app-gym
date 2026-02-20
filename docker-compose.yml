@@ -54,7 +54,8 @@ services:
       api:
         condition: service_started
     environment:
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+      VITE_PROXY_TARGET: ${VITE_PROXY_TARGET:-http://api:8000}
       VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
       VITE_ENABLE_GUEST_LOGIN: ${VITE_ENABLE_GUEST_LOGIN:-true}
       CHOKIDAR_USEPOLLING: "true"

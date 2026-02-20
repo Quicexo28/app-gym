@@ -109,6 +109,18 @@ def test_login_rejects_invalid_password() -> None:
     assert exc.value.detail == "Invalid credentials."
 
 
+def test_login_rejects_unknown_password_hash_without_500() -> None:
+    user = _make_user(email="legacy@example.com", password="Password123")
+    user.password_hash = "legacy-unsupported-hash"
+    db = FakeDb(users=[user])
+
+    with pytest.raises(HTTPException) as exc:
+        auth_endpoint.login(LoginRequest(identifier="legacy@example.com", password="Password123"), db)
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Invalid credentials."
+
+
 def test_validate_google_identity_requires_server_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth_endpoint.settings, "google_client_id", None)
 

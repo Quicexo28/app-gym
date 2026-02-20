@@ -160,6 +160,26 @@ function toFriendlyError(error: unknown): string {
   return "No se pudo completar la autenticacion.";
 }
 
+function PasswordVisibilityIcon({ visible }: { visible: boolean }) {
+  if (visible) {
+    return (
+      <svg className="passwordIcon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 3L21 21" />
+        <path d="M10.7 10.7A3 3 0 0 0 13.3 13.3" />
+        <path d="M9.2 5.1A10.7 10.7 0 0 1 12 4.8c5.1 0 9.4 3.1 11.1 7.2a11 11 0 0 1-2.9 4.1" />
+        <path d="M6.2 6.2A10.9 10.9 0 0 0 1 12c1.7 4.1 6 7.2 11 7.2 1.8 0 3.5-.4 5.1-1.1" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className="passwordIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.1 12a11.4 11.4 0 0 1 19.8 0 11.4 11.4 0 0 1-19.8 0" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export default function Login() {
   const { isAuthenticated, login, register, loginWithGoogle, loginAsGuest } = useAuth();
   const nav = useNavigate();
@@ -169,7 +189,9 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -305,18 +327,47 @@ export default function Login() {
 
           <div>
             <label className="smallLabel">Contrasena</label>
-            <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <div className="passwordInputWrap">
+              <input
+                className="input passwordInput"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+              />
+              <button
+                type="button"
+                className="passwordToggle"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+                title={showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+              >
+                <PasswordVisibilityIcon visible={showPassword} />
+              </button>
+            </div>
           </div>
 
           {mode === "register" ? (
             <div>
               <label className="smallLabel">Confirmar contrasena</label>
-              <input
-                className="input"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
+              <div className="passwordInputWrap">
+                <input
+                  className="input passwordInput"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="passwordToggle"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  aria-label={showConfirmPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+                  title={showConfirmPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+                >
+                  <PasswordVisibilityIcon visible={showConfirmPassword} />
+                </button>
+              </div>
             </div>
           ) : null}
         </div>

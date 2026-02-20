@@ -41,11 +41,32 @@ class PlanningProgress(BaseModel):
     completed_days_total: int
     current_streak_days: int
     longest_streak_days: int
+    streak_gap_tolerance_days: int
+    last_training_day: str | None
+
+
+class RelativeStrengthSnapshot(BaseModel):
+    body_weight_kg: float | None
+    back_squat: float | None
+    bench_press: float | None
+    deadlift: float | None
+
+
+class ShowcaseItem(BaseModel):
+    title: str
+    emblem_png: str | None
+
+
+class ProfileShowcase(BaseModel):
+    achievements: list[ShowcaseItem]
+    medals: list[ShowcaseItem]
 
 
 class ProfileGamification(BaseModel):
     planning: PlanningProgress
     basic_lifts_pr_kg: BasicLiftsPrKg
+    relative_strength: RelativeStrengthSnapshot
+    showcase: ProfileShowcase
     unlocked_achievements: list[str]
     unlocked_medals: list[str]
     next_targets: list[str]

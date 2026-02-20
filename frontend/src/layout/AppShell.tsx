@@ -20,6 +20,7 @@ function buildNavItems(mode: "admin" | "coach" | "user_plus" | "user_normal"): N
       { to: "/measurements", label: "Medidas" },
       { to: "/exercises", label: "Ejercicios" },
       { to: "/planning", label: "Planificacion" },
+      { to: "/achievements", label: "Logros" },
       { to: "/settings", label: "Ajustes" },
     ];
   }
@@ -34,6 +35,7 @@ function buildNavItems(mode: "admin" | "coach" | "user_plus" | "user_normal"): N
       { to: "/planning", label: "Planificacion" },
       { to: "/history", label: "Historial" },
       { to: "/routines", label: "Rutinas" },
+      { to: "/achievements", label: "Logros" },
       { to: "/profile", label: "Perfil" },
       { to: "/settings", label: "Ajustes" },
     ];
@@ -47,6 +49,7 @@ function buildNavItems(mode: "admin" | "coach" | "user_plus" | "user_normal"): N
     { to: "/exercises", label: "Ejercicios" },
     { to: "/planning", label: "Planificacion" },
     { to: "/routines", label: "Rutinas" },
+    { to: "/achievements", label: "Logros" },
     { to: "/profile", label: "Perfil" },
     { to: "/settings", label: "Ajustes" },
   ];

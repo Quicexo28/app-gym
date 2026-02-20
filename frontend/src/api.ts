@@ -452,6 +452,8 @@ export type ProfileGamificationPlanning = {
   completed_days_total: number;
   current_streak_days: number;
   longest_streak_days: number;
+  streak_gap_tolerance_days: number;
+  last_training_day?: string | null;
 };
 
 export type ProfileGamificationLifts = {
@@ -460,9 +462,28 @@ export type ProfileGamificationLifts = {
   deadlift?: number | null;
 };
 
+export type ProfileGamificationRelativeStrength = {
+  body_weight_kg?: number | null;
+  back_squat?: number | null;
+  bench_press?: number | null;
+  deadlift?: number | null;
+};
+
+export type ProfileGamificationShowcaseItem = {
+  title: string;
+  emblem_png?: string | null;
+};
+
+export type ProfileGamificationShowcase = {
+  achievements: ProfileGamificationShowcaseItem[];
+  medals: ProfileGamificationShowcaseItem[];
+};
+
 export type ProfileGamification = {
   planning: ProfileGamificationPlanning;
   basic_lifts_pr_kg: ProfileGamificationLifts;
+  relative_strength: ProfileGamificationRelativeStrength;
+  showcase: ProfileGamificationShowcase;
   unlocked_achievements: string[];
   unlocked_medals: string[];
   next_targets: string[];
@@ -481,9 +502,11 @@ export type GamificationTier = {
   threshold: number;
   achievement: string;
   medal: string;
+  emblem_png?: string | null;
 };
 
 export type GamificationConfig = {
+  streak_gap_tolerance_days: number;
   streak_tiers: GamificationTier[];
   planning_days_tiers: GamificationTier[];
   lift_tiers: {
@@ -491,8 +514,14 @@ export type GamificationConfig = {
     bench_press: GamificationTier[];
     deadlift: GamificationTier[];
   };
+  relative_strength_tiers: {
+    back_squat: GamificationTier[];
+    bench_press: GamificationTier[];
+    deadlift: GamificationTier[];
+  };
   trilogy_achievement: string;
   trilogy_medal: string;
+  trilogy_emblem_png?: string | null;
 };
 
 export type GamificationConfigResponse = {

@@ -2,6 +2,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import AppShell from "./layout/AppShell";
+import Achievements from "./pages/Achievements";
 import Athlete from "./pages/Athlete";
 import BodyMetrics from "./pages/BodyMetrics";
 import Exercises from "./pages/Exercises";
@@ -52,6 +53,7 @@ export default function App() {
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="home" element={<Home />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="achievements" element={<Achievements />} />
         <Route path="session/new" element={<NewSession />} />
         <Route path="history" element={<History />} />
         <Route path="measurements" element={<BodyMetrics />} />

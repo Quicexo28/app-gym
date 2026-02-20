@@ -87,6 +87,7 @@ function OptionRow<T extends string>({
 
 function cloneGamificationConfig(config: GamificationConfig): GamificationConfig {
   return {
+    streak_gap_tolerance_days: config.streak_gap_tolerance_days,
     streak_tiers: config.streak_tiers.map((tier) => ({ ...tier })),
     planning_days_tiers: config.planning_days_tiers.map((tier) => ({ ...tier })),
     lift_tiers: {
@@ -94,8 +95,14 @@ function cloneGamificationConfig(config: GamificationConfig): GamificationConfig
       bench_press: config.lift_tiers.bench_press.map((tier) => ({ ...tier })),
       deadlift: config.lift_tiers.deadlift.map((tier) => ({ ...tier })),
     },
+    relative_strength_tiers: {
+      back_squat: config.relative_strength_tiers.back_squat.map((tier) => ({ ...tier })),
+      bench_press: config.relative_strength_tiers.bench_press.map((tier) => ({ ...tier })),
+      deadlift: config.relative_strength_tiers.deadlift.map((tier) => ({ ...tier })),
+    },
     trilogy_achievement: config.trilogy_achievement,
     trilogy_medal: config.trilogy_medal,
+    trilogy_emblem_png: config.trilogy_emblem_png || null,
   };
 }
 
@@ -104,60 +111,135 @@ function nextTierThreshold(tiers: GamificationTier[]): number {
   return Math.max(...tiers.map((tier) => Number(tier.threshold) || 0)) + 1;
 }
 
+function readPngAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const isPng = file.type === "image/png" || file.name.toLowerCase().endsWith(".png");
+    if (!isPng) {
+      reject(new Error("Solo se permiten archivos PNG para emblemas."));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("No se pudo leer el PNG seleccionado."));
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      if (!result.startsWith("data:image/png;base64,")) {
+        reject(new Error("El archivo debe convertirse a data:image/png;base64."));
+        return;
+      }
+      resolve(result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function TierEditor({
   title,
   tiers,
   onTierChange,
   onTierAdd,
   onTierRemove,
+  onTierUploadEmblem,
+  onTierClearEmblem,
+  thresholdLabel = "Umbral",
+  thresholdStep = "0.1",
 }: {
   title: string;
   tiers: GamificationTier[];
   onTierChange: (index: number, patch: Partial<GamificationTier>) => void;
   onTierAdd: () => void;
   onTierRemove: (index: number) => void;
+  onTierUploadEmblem: (index: number, file: File | null) => void;
+  onTierClearEmblem: (index: number) => void;
+  thresholdLabel?: string;
+  thresholdStep?: string;
 }) {
   return (
     <article className="surfaceButton" style={{ alignItems: "stretch" }}>
       <div className="sectionHead">
         <h4>{title}</h4>
-        <p>Umbral + texto de logro + medalla.</p>
+        <p>Umbral + texto de logro + medalla + emblema PNG.</p>
       </div>
 
       <div className="stack compactStack" style={{ marginTop: 8 }}>
         {tiers.map((tier, index) => (
-          <div key={`${title}_${index}`} className="splitGrid">
-            <div>
-              <label className="smallLabel">Umbral</label>
-              <input
-                type="number"
-                className="input"
-                min="0.1"
-                step="0.1"
-                value={tier.threshold}
-                onChange={(e) => onTierChange(index, { threshold: Number(e.target.value) || 0 })}
-              />
+          <div key={`${title}_${index}`} className="surfaceButton" style={{ alignItems: "stretch" }}>
+            <div className="splitGrid">
+              <div>
+                <label className="smallLabel">{thresholdLabel}</label>
+                <input
+                  type="number"
+                  className="input"
+                  min="0.1"
+                  step={thresholdStep}
+                  value={tier.threshold}
+                  onChange={(e) => onTierChange(index, { threshold: Number(e.target.value) || 0 })}
+                />
+              </div>
+              <div>
+                <label className="smallLabel">Logro</label>
+                <input
+                  className="input"
+                  value={tier.achievement}
+                  onChange={(e) => onTierChange(index, { achievement: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="smallLabel">Medalla</label>
+                <input
+                  className="input"
+                  value={tier.medal}
+                  onChange={(e) => onTierChange(index, { medal: e.target.value })}
+                />
+              </div>
             </div>
-            <div>
-              <label className="smallLabel">Logro</label>
-              <input
-                className="input"
-                value={tier.achievement}
-                onChange={(e) => onTierChange(index, { achievement: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="smallLabel">Medalla</label>
-              <input
-                className="input"
-                value={tier.medal}
-                onChange={(e) => onTierChange(index, { medal: e.target.value })}
-              />
-            </div>
-            <div style={{ display: "flex", alignItems: "end" }}>
-              <button className="btn" type="button" onClick={() => onTierRemove(index)}>
-                Quitar
-              </button>
+
+            <div className="splitGrid">
+              <div>
+                <label className="smallLabel">Emblema PNG</label>
+                <input
+                  className="input"
+                  value={tier.emblem_png || ""}
+                  onChange={(e) => onTierChange(index, { emblem_png: e.target.value || null })}
+                  placeholder="https://cdn.ejemplo.com/emblema.png o data:image/png;base64,..."
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "end", gap: 8, flexWrap: "wrap" }}>
+                <label className="btn" style={{ cursor: "pointer" }}>
+                  Subir PNG
+                  <input
+                    type="file"
+                    accept="image/png,.png"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      onTierUploadEmblem(index, e.target.files?.[0] || null);
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => onTierClearEmblem(index)}
+                  disabled={!tier.emblem_png}
+                >
+                  Quitar emblema
+                </button>
+                <button className="btn" type="button" onClick={() => onTierRemove(index)}>
+                  Quitar fila
+                </button>
+              </div>
+              <div style={{ display: "flex", alignItems: "end" }}>
+                {tier.emblem_png ? (
+                  <img
+                    src={tier.emblem_png}
+                    alt={`Emblema ${tier.achievement}`}
+                    style={{ width: 46, height: 46, objectFit: "cover", borderRadius: 10, border: "1px solid var(--border)" }}
+                  />
+                ) : (
+                  <span className="small">Sin emblema.</span>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -359,6 +441,102 @@ export default function Settings() {
     });
     setGamificationMsg("");
     setGamificationError("");
+  }
+
+  function updateRelativeTier(lift: LiftTierKey, index: number, patch: Partial<GamificationTier>) {
+    setGamificationConfig((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        relative_strength_tiers: {
+          ...current.relative_strength_tiers,
+          [lift]: updateTierList(current.relative_strength_tiers[lift], index, patch),
+        },
+      };
+    });
+    setGamificationMsg("");
+    setGamificationError("");
+  }
+
+  function addRelativeTierRow(lift: LiftTierKey) {
+    setGamificationConfig((current) => {
+      if (!current) return current;
+      const nextRow: GamificationTier = {
+        threshold: nextTierThreshold(current.relative_strength_tiers[lift]),
+        achievement: `Nuevo logro relativo ${LIFT_TIER_LABELS[lift]}`,
+        medal: `Nueva medalla relativa ${LIFT_TIER_LABELS[lift]}`,
+      };
+      return {
+        ...current,
+        relative_strength_tiers: {
+          ...current.relative_strength_tiers,
+          [lift]: [...current.relative_strength_tiers[lift], nextRow],
+        },
+      };
+    });
+    setGamificationMsg("");
+    setGamificationError("");
+  }
+
+  function removeRelativeTierRow(lift: LiftTierKey, index: number) {
+    setGamificationConfig((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        relative_strength_tiers: {
+          ...current.relative_strength_tiers,
+          [lift]: current.relative_strength_tiers[lift].filter((_, rowIndex) => rowIndex !== index),
+        },
+      };
+    });
+    setGamificationMsg("");
+    setGamificationError("");
+  }
+
+  async function uploadTierBucketEmblem(bucket: TierBucketKey, index: number, file: File | null) {
+    if (!file) return;
+    try {
+      const dataUrl = await readPngAsDataUrl(file);
+      updateTierBucket(bucket, index, { emblem_png: dataUrl });
+    } catch (cause: unknown) {
+      setGamificationError(String((cause as { message?: string })?.message || cause));
+      setGamificationMsg("");
+    }
+  }
+
+  async function uploadLiftTierEmblem(lift: LiftTierKey, index: number, file: File | null) {
+    if (!file) return;
+    try {
+      const dataUrl = await readPngAsDataUrl(file);
+      updateLiftTier(lift, index, { emblem_png: dataUrl });
+    } catch (cause: unknown) {
+      setGamificationError(String((cause as { message?: string })?.message || cause));
+      setGamificationMsg("");
+    }
+  }
+
+  async function uploadRelativeTierEmblem(lift: LiftTierKey, index: number, file: File | null) {
+    if (!file) return;
+    try {
+      const dataUrl = await readPngAsDataUrl(file);
+      updateRelativeTier(lift, index, { emblem_png: dataUrl });
+    } catch (cause: unknown) {
+      setGamificationError(String((cause as { message?: string })?.message || cause));
+      setGamificationMsg("");
+    }
+  }
+
+  async function uploadTrilogyEmblem(file: File | null) {
+    if (!file) return;
+    try {
+      const dataUrl = await readPngAsDataUrl(file);
+      setGamificationConfig((current) => (current ? { ...current, trilogy_emblem_png: dataUrl } : current));
+      setGamificationMsg("");
+      setGamificationError("");
+    } catch (cause: unknown) {
+      setGamificationError(String((cause as { message?: string })?.message || cause));
+      setGamificationMsg("");
+    }
   }
 
   async function saveGamificationRules() {
@@ -772,13 +950,46 @@ export default function Settings() {
 
             {!gamificationLoading && gamificationConfig ? (
               <div className="stack" style={{ marginTop: 12 }}>
+                <article className="surfaceButton">
+                  <div className="sectionHead">
+                    <h4>Racha flexible</h4>
+                    <p>
+                      La racha no exige entrenar diario: sigue activa mientras no pasen mas de N dias desde el ultimo entreno.
+                    </p>
+                  </div>
+                  <div className="splitGrid" style={{ marginTop: 10 }}>
+                    <div>
+                      <label className="smallLabel">Tolerancia (dias)</label>
+                      <input
+                        type="number"
+                        className="input"
+                        min={1}
+                        max={14}
+                        step={1}
+                        value={gamificationConfig.streak_gap_tolerance_days}
+                        onChange={(e) => {
+                          const value = Math.max(1, Math.min(14, Number(e.target.value) || 7));
+                          setGamificationConfig((current) =>
+                            current ? { ...current, streak_gap_tolerance_days: value } : current,
+                          );
+                          setGamificationMsg("");
+                          setGamificationError("");
+                        }}
+                      />
+                    </div>
+                  </div>
+                </article>
+
                 <div className="gridCards">
                   <TierEditor
                     title="Rachas"
                     tiers={gamificationConfig.streak_tiers}
+                    thresholdLabel="Entrenos en racha"
                     onTierChange={(index, patch) => updateTierBucket("streak_tiers", index, patch)}
                     onTierAdd={() => addTierBucketRow("streak_tiers")}
                     onTierRemove={(index) => removeTierBucketRow("streak_tiers", index)}
+                    onTierUploadEmblem={(index, file) => void uploadTierBucketEmblem("streak_tiers", index, file)}
+                    onTierClearEmblem={(index) => updateTierBucket("streak_tiers", index, { emblem_png: null })}
                   />
                   <TierEditor
                     title="Dias completados de planificacion"
@@ -786,6 +997,10 @@ export default function Settings() {
                     onTierChange={(index, patch) => updateTierBucket("planning_days_tiers", index, patch)}
                     onTierAdd={() => addTierBucketRow("planning_days_tiers")}
                     onTierRemove={(index) => removeTierBucketRow("planning_days_tiers", index)}
+                    onTierUploadEmblem={(index, file) =>
+                      void uploadTierBucketEmblem("planning_days_tiers", index, file)
+                    }
+                    onTierClearEmblem={(index) => updateTierBucket("planning_days_tiers", index, { emblem_png: null })}
                   />
                 </div>
 
@@ -798,6 +1013,25 @@ export default function Settings() {
                       onTierChange={(index, patch) => updateLiftTier(liftKey, index, patch)}
                       onTierAdd={() => addLiftTierRow(liftKey)}
                       onTierRemove={(index) => removeLiftTierRow(liftKey, index)}
+                      onTierUploadEmblem={(index, file) => void uploadLiftTierEmblem(liftKey, index, file)}
+                      onTierClearEmblem={(index) => updateLiftTier(liftKey, index, { emblem_png: null })}
+                    />
+                  ))}
+                </div>
+
+                <div className="gridCards">
+                  {(Object.keys(LIFT_TIER_LABELS) as LiftTierKey[]).map((liftKey) => (
+                    <TierEditor
+                      key={`relative_${liftKey}`}
+                      title={`Fuerza relativa ${LIFT_TIER_LABELS[liftKey]}`}
+                      tiers={gamificationConfig.relative_strength_tiers[liftKey]}
+                      thresholdLabel="Ratio objetivo (x BW)"
+                      thresholdStep="0.05"
+                      onTierChange={(index, patch) => updateRelativeTier(liftKey, index, patch)}
+                      onTierAdd={() => addRelativeTierRow(liftKey)}
+                      onTierRemove={(index) => removeRelativeTierRow(liftKey, index)}
+                      onTierUploadEmblem={(index, file) => void uploadRelativeTierEmblem(liftKey, index, file)}
+                      onTierClearEmblem={(index) => updateRelativeTier(liftKey, index, { emblem_png: null })}
                     />
                   ))}
                 </div>
@@ -838,6 +1072,56 @@ export default function Settings() {
                         }}
                       />
                     </div>
+                    <div>
+                      <label className="smallLabel">Emblema PNG</label>
+                      <input
+                        className="input"
+                        value={gamificationConfig.trilogy_emblem_png || ""}
+                        placeholder="https://cdn.ejemplo.com/trilogia.png o data:image/png;base64,..."
+                        onChange={(e) => {
+                          const nextValue = e.target.value;
+                          setGamificationConfig((current) =>
+                            current ? { ...current, trilogy_emblem_png: nextValue || null } : current,
+                          );
+                          setGamificationMsg("");
+                          setGamificationError("");
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="quickActions" style={{ marginTop: 10 }}>
+                    <label className="btn" style={{ cursor: "pointer" }}>
+                      Subir PNG de trilogia
+                      <input
+                        type="file"
+                        accept="image/png,.png"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          void uploadTrilogyEmblem(e.target.files?.[0] || null);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => {
+                        setGamificationConfig((current) => (current ? { ...current, trilogy_emblem_png: null } : current));
+                        setGamificationMsg("");
+                        setGamificationError("");
+                      }}
+                      disabled={!gamificationConfig.trilogy_emblem_png}
+                    >
+                      Quitar emblema
+                    </button>
+                    {gamificationConfig.trilogy_emblem_png ? (
+                      <img
+                        src={gamificationConfig.trilogy_emblem_png}
+                        alt="Emblema trilogia basica"
+                        style={{ width: 46, height: 46, objectFit: "cover", borderRadius: 10, border: "1px solid var(--border)" }}
+                      />
+                    ) : null}
                   </div>
                 </article>
 
