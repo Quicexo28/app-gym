@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ingestSessions } from "../api";
@@ -38,6 +38,25 @@ type SessionDraftCommand =
   | { type: "set_set_effort"; exercise_index: number; set_index: number; value: string };
 
 const EMPTY_SET: SetRow = { reps: "", load: "", completed: false, effort: "" };
+const WELLNESS_MIN_SCORE = 1;
+const WELLNESS_MAX_SCORE = 10;
+const WELLNESS_STEP = 0.1;
+const WELLNESS_TICKS = Array.from(
+  { length: WELLNESS_MAX_SCORE - WELLNESS_MIN_SCORE + 1 },
+  (_, index) => WELLNESS_MIN_SCORE + index,
+);
+const WELLNESS_LABEL_POINTS = [
+  { score: 2, label: "muy malo" },
+  { score: 4.5, label: "malo" },
+  { score: 6.5, label: "bueno" },
+  { score: 9, label: "excelente" },
+] as const;
+const STRESS_LABEL_POINTS = [
+  { score: 2, label: "bajo" },
+  { score: 4.5, label: "medio-bajo" },
+  { score: 6.5, label: "medio-alto" },
+  { score: 9, label: "alto" },
+] as const;
 const IDLE_SESSION_TIMER: SessionTimerState = {
   started_at_ms: null,
   running_since_ms: null,
@@ -210,6 +229,47 @@ function parseSetEffortValue(
   return { valid: true, hasValue: true, raw: roundedRir, rpe: convertedRpe, rir: roundedRir };
 }
 
+function clampWellnessScore(value: number): number {
+  if (!Number.isFinite(value)) return WELLNESS_MIN_SCORE;
+  return Math.max(WELLNESS_MIN_SCORE, Math.min(WELLNESS_MAX_SCORE, value));
+}
+
+function parseWellnessScore(rawValue: string): number {
+  return Number(clampWellnessScore(Number(rawValue)).toFixed(1));
+}
+
+function wellnessLabelFromScore(score: number): string {
+  if (score >= 8) return "excelente";
+  if (score >= 6) return "bueno";
+  if (score >= 4) return "malo";
+  return "muy malo";
+}
+
+function stressLabelFromScore(score: number): string {
+  if (score >= 8) return "alto";
+  if (score >= 6) return "medio-alto";
+  if (score >= 4) return "medio-bajo";
+  return "bajo";
+}
+
+function formatWellnessScore(score: number): string {
+  return Number(clampWellnessScore(score).toFixed(1)).toFixed(1);
+}
+
+function wellnessTickOffset(score: number): string {
+  const ratio = (score - WELLNESS_MIN_SCORE) / (WELLNESS_MAX_SCORE - WELLNESS_MIN_SCORE);
+  return `${Math.max(0, Math.min(1, ratio)) * 100}%`;
+}
+
+function wellnessProgress(score: number): string {
+  const ratio = (clampWellnessScore(score) - WELLNESS_MIN_SCORE) / (WELLNESS_MAX_SCORE - WELLNESS_MIN_SCORE);
+  return `${Math.max(0, Math.min(1, ratio)) * 100}%`;
+}
+
+function wellnessSliderStyle(score: number): CSSProperties {
+  return { "--wellness-progress": wellnessProgress(score) } as CSSProperties;
+}
+
 export default function NewSession() {
   const { athleteIds, canSwitch, ready: athleteReady } = useAthleteAccess();
   const [athleteId] = useAthleteId();
@@ -219,6 +279,9 @@ export default function NewSession() {
   const [step, setStep] = useState<SessionStep>("pick_routine");
   const [startLocal, setStartLocal] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
+  const [sleepScore, setSleepScore] = useState<number>(7);
+  const [stressScore, setStressScore] = useState<number>(5);
+  const [sensationScore, setSensationScore] = useState<number>(7);
 
   const [routineId, setRoutineId] = useState<string>("");
   const [routines, setRoutines] = useState<RoutineTemplate[]>([]);
@@ -240,6 +303,9 @@ export default function NewSession() {
       setRoutineId("");
       setRoutineExercises([]);
       setStep("pick_routine");
+      setSleepScore(7);
+      setStressScore(5);
+      setSensationScore(7);
       setSessionTimer(IDLE_SESSION_TIMER);
       setRestTimer(null);
       return;
@@ -249,6 +315,9 @@ export default function NewSession() {
     setRoutineId("");
     setRoutineExercises([]);
     setStep("pick_routine");
+    setSleepScore(7);
+    setStressScore(5);
+    setSensationScore(7);
     setSessionTimer(IDLE_SESSION_TIMER);
     setRestTimer(null);
   }, [athleteId]);
@@ -356,6 +425,10 @@ export default function NewSession() {
     } catch {
       setNotificationCapability(detectNotificationCapability());
     }
+  }
+
+  function onWellnessChange(setter: (value: number) => void, rawValue: string) {
+    setter(parseWellnessScore(rawValue));
   }
 
   function applyRoutine(nextRoutineId: string) {
@@ -675,6 +748,22 @@ export default function NewSession() {
           session_elapsed_seconds: Math.floor(computeSessionElapsedMs(finalizedTimer, now) / 1_000),
           session_all_exercises_completed: allSetsCompleted,
           session_all_series_completed: allSetsCompleted,
+          wellness_signals: {
+            schema: "wellness_v2_1_10",
+            sleep: {
+              score_1_10: Number(clampWellnessScore(sleepScore).toFixed(1)),
+              label: wellnessLabelFromScore(sleepScore),
+            },
+            stress: {
+              score_1_10: Number(clampWellnessScore(stressScore).toFixed(1)),
+              label: stressLabelFromScore(stressScore),
+            },
+            sensations: {
+              score_1_10: Number(clampWellnessScore(sensationScore).toFixed(1)),
+              label: wellnessLabelFromScore(sensationScore),
+            },
+            average_score_1_10: Number(((sleepScore + stressScore + sensationScore) / 3).toFixed(2)),
+          },
           capture_protocol: {
             version: "session_capture_v2",
             voice_ready: true,
@@ -830,13 +919,128 @@ export default function NewSession() {
           </div>
         </div>
 
+        <div className="wellnessPanel" style={{ marginTop: 12 }}>
+          <div className="sectionHead">
+            <h4>Estado diario</h4>
+          </div>
+          <div className="wellnessStack" style={{ marginTop: 10 }}>
+            <div className="wellnessField">
+              <div className="wellnessFieldHead">
+                <label className="smallLabel">Sueno</label>
+                <span className="chip">{`${formatWellnessScore(sleepScore)} / 10 - ${wellnessLabelFromScore(sleepScore)}`}</span>
+              </div>
+              <input
+                className="wellnessSlider"
+                type="range"
+                min={WELLNESS_MIN_SCORE}
+                max={WELLNESS_MAX_SCORE}
+                step={WELLNESS_STEP}
+                value={sleepScore}
+                style={wellnessSliderStyle(sleepScore)}
+                onChange={(e) => onWellnessChange(setSleepScore, e.target.value)}
+              />
+              <div className="wellnessTicks">
+                {WELLNESS_TICKS.map((tick) => (
+                  <div
+                    key={`sleep_tick_${tick}`}
+                    className={`wellnessTick ${tick === WELLNESS_MIN_SCORE ? "wellnessTickMin" : tick === WELLNESS_MAX_SCORE ? "wellnessTickMax" : ""}`.trim()}
+                    style={{ left: wellnessTickOffset(tick) }}
+                  >
+                    <span className="wellnessTickMark" aria-hidden="true" />
+                    <span>{tick}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="wellnessScale">
+                {WELLNESS_LABEL_POINTS.map((item) => (
+                  <div key={`sleep_label_${item.score}`} className="wellnessScaleItem" style={{ left: wellnessTickOffset(item.score) }}>
+                    <span>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+              <div className="wellnessField">
+              <div className="wellnessFieldHead">
+                <label className="smallLabel">Estres</label>
+                <span className="chip">{`${formatWellnessScore(stressScore)} / 10 - ${stressLabelFromScore(stressScore)}`}</span>
+              </div>
+              <input
+                className="wellnessSlider"
+                type="range"
+                min={WELLNESS_MIN_SCORE}
+                max={WELLNESS_MAX_SCORE}
+                step={WELLNESS_STEP}
+                value={stressScore}
+                style={wellnessSliderStyle(stressScore)}
+                onChange={(e) => onWellnessChange(setStressScore, e.target.value)}
+              />
+              <div className="wellnessTicks">
+                {WELLNESS_TICKS.map((tick) => (
+                  <div
+                    key={`stress_tick_${tick}`}
+                    className={`wellnessTick ${tick === WELLNESS_MIN_SCORE ? "wellnessTickMin" : tick === WELLNESS_MAX_SCORE ? "wellnessTickMax" : ""}`.trim()}
+                    style={{ left: wellnessTickOffset(tick) }}
+                  >
+                    <span className="wellnessTickMark" aria-hidden="true" />
+                    <span>{tick}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="wellnessScale">
+                {STRESS_LABEL_POINTS.map((item) => (
+                  <div key={`stress_label_${item.score}`} className="wellnessScaleItem" style={{ left: wellnessTickOffset(item.score) }}>
+                    <span>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="wellnessField">
+              <div className="wellnessFieldHead">
+                <label className="smallLabel">Sensaciones</label>
+                <span className="chip">{`${formatWellnessScore(sensationScore)} / 10 - ${wellnessLabelFromScore(sensationScore)}`}</span>
+              </div>
+              <input
+                className="wellnessSlider"
+                type="range"
+                min={WELLNESS_MIN_SCORE}
+                max={WELLNESS_MAX_SCORE}
+                step={WELLNESS_STEP}
+                value={sensationScore}
+                style={wellnessSliderStyle(sensationScore)}
+                onChange={(e) => onWellnessChange(setSensationScore, e.target.value)}
+              />
+              <div className="wellnessTicks">
+                {WELLNESS_TICKS.map((tick) => (
+                  <div
+                    key={`sensations_tick_${tick}`}
+                    className={`wellnessTick ${tick === WELLNESS_MIN_SCORE ? "wellnessTickMin" : tick === WELLNESS_MAX_SCORE ? "wellnessTickMax" : ""}`.trim()}
+                    style={{ left: wellnessTickOffset(tick) }}
+                  >
+                    <span className="wellnessTickMark" aria-hidden="true" />
+                    <span>{tick}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="wellnessScale">
+                {WELLNESS_LABEL_POINTS.map((item) => (
+                  <div key={`sensations_label_${item.score}`} className="wellnessScaleItem" style={{ left: wellnessTickOffset(item.score) }}>
+                    <span>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div style={{ marginTop: 12 }}>
-          <label className="smallLabel">Nota breve (opcional)</label>
+          <label className="smallLabel">Comentarios</label>
           <input
             className="input"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="sueño, estres, sensacion general"
+            placeholder="comentarios adicionales de la sesion"
           />
         </div>
 
@@ -1065,3 +1269,4 @@ export default function NewSession() {
     </div>
   );
 }
+

@@ -316,6 +316,147 @@ textarea.input:focus,
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
+.wellnessStack {
+  display: grid;
+  gap: 10px;
+}
+
+.wellnessField {
+  --wellness-thumb-size: 18px;
+  --wellness-track-size: 6px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 20%);
+  padding: 10px;
+}
+
+.wellnessFieldHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wellnessFieldHead .smallLabel {
+  margin-bottom: 0;
+}
+
+.wellnessSlider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: var(--wellness-thumb-size);
+  margin: 0;
+  background: transparent;
+}
+
+.wellnessSlider::-webkit-slider-runnable-track {
+  height: var(--wellness-track-size);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent), white 10%) 0%,
+    color-mix(in srgb, var(--accent), white 10%) var(--wellness-progress, 0%),
+    color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%) var(--wellness-progress, 0%),
+    color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%) 100%
+  );
+}
+
+.wellnessSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--wellness-thumb-size);
+  height: var(--wellness-thumb-size);
+  border-radius: 999px;
+  border: 2px solid var(--accent);
+  background: var(--bg-elevated);
+  margin-top: calc((var(--wellness-track-size) - var(--wellness-thumb-size)) / 2);
+}
+
+.wellnessSlider::-moz-range-track {
+  height: var(--wellness-track-size);
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent), white 10%) 0%,
+    color-mix(in srgb, var(--accent), white 10%) var(--wellness-progress, 0%),
+    color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%) var(--wellness-progress, 0%),
+    color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%) 100%
+  );
+}
+
+.wellnessSlider::-moz-range-thumb {
+  width: var(--wellness-thumb-size);
+  height: var(--wellness-thumb-size);
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+}
+
+.wellnessSlider:focus-visible {
+  outline: none;
+}
+
+.wellnessSlider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 70%);
+}
+
+.wellnessSlider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 70%);
+}
+
+.wellnessTicks {
+  position: relative;
+  min-height: 24px;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wellnessTick {
+  position: absolute;
+  top: 0;
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  transform: translateX(-50%);
+}
+
+.wellnessTickMin {
+  transform: translateX(0);
+}
+
+.wellnessTickMax {
+  transform: translateX(-100%);
+}
+
+.wellnessTickMark {
+  width: 1px;
+  height: 6px;
+  background: color-mix(in srgb, var(--text-soft), transparent 35%);
+}
+
+.wellnessScale {
+  position: relative;
+  min-height: 14px;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wellnessScaleItem {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+}
+
+.wellnessScaleItem span {
+  white-space: nowrap;
+}
+
 .exerciseCard {
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -886,6 +1027,10 @@ textarea.input:focus,
   .setRow {
     gap: 6px;
     grid-template-columns: auto minmax(84px, 1.25fr) minmax(68px, 1fr) minmax(68px, 1fr) auto auto;
+  }
+
+  .wellnessScale {
+    font-size: 10px;
   }
 
   .restFloatBar {
