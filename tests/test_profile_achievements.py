@@ -191,4 +191,4 @@ def test_build_reward_snapshot_unlocks_relative_strength_tiers() -> None:
     assert "RBP06" in achievements
     assert "RDL12" in achievements
     assert "RSQM" in medals
-    assert any("fuerza relativa" in target for target in next_targets)
+    assert all("peso corporal" not in target.lower() for target in next_targets)

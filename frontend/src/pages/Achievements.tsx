@@ -72,13 +72,13 @@ export default function Achievements() {
   }, []);
 
   const achievements = useMemo(() => {
-    const showcase = data?.gamification.showcase.achievements || [];
+    const showcase = data?.gamification.showcase?.achievements || [];
     if (showcase.length > 0) return showcase;
     return (data?.gamification.unlocked_achievements || []).map((title) => ({ title, emblem_png: null }));
   }, [data]);
 
   const medals = useMemo(() => {
-    const showcase = data?.gamification.showcase.medals || [];
+    const showcase = data?.gamification.showcase?.medals || [];
     if (showcase.length > 0) return showcase;
     return (data?.gamification.unlocked_medals || []).map((title) => ({ title, emblem_png: null }));
   }, [data]);

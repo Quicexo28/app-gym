@@ -49,8 +49,8 @@ class GamificationConfigPayload(BaseModel):
     streak_gap_tolerance_days: int = Field(default=7, ge=1, le=14)
     streak_tiers: list[RewardTierPayload] = Field(default_factory=list)
     planning_days_tiers: list[RewardTierPayload] = Field(default_factory=list)
-    lift_tiers: LiftTierPayload
-    relative_strength_tiers: LiftTierPayload
+    lift_tiers: LiftTierPayload = Field(default_factory=LiftTierPayload)
+    relative_strength_tiers: LiftTierPayload = Field(default_factory=LiftTierPayload)
     trilogy_achievement: str = Field(min_length=1, max_length=120)
     trilogy_medal: str = Field(min_length=1, max_length=120)
     trilogy_emblem_png: str | None = Field(default=None, max_length=350000)
