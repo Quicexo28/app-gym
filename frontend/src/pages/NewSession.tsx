@@ -8,7 +8,7 @@ import { toKg } from "../lib/units";
 import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 
-type SetRow = { reps: string; load: string; completed: boolean; rpe: string };
+type SetRow = { reps: string; load: string; completed: boolean; effort: string };
 type RoutineExerciseDraft = { name: string; target_reps_min: number; target_reps_max: number; rest_seconds: number; sets: SetRow[] };
 type SessionStep = "pick_routine" | "capture_session";
 
@@ -21,6 +21,7 @@ type SessionTimerState = {
 
 type RestTimerState = {
   exercise_index: number;
+  set_index: number;
   exercise_name: string;
   duration_seconds: number;
   started_at_ms: number;
@@ -34,10 +35,9 @@ type SessionDraftCommand =
   | { type: "set_reps"; exercise_index: number; set_index: number; value: string }
   | { type: "set_load"; exercise_index: number; set_index: number; value: string }
   | { type: "set_set_completed"; exercise_index: number; set_index: number; value: boolean }
-  | { type: "set_set_rpe"; exercise_index: number; set_index: number; value: string }
-  | { type: "set_exercise_completed"; exercise_index: number; value: boolean };
+  | { type: "set_set_effort"; exercise_index: number; set_index: number; value: string };
 
-const EMPTY_SET: SetRow = { reps: "", load: "", completed: false, rpe: "" };
+const EMPTY_SET: SetRow = { reps: "", load: "", completed: false, effort: "" };
 const IDLE_SESSION_TIMER: SessionTimerState = {
   started_at_ms: null,
   running_since_ms: null,
@@ -80,21 +80,17 @@ function formatRestRecommendation(restSeconds: number): string {
   return `${restSeconds}s`;
 }
 
-function formatElapsedMinutes(totalSeconds: number): string {
-  return (Math.max(0, totalSeconds) / 60).toFixed(2);
-}
-
 function detectNotificationCapability(): NotificationCapability {
   if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
   return Notification.permission;
 }
 
-function defaultSetForExercise(exercise: RoutineExerciseTemplate): SetRow {
+function defaultSetForExercise(): SetRow {
   return {
-    reps: String(exercise.target_reps_min),
+    reps: "",
     load: "",
     completed: false,
-    rpe: "",
+    effort: "",
   };
 }
 
@@ -128,7 +124,7 @@ function routineToDraft(routine: RoutineTemplate): RoutineExerciseDraft[] {
     target_reps_min: exercise.target_reps_min,
     target_reps_max: exercise.target_reps_max,
     rest_seconds: exercise.rest_seconds,
-    sets: Array.from({ length: exercise.target_sets }, () => defaultSetForExercise(exercise)),
+    sets: Array.from({ length: exercise.target_sets }, () => defaultSetForExercise()),
   }));
 }
 
@@ -178,12 +174,40 @@ function completeSessionTimerState(timer: SessionTimerState, nowMs: number): Ses
   };
 }
 
-function parseOptionalSetRpe(value: string): number | null {
+function parseSetEffortValue(
+  value: string,
+  scale: "rpe" | "rir",
+): {
+  valid: boolean;
+  hasValue: boolean;
+  raw: number | null;
+  rpe: number | null;
+  rir: number | null;
+} {
   const trimmed = value.trim();
-  if (!trimmed) return null;
+  if (!trimmed) {
+    return { valid: true, hasValue: false, raw: null, rpe: null, rir: null };
+  }
+
   const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 10) return null;
-  return Number(parsed.toFixed(2));
+  if (!Number.isFinite(parsed)) {
+    return { valid: false, hasValue: true, raw: null, rpe: null, rir: null };
+  }
+
+  if (scale === "rpe") {
+    if (parsed < 0 || parsed > 10) {
+      return { valid: false, hasValue: true, raw: parsed, rpe: null, rir: null };
+    }
+    const rounded = Number(parsed.toFixed(2));
+    return { valid: true, hasValue: true, raw: rounded, rpe: rounded, rir: null };
+  }
+
+  if (parsed < 0 || parsed > 6) {
+    return { valid: false, hasValue: true, raw: parsed, rpe: null, rir: null };
+  }
+  const roundedRir = Number(parsed.toFixed(2));
+  const convertedRpe = Number(Math.max(0, Math.min(10, 10 - roundedRir)).toFixed(2));
+  return { valid: true, hasValue: true, raw: roundedRir, rpe: convertedRpe, rir: roundedRir };
 }
 
 export default function NewSession() {
@@ -194,13 +218,11 @@ export default function NewSession() {
 
   const [step, setStep] = useState<SessionStep>("pick_routine");
   const [startLocal, setStartLocal] = useState<string>("");
-  const [effort, setEffort] = useState<string>(prefs.effortScale === "rir" ? "2" : "7");
   const [notes, setNotes] = useState<string>("");
 
   const [routineId, setRoutineId] = useState<string>("");
   const [routines, setRoutines] = useState<RoutineTemplate[]>([]);
   const [routineExercises, setRoutineExercises] = useState<RoutineExerciseDraft[]>([]);
-  const [exerciseCompleted, setExerciseCompleted] = useState<boolean[]>([]);
 
   const [sessionTimer, setSessionTimer] = useState<SessionTimerState>(IDLE_SESSION_TIMER);
   const [restTimer, setRestTimer] = useState<RestTimerState | null>(null);
@@ -217,7 +239,6 @@ export default function NewSession() {
       setRoutines([]);
       setRoutineId("");
       setRoutineExercises([]);
-      setExerciseCompleted([]);
       setStep("pick_routine");
       setSessionTimer(IDLE_SESSION_TIMER);
       setRestTimer(null);
@@ -227,20 +248,10 @@ export default function NewSession() {
     setRoutines(loadRoutines(athleteId));
     setRoutineId("");
     setRoutineExercises([]);
-    setExerciseCompleted([]);
     setStep("pick_routine");
     setSessionTimer(IDLE_SESSION_TIMER);
     setRestTimer(null);
   }, [athleteId]);
-
-  useEffect(() => {
-    setEffort((prev) => {
-      if (prev) return prev;
-      return prefs.effortScale === "rir" ? "2" : "7";
-    });
-  }, [prefs.effortScale]);
-
-  const effortChoices = prefs.effortScale === "rir" ? [0, 1, 2, 3] : [6, 7, 8, 9];
 
   const sortedRoutines = useMemo(() => [...routines].sort((a, b) => a.name.localeCompare(b.name)), [routines]);
   const selectedRoutine = useMemo(() => sortedRoutines.find((routine) => routine.id === routineId) || null, [routineId, sortedRoutines]);
@@ -253,10 +264,27 @@ export default function NewSession() {
     if (!restTimer) return 0;
     return Math.max(0, Math.ceil((restTimer.ends_at_ms - nowMs) / 1_000));
   }, [nowMs, restTimer]);
-  const allExercisesCompleted = useMemo(
-    () => routineExercises.length > 0 && exerciseCompleted.length === routineExercises.length && exerciseCompleted.every(Boolean),
-    [exerciseCompleted, routineExercises.length],
+  const allSetsCompleted = useMemo(
+    () => routineExercises.length > 0 && routineExercises.every((exercise) => exercise.sets.length > 0 && exercise.sets.every((set) => set.completed)),
+    [routineExercises],
   );
+  const restProgressPct = useMemo(() => {
+    if (!restTimer || restTimer.duration_seconds <= 0) return 0;
+    const elapsedMs = Math.max(0, nowMs - restTimer.started_at_ms);
+    return Math.min(100, Math.round((elapsedMs / (restTimer.duration_seconds * 1_000)) * 100));
+  }, [nowMs, restTimer]);
+  const sessionRpeAuto = useMemo(() => {
+    const samples: number[] = [];
+    for (const exercise of routineExercises) {
+      for (const set of exercise.sets) {
+        const parsed = parseSetEffortValue(set.effort, prefs.effortScale);
+        if (!parsed.valid || !parsed.hasValue || parsed.rpe === null) continue;
+        samples.push(parsed.rpe);
+      }
+    }
+    if (samples.length === 0) return null;
+    return Number((samples.reduce((acc, item) => acc + item, 0) / samples.length).toFixed(2));
+  }, [prefs.effortScale, routineExercises]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNowMs(Date.now()), TICK_MS);
@@ -336,15 +364,13 @@ export default function NewSession() {
     const routine = sortedRoutines.find((item) => item.id === nextRoutineId);
     if (!routine) {
       setRoutineExercises([]);
-      setExerciseCompleted([]);
       return;
     }
     const draft = routineToDraft(routine);
     setRoutineExercises(draft);
-    setExerciseCompleted(Array.from({ length: draft.length }, () => false));
   }
 
-  function startRestForExercise(exerciseIndex: number) {
+  function startRestForSet(exerciseIndex: number, setIndex: number) {
     const exercise = routineExercises[exerciseIndex];
     if (!exercise) return;
     if (exercise.rest_seconds <= 0) {
@@ -355,6 +381,7 @@ export default function NewSession() {
     setNowMs(now);
     setRestTimer({
       exercise_index: exerciseIndex,
+      set_index: setIndex,
       exercise_name: exercise.name,
       duration_seconds: exercise.rest_seconds,
       started_at_ms: now,
@@ -366,15 +393,6 @@ export default function NewSession() {
     }
   }
 
-  function setExerciseCompletion(exerciseIndex: number, value: boolean) {
-    setExerciseCompleted((prev) => prev.map((entry, idx) => (idx === exerciseIndex ? value : entry)));
-    if (value) {
-      startRestForExercise(exerciseIndex);
-      return;
-    }
-    setRestTimer((prev) => (prev && prev.exercise_index === exerciseIndex ? null : prev));
-  }
-
   function startSessionStep() {
     if (!selectedRoutine) {
       setError("Selecciona una rutina para comenzar la sesion.");
@@ -384,7 +402,6 @@ export default function NewSession() {
     setError("");
     const draft = routineToDraft(selectedRoutine);
     setRoutineExercises(draft);
-    setExerciseCompleted(Array.from({ length: draft.length }, () => false));
     setStartLocal(deviceDatetimeLocal());
     setStep("capture_session");
     const now = Date.now();
@@ -450,10 +467,10 @@ export default function NewSession() {
               sets: [
                 ...entry.sets,
                 {
-                  reps: String(entry.target_reps_min),
+                  reps: "",
                   load: "",
                   completed: false,
-                  rpe: "",
+                  effort: "",
                 },
               ],
             }
@@ -476,15 +493,17 @@ export default function NewSession() {
     setRoutineExercises((prev) =>
       prev.map((entry, i) => (i === exIdx ? { ...entry, sets: entry.sets.filter((_, j) => j !== setIdx) } : entry)),
     );
+    setRestTimer((prev) => {
+      if (!prev) return prev;
+      if (prev.exercise_index !== exIdx) return prev;
+      if (prev.set_index === setIdx) return null;
+      if (prev.set_index > setIdx) return { ...prev, set_index: prev.set_index - 1 };
+      return prev;
+    });
   }
 
   // Handler unico para futura integracion de comandos por voz.
   function applySessionDraftCommand(command: SessionDraftCommand) {
-    if (command.type === "set_exercise_completed") {
-      setExerciseCompletion(command.exercise_index, command.value);
-      return;
-    }
-
     setRoutineExercises((prev) =>
       prev.map((entry, exIdx) => {
         if (exIdx !== command.exercise_index) return entry;
@@ -494,32 +513,31 @@ export default function NewSession() {
           if (command.type === "set_reps") return { ...set, reps: command.value };
           if (command.type === "set_load") return { ...set, load: command.value };
           if (command.type === "set_set_completed") return { ...set, completed: command.value };
-          return { ...set, rpe: command.value };
+          return { ...set, effort: command.value };
         });
         return { ...entry, sets };
       }),
     );
+
+    if (command.type === "set_set_completed") {
+      if (command.value) {
+        startRestForSet(command.exercise_index, command.set_index);
+        return;
+      }
+
+      setRestTimer((prev) => {
+        if (!prev) return prev;
+        if (prev.exercise_index !== command.exercise_index || prev.set_index !== command.set_index) return prev;
+        return null;
+      });
+    }
   }
 
   function resetRoutineSets() {
     if (!selectedRoutine) return;
     const draft = routineToDraft(selectedRoutine);
     setRoutineExercises(draft);
-    setExerciseCompleted(Array.from({ length: draft.length }, () => false));
     setRestTimer(null);
-  }
-
-  function parseEffort(): { apiRpe: number; raw: number } | null {
-    const raw = Number(effort);
-    if (!Number.isFinite(raw)) return null;
-
-    if (prefs.effortScale === "rpe") {
-      if (raw < 0 || raw > 10) return null;
-      return { apiRpe: raw, raw };
-    }
-
-    if (raw < 0 || raw > 6) return null;
-    return { apiRpe: Math.max(0, Math.min(10, 10 - raw)), raw };
   }
 
   async function submit() {
@@ -548,21 +566,18 @@ export default function NewSession() {
       return;
     }
 
-    const effortParsed = parseEffort();
-    if (!effortParsed) {
-      setError(prefs.effortScale === "rir" ? "RIR invalido (0-6)." : "RPE invalido (0-10).");
-      return;
-    }
-
     const exercisesOut: Array<{
       name: string;
       sets: Array<{
         reps: number;
         load_kg: number;
         rpe?: number;
+        rir?: number;
         meta: {
           set_index: number;
           completed: boolean;
+          effort_scale?: "rpe" | "rir";
+          effort_value?: number;
         };
       }>;
       meta: {
@@ -578,9 +593,12 @@ export default function NewSession() {
         reps: number;
         load_kg: number;
         rpe?: number;
+        rir?: number;
         meta: {
           set_index: number;
           completed: boolean;
+          effort_scale?: "rpe" | "rir";
+          effort_value?: number;
         };
       }> = [];
       for (const [setIndex, set] of entry.sets.entries()) {
@@ -588,19 +606,30 @@ export default function NewSession() {
         const loadValue = Number(set.load);
         if (!Number.isFinite(reps) || reps <= 0 || !Number.isFinite(loadValue) || loadValue < 0) continue;
 
-        const parsedSetRpe = parseOptionalSetRpe(set.rpe);
-        if (set.rpe.trim() && parsedSetRpe === null) {
-          setError(`RPE invalido en ${entry.name}, set ${setIndex + 1} (usa 0-10).`);
+        const parsedEffort = parseSetEffortValue(set.effort, prefs.effortScale);
+        if (!parsedEffort.valid) {
+          setError(
+            `${prefs.effortScale.toUpperCase()} invalido en ${entry.name}, set ${setIndex + 1} (usa ${
+              prefs.effortScale === "rir" ? "0-6" : "0-10"
+            }).`,
+          );
+          return;
+        }
+        if (!parsedEffort.hasValue) {
+          setError(`${prefs.effortScale.toUpperCase()} requerido en ${entry.name}, set ${setIndex + 1}.`);
           return;
         }
 
         sets.push({
           reps,
           load_kg: Number(toKg(loadValue, prefs.weightUnit).toFixed(3)),
-          rpe: parsedSetRpe ?? undefined,
+          rpe: parsedEffort.rpe ?? undefined,
+          rir: parsedEffort.rir ?? undefined,
           meta: {
             set_index: setIndex + 1,
             completed: set.completed,
+            effort_scale: prefs.effortScale,
+            effort_value: parsedEffort.raw ?? undefined,
           },
         });
       }
@@ -615,7 +644,7 @@ export default function NewSession() {
         sets,
         meta: {
           exercise_index: exerciseIndex + 1,
-          completed: exerciseCompleted[exerciseIndex] || false,
+          completed: entry.sets.every((set) => set.completed),
           target_reps_min: entry.target_reps_min,
           target_reps_max: entry.target_reps_max,
           target_rest_seconds: entry.rest_seconds,
@@ -628,7 +657,7 @@ export default function NewSession() {
         athlete_id: athleteId,
         start_time: toISOZ(startLocal),
         duration_min: elapsedMinutes,
-        rpe: effortParsed.apiRpe,
+        rpe: sessionRpeAuto ?? undefined,
         modality: "strength",
         exercises: exercisesOut,
         source: "ui_routine",
@@ -636,14 +665,16 @@ export default function NewSession() {
           note: notes || undefined,
           routine_id: selectedRoutine.id,
           routine_name: selectedRoutine.name,
-          effort_input: {
+          effort_summary: {
             scale: prefs.effortScale,
-            value: effortParsed.raw,
+            source: "auto_from_sets",
+            computed_session_rpe: sessionRpeAuto,
           },
           weight_unit_input: prefs.weightUnit,
           session_completed_at_utc: finalizedTimer.completed_at_ms ? new Date(finalizedTimer.completed_at_ms).toISOString() : undefined,
           session_elapsed_seconds: Math.floor(computeSessionElapsedMs(finalizedTimer, now) / 1_000),
-          session_all_exercises_completed: allExercisesCompleted,
+          session_all_exercises_completed: allSetsCompleted,
+          session_all_series_completed: allSetsCompleted,
           capture_protocol: {
             version: "session_capture_v2",
             voice_ready: true,
@@ -651,8 +682,7 @@ export default function NewSession() {
               "set_reps",
               "set_load",
               "set_set_completed",
-              "set_set_rpe",
-              "set_exercise_completed",
+              "set_set_effort",
             ],
           },
         },
@@ -755,7 +785,6 @@ export default function NewSession() {
     <div className="container stack">
       <header className="titleBlock">
         <h1>Sesion por rutina</h1>
-        <p>Paso 2/2. Fecha predefinida del dispositivo, cronometro progresivo y descansos automaticos.</p>
       </header>
 
       <section className="surface">
@@ -787,7 +816,6 @@ export default function NewSession() {
       <section className="surface">
         <div className="sectionHead">
           <h3>Datos de la rutina</h3>
-          <p>Fecha tomada del dispositivo al iniciar el paso 2. La duracion se calcula de forma automatica.</p>
         </div>
 
         <div className="splitGrid" style={{ marginTop: 10 }}>
@@ -800,22 +828,6 @@ export default function NewSession() {
               onChange={(e) => setStartLocal(e.target.value)}
             />
           </div>
-          <div>
-            <label className="smallLabel">Duracion registrada (min)</label>
-            <input className="input" value={formatElapsedMinutes(sessionElapsedSec)} readOnly />
-          </div>
-          <div>
-            <label className="smallLabel">{prefs.effortScale === "rir" ? "RIR (0-6)" : "RPE (0-10)"}</label>
-            <input className="input" value={effort} onChange={(e) => setEffort(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="chipRow" style={{ marginTop: 10 }}>
-          {effortChoices.map((value) => (
-            <button key={value} type="button" className="chipButton" onClick={() => setEffort(String(value))}>
-              {prefs.effortScale.toUpperCase()} {value}
-            </button>
-          ))}
         </div>
 
         <div style={{ marginTop: 12 }}>
@@ -824,14 +836,13 @@ export default function NewSession() {
             className="input"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="sueno, estres, sensacion general"
+            placeholder="sueño, estres, sensacion general"
           />
         </div>
 
         <div className="surface" style={{ marginTop: 12, padding: 12 }}>
           <div className="sectionHead">
             <h4>Temporizador de sesion</h4>
-            <p>Inicia en 00:00 y se detiene cuando completas la sesion.</p>
           </div>
           <div className="timerValue" style={{ marginTop: 10 }}>
             {formatTimer(sessionElapsedSec)}
@@ -859,33 +870,6 @@ export default function NewSession() {
           </div>
         </div>
 
-        <div className="surface" style={{ marginTop: 12, padding: 12 }}>
-          <div className="sectionHead">
-            <h4>Temporizador de descanso</h4>
-            <p>Se inicia al marcar un ejercicio como completado, usando su descanso configurado en rutina.</p>
-          </div>
-          <div className="timerValue" style={{ marginTop: 10 }}>
-            {restTimer ? formatTimer(restRemainingSec) : "00:00"}
-          </div>
-          <div className="chipRow" style={{ marginTop: 8 }}>
-            <span className="chip">{`Estado: ${!restTimer ? "Inactivo" : restRemainingSec > 0 ? "En descanso" : "Finalizado"}`}</span>
-            <span className="chip">{`Notificaciones: ${notificationLabel}`}</span>
-            {restTimer ? <span className="chip">{`Ejercicio: ${restTimer.exercise_name}`}</span> : null}
-          </div>
-          <div className="quickActions" style={{ marginTop: 10 }}>
-            <button
-              className="btn"
-              type="button"
-              onClick={() => void requestDeviceNotifications()}
-              disabled={notificationCapability === "unsupported" || notificationCapability === "granted"}
-            >
-              Activar notificaciones
-            </button>
-            <button className="btn" type="button" onClick={clearRestTimer} disabled={!restTimer}>
-              Limpiar descanso
-            </button>
-          </div>
-        </div>
       </section>
 
       <section className="surface">
@@ -898,9 +882,9 @@ export default function NewSession() {
           </p>
         </div>
 
-        {allExercisesCompleted && !sessionTimerCompleted ? (
+        {allSetsCompleted && !sessionTimerCompleted ? (
           <div className="message" style={{ marginTop: 12 }}>
-            Terminaste todos los ejercicios. Puedes completar la sesion para detener el cronometro.
+            Terminaste todas las series. Puedes completar la sesion para detener el cronometro.
             <div className="quickActions" style={{ marginTop: 10 }}>
               <button className="btn primary" type="button" onClick={completeSession}>
                 Completar sesion
@@ -922,23 +906,7 @@ export default function NewSession() {
                     <label className="smallLabel">Ejercicio</label>
                     <strong>{exercise.name}</strong>
                   </div>
-                  <div className="hstack compact">
-                    <span className="chip">Sets: {exercise.sets.length}</span>
-                    <label className="setInlineCheck">
-                      <input
-                        type="checkbox"
-                        checked={exerciseCompleted[exIdx] || false}
-                        onChange={(e) =>
-                          applySessionDraftCommand({
-                            type: "set_exercise_completed",
-                            exercise_index: exIdx,
-                            value: e.target.checked,
-                          })
-                        }
-                      />
-                      Ejercicio completado
-                    </label>
-                  </div>
+                  <span className="chip">Sets: {exercise.sets.length}</span>
                 </div>
                 <div className="chipRow" style={{ marginTop: 8 }}>
                   <span className="chip">{`Reps objetivo: ${formatRepsRange(exercise.target_reps_min, exercise.target_reps_max)}`}</span>
@@ -950,68 +918,90 @@ export default function NewSession() {
                     <div key={setIdx} className="setRowCard">
                       <div className="setRow">
                         <span className="setTag">Set {setIdx + 1}</span>
-                        <input
-                          className="input"
-                          value={set.reps}
-                          onChange={(e) =>
-                            applySessionDraftCommand({
-                              type: "set_reps",
-                              exercise_index: exIdx,
-                              set_index: setIdx,
-                              value: e.target.value,
-                            })
-                          }
-                          placeholder={formatRepsRange(exercise.target_reps_min, exercise.target_reps_max)}
-                        />
-                        <input
-                          className="input"
-                          value={set.load}
-                          onChange={(e) =>
-                            applySessionDraftCommand({
-                              type: "set_load",
-                              exercise_index: exIdx,
-                              set_index: setIdx,
-                              value: e.target.value,
-                            })
-                          }
-                          placeholder={`carga (${prefs.weightUnit})`}
-                        />
-                        <button className="btn" onClick={() => removeSet(exIdx, setIdx)} disabled={exercise.sets.length <= 1}>
-                          -
-                        </button>
-                      </div>
-                      <div className="setRowMeta">
-                        <label className="setInlineCheck">
+                        <div className="setFieldMini">
+                          <label className="smallLabel">Peso</label>
                           <input
-                            type="checkbox"
-                            checked={set.completed}
+                            className="input setInputMini setInputWeight"
+                            value={set.load}
                             onChange={(e) =>
                               applySessionDraftCommand({
-                                type: "set_set_completed",
-                                exercise_index: exIdx,
-                                set_index: setIdx,
-                                value: e.target.checked,
-                              })
-                            }
-                          />
-                          Serie completada
-                        </label>
-                        <div className="setRpeField">
-                          <label className="smallLabel">RPE serie (0-10)</label>
-                          <input
-                            className="input"
-                            value={set.rpe}
-                            onChange={(e) =>
-                              applySessionDraftCommand({
-                                type: "set_set_rpe",
+                                type: "set_load",
                                 exercise_index: exIdx,
                                 set_index: setIdx,
                                 value: e.target.value,
                               })
                             }
-                            placeholder="opcional"
+                            placeholder={prefs.weightUnit}
                           />
                         </div>
+                        <div className="setFieldMini">
+                          <label className="smallLabel">Reps</label>
+                          <input
+                            className="input setInputMini setInputReps"
+                            value={set.reps}
+                            onChange={(e) =>
+                              applySessionDraftCommand({
+                                type: "set_reps",
+                                exercise_index: exIdx,
+                                set_index: setIdx,
+                                value: e.target.value,
+                              })
+                            }
+                            placeholder={formatRepsRange(exercise.target_reps_min, exercise.target_reps_max)}
+                          />
+                        </div>
+                        <div className="setFieldMini">
+                          <label className="smallLabel">{prefs.effortScale === "rir" ? "RIR" : "RPE"}</label>
+                          <input
+                            className="input setInputMini setInputEffort"
+                            value={set.effort}
+                            onChange={(e) =>
+                              applySessionDraftCommand({
+                                type: "set_set_effort",
+                                exercise_index: exIdx,
+                                set_index: setIdx,
+                                value: e.target.value,
+                              })
+                            }
+                            placeholder={prefs.effortScale === "rir" ? "0-6" : "0-10"}
+                          />
+                        </div>
+                        <button
+                          className={`btn iconBtn setCompleteBtn completeIconBtn ${set.completed ? "active" : ""}`}
+                          type="button"
+                          aria-pressed={set.completed}
+                          onClick={() =>
+                            applySessionDraftCommand({
+                              type: "set_set_completed",
+                              exercise_index: exIdx,
+                              set_index: setIdx,
+                              value: !set.completed,
+                            })
+                          }
+                          aria-label={set.completed ? "Serie completada" : "Marcar serie completada"}
+                          title={set.completed ? "Serie completada" : "Marcar serie completada"}
+                        >
+                          <svg className="iconGlyph" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M8.5 12.2L10.8 14.5L15.6 9.7" />
+                          </svg>
+                        </button>
+                        <button
+                          className="btn iconBtn trashBtn compactTrashBtn"
+                          onClick={() => removeSet(exIdx, setIdx)}
+                          disabled={exercise.sets.length <= 1}
+                          type="button"
+                          aria-label="Eliminar serie"
+                          title="Eliminar serie"
+                        >
+                          <svg className="iconGlyph" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M3 6h18" />
+                            <path d="M8 6V4h8v2" />
+                            <path d="M19 6l-1 14H6L5 6" />
+                            <path d="M10 10v7" />
+                            <path d="M14 10v7" />
+                          </svg>
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -1032,6 +1022,10 @@ export default function NewSession() {
       </section>
 
       <section className="surface">
+        <div className="chipRow" style={{ marginBottom: 10 }}>
+          <span className="chip">{`RPE sesion (auto): ${sessionRpeAuto === null ? "-" : sessionRpeAuto.toFixed(2)}`}</span>
+          <span className="chip">{`Calculado desde ${prefs.effortScale.toUpperCase()} por serie`}</span>
+        </div>
         <div className="hstack">
           <button className="btn primary" onClick={submit} disabled={busy || !selectedRoutine || !hasActiveAthlete}>
             {busy ? "Guardando..." : "Guardar sesion"}
@@ -1041,6 +1035,33 @@ export default function NewSession() {
           </button>
         </div>
       </section>
+
+      {restTimer ? (
+        <section className="restFloatBar" aria-live="polite">
+          <div className="restFloatTop">
+            <strong>Descanso entre series</strong>
+            <span className="timerValue restFloatTimer">{formatTimer(restRemainingSec)}</span>
+          </div>
+          <div className="small">{`${restTimer.exercise_name} - Set ${restTimer.set_index + 1}`}</div>
+          <div className="restFloatTrack" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={restProgressPct}>
+            <div className="restFloatFill" style={{ width: `${restProgressPct}%` }} />
+          </div>
+          <div className="restFloatBottom">
+            <span className="small">{restRemainingSec > 0 ? "En descanso" : "Listo para la siguiente serie"}</span>
+            <div className="hstack compact">
+              {notificationCapability !== "unsupported" && notificationCapability !== "granted" ? (
+                <button className="btn" type="button" onClick={() => void requestDeviceNotifications()}>
+                  Activar notificaciones
+                </button>
+              ) : null}
+              <button className="btn" type="button" onClick={clearRestTimer}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+          <div className="small">{`Notificaciones: ${notificationLabel}`}</div>
+        </section>
+      ) : null}
     </div>
   );
 }

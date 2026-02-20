@@ -332,47 +332,169 @@ textarea.input:focus,
 .setRowCard {
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 8px;
-  background: var(--bg-elevated);
-  display: grid;
-  gap: 8px;
+  padding: 7px 8px;
+  background: color-mix(in srgb, var(--bg-elevated), white 8%);
+  overflow-x: hidden;
 }
 
 .setRow {
   display: grid;
+  width: 100%;
   gap: 8px;
-  grid-template-columns: auto 1fr 1fr auto;
-  align-items: center;
+  grid-template-columns: auto minmax(96px, 1.4fr) minmax(78px, 1fr) minmax(78px, 1fr) auto auto;
+  align-items: end;
 }
 
-.setRowMeta {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.setInlineCheck {
+.iconBtn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 5px 6px;
+}
+
+.iconGlyph {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.setCompleteBtn {
+  border-color: var(--border);
   color: var(--text-soft);
 }
 
-.setInlineCheck input {
-  margin: 0;
+.completeIconBtn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  border-radius: 999px;
 }
 
-.setRpeField {
-  width: min(180px, 100%);
+.setCompleteBtn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.trashBtn:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 35%);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger-bg), var(--bg-elevated) 60%);
+}
+
+.compactTrashBtn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+}
+
+.compactTrashBtn .iconGlyph {
+  width: 12px;
+  height: 12px;
+}
+
+.setFieldMini {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+
+.setFieldMini .smallLabel {
+  margin-bottom: 0;
+}
+
+.setInputMini.input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 7px;
+  text-align: center;
+}
+
+.setInputWeight.input {
+  width: 100%;
+}
+
+.setInputReps.input {
+  width: 100%;
+}
+
+.setInputEffort.input {
+  width: 100%;
+}
+
+.restFloatBar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 95;
+  width: min(360px, calc(100% - 24px));
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--accent) 8%);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  animation: restFloatEnter 320ms cubic-bezier(0.2, 0.9, 0.2, 1);
+  will-change: transform, opacity;
+}
+
+@keyframes restFloatEnter {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.restFloatTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.restFloatTimer {
+  font-size: 1.2rem;
+}
+
+.restFloatTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%);
+  overflow: hidden;
+}
+
+.restFloatFill {
+  height: 100%;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent), white 12%), var(--accent));
+  transition: width 0.35s linear;
+}
+
+.restFloatBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .setTag {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-soft);
+  padding-bottom: 6px;
 }
 
 .message {
@@ -757,20 +879,19 @@ textarea.input:focus,
     grid-template-columns: 1fr;
   }
 
+  .setRowCard {
+    padding: 6px;
+  }
+
   .setRow {
-    grid-template-columns: 1fr 1fr auto;
+    gap: 6px;
+    grid-template-columns: auto minmax(84px, 1.25fr) minmax(68px, 1fr) minmax(68px, 1fr) auto auto;
   }
 
-  .setTag {
-    grid-column: 1 / -1;
-  }
-
-  .setRowMeta {
-    align-items: stretch;
-  }
-
-  .setRpeField {
-    width: 100%;
+  .restFloatBar {
+    right: 10px;
+    bottom: 10px;
+    width: calc(100% - 20px);
   }
 
   .planningEditor {
@@ -798,6 +919,12 @@ textarea.input:focus,
   .undoBarActions {
     width: 100%;
     justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .restFloatBar {
+    animation: none;
   }
 }
 
