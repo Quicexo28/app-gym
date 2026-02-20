@@ -2,8 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   ALL_EXERCISE_FILTER as ALL,
+  ALL_EXERCISE_ZONE_FILTER,
   buildExerciseCatalogBrowser,
+  computeExerciseEntrySearchScore,
+  EXERCISE_ZONE_LOWER,
+  EXERCISE_ZONE_UPPER,
   tokenizeExerciseSearch,
+  type ExerciseBodyZoneFilter,
   type ExerciseCatalogEntry,
   type ExerciseFilters,
 } from "../lib/exerciseCatalog";
@@ -24,11 +29,13 @@ type CatalogNode = {
   children: CatalogNode[];
   items: TreeItem[];
   totalItems: number;
+  maxScore: number;
 };
 
 type TreeItem = {
   entry: ExerciseCatalogEntry;
   treePath: string[];
+  matchScore: number;
 };
 
 const DEFAULT_TARGET_SETS = 3;
@@ -70,28 +77,10 @@ function buildNonLeafPathKeys(items: ExerciseCatalogEntry[]): Set<string> {
   return nonLeafKeys;
 }
 
-function firstMatchingPathIndex(path: string[], searchTokens: string[]): number {
-  if (searchTokens.length === 0) return 0;
-
-  for (let index = 0; index < path.length; index += 1) {
-    const normalizedSegment = normalizePathSegment(path[index]);
-    if (searchTokens.some((token) => normalizedSegment.includes(token))) {
-      return index;
-    }
-  }
-
-  return 0;
-}
-
 function toTreeItems(entries: ExerciseCatalogEntry[], searchTokens: string[]): TreeItem[] {
   return entries.map((entry) => {
-    if (searchTokens.length === 0) {
-      return { entry, treePath: entry.path };
-    }
-
-    const startIndex = firstMatchingPathIndex(entry.path, searchTokens);
-    const slicedPath = entry.path.slice(startIndex);
-    return { entry, treePath: slicedPath.length > 0 ? slicedPath : entry.path };
+    const matchScore = searchTokens.length > 0 ? computeExerciseEntrySearchScore(entry, searchTokens) : 0;
+    return { entry, treePath: entry.path, matchScore };
   });
 }
 
@@ -139,25 +128,40 @@ function formatRestSeconds(restSeconds: number): string {
   return `${restSeconds}s`;
 }
 
-function freezeNodes(source: Map<string, MutableNode>): CatalogNode[] {
-  return Array.from(source.values())
-    .sort((a, b) => a.label.localeCompare(b.label))
-    .map((node) => {
-      const children = freezeNodes(node.children);
-      const items = [...node.items].sort((a, b) => a.entry.name.localeCompare(b.entry.name));
-      const childCount = children.reduce((acc, child) => acc + child.totalItems, 0);
-
-      return {
-        label: node.label,
-        path: node.path,
-        children,
-        items,
-        totalItems: items.length + childCount,
-      };
+function freezeNodes(source: Map<string, MutableNode>, rankBySimilarity: boolean): CatalogNode[] {
+  const nodes = Array.from(source.values()).map((node) => {
+    const children = freezeNodes(node.children, rankBySimilarity);
+    const items = [...node.items].sort((a, b) => {
+      if (rankBySimilarity && b.matchScore !== a.matchScore) {
+        return b.matchScore - a.matchScore;
+      }
+      return a.entry.name.localeCompare(b.entry.name);
     });
+    const childCount = children.reduce((acc, child) => acc + child.totalItems, 0);
+    const itemMaxScore = items.reduce((maxScore, item) => Math.max(maxScore, item.matchScore), 0);
+    const childMaxScore = children.reduce((maxScore, child) => Math.max(maxScore, child.maxScore), 0);
+
+    return {
+      label: node.label,
+      path: node.path,
+      children,
+      items,
+      totalItems: items.length + childCount,
+      maxScore: Math.max(itemMaxScore, childMaxScore),
+    };
+  });
+
+  nodes.sort((a, b) => {
+    if (rankBySimilarity && b.maxScore !== a.maxScore) {
+      return b.maxScore - a.maxScore;
+    }
+    return a.label.localeCompare(b.label);
+  });
+
+  return nodes;
 }
 
-function buildTree(items: TreeItem[]): CatalogNode[] {
+function buildTree(items: TreeItem[], rankBySimilarity: boolean): CatalogNode[] {
   const root = new Map<string, MutableNode>();
 
   for (const item of items) {
@@ -186,7 +190,7 @@ function buildTree(items: TreeItem[]): CatalogNode[] {
     if (currentNode) currentNode.items.push(item);
   }
 
-  return freezeNodes(root);
+  return freezeNodes(root, rankBySimilarity);
 }
 
 function renderTree(
@@ -239,26 +243,22 @@ export default function Routines() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
-  const [selectedFamily, setSelectedFamily] = useState<string>(ALL);
-  const [selectedVariation, setSelectedVariation] = useState<string>(ALL);
-  const [selectedSubvariation, setSelectedSubvariation] = useState<string>(ALL);
+  const [selectedZone, setSelectedZone] = useState<ExerciseBodyZoneFilter>(ALL_EXERCISE_ZONE_FILTER);
   const [search, setSearch] = useState("");
 
   const filters = useMemo<ExerciseFilters>(
     () => ({
       group: selectedGroup,
-      family: selectedFamily,
-      variation: selectedVariation,
-      subvariation: selectedSubvariation,
+      zone: selectedZone,
       search,
     }),
-    [search, selectedFamily, selectedGroup, selectedSubvariation, selectedVariation],
+    [search, selectedGroup, selectedZone],
   );
   const browser = useMemo(() => buildExerciseCatalogBrowser(catalogEntries, filters), [catalogEntries, filters]);
   const filteredEntries = browser.filteredEntries;
   const searchTokens = useMemo(() => tokenizeExerciseSearch(search), [search]);
   const treeItems = useMemo(() => toTreeItems(filteredEntries, searchTokens), [filteredEntries, searchTokens]);
-  const tree = useMemo(() => buildTree(treeItems), [treeItems]);
+  const tree = useMemo(() => buildTree(treeItems, searchTokens.length > 0), [treeItems, searchTokens.length]);
   const nonLeafPathKeys = useMemo(() => buildNonLeafPathKeys(catalogEntries), [catalogEntries]);
 
   const sorted = useMemo(() => [...items].sort((a, b) => a.name.localeCompare(b.name)), [items]);
@@ -292,23 +292,6 @@ export default function Routines() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [pickerOpen]);
-
-  function resetLowerFilters(level: "group" | "family" | "variation") {
-    if (level === "group") {
-      setSelectedFamily(ALL);
-      setSelectedVariation(ALL);
-      setSelectedSubvariation(ALL);
-      return;
-    }
-
-    if (level === "family") {
-      setSelectedVariation(ALL);
-      setSelectedSubvariation(ALL);
-      return;
-    }
-
-    setSelectedSubvariation(ALL);
-  }
 
   function addSelectedExercise(entry: ExerciseCatalogEntry) {
     if (!isLeafEntry(entry)) {
@@ -355,9 +338,7 @@ export default function Routines() {
 
   function clearFilters() {
     setSelectedGroup(ALL);
-    setSelectedFamily(ALL);
-    setSelectedVariation(ALL);
-    setSelectedSubvariation(ALL);
+    setSelectedZone(ALL_EXERCISE_ZONE_FILTER);
     setSearch("");
   }
 
@@ -450,12 +431,6 @@ export default function Routines() {
         <div className="sectionHead">
           <h3>Ejercicios asignados a la rutina</h3>
           <p>Revisa o quita ejercicios antes de guardar la plantilla.</p>
-        </div>
-
-        <div className="quickActions" style={{ marginTop: 10 }}>
-          <button className="btn" onClick={() => setPickerOpen(true)}>
-            Agregar nuevo ejercicio
-          </button>
         </div>
 
         {draftExercises.length === 0 ? (
@@ -633,14 +608,20 @@ export default function Routines() {
 
             <div className="splitGrid" style={{ marginTop: 10 }}>
               <div>
+                <label className="smallLabel">Zona</label>
+                <select className="input" value={selectedZone} onChange={(e) => setSelectedZone(e.target.value as ExerciseBodyZoneFilter)}>
+                  <option value={ALL_EXERCISE_ZONE_FILTER}>Todas</option>
+                  <option value={EXERCISE_ZONE_UPPER}>Superior</option>
+                  <option value={EXERCISE_ZONE_LOWER}>Inferior</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="smallLabel">Grupo muscular</label>
                 <select
                   className="input"
                   value={selectedGroup}
-                  onChange={(e) => {
-                    setSelectedGroup(e.target.value);
-                    resetLowerFilters("group");
-                  }}
+                  onChange={(e) => setSelectedGroup(e.target.value)}
                 >
                   <option value={ALL}>Todos</option>
                   {browser.groupOptions.map((group) => (
@@ -651,59 +632,6 @@ export default function Routines() {
                 </select>
               </div>
 
-              <div>
-                <label className="smallLabel">Ejercicio base</label>
-                <select
-                  className="input"
-                  value={selectedFamily}
-                  onChange={(e) => {
-                    setSelectedFamily(e.target.value);
-                    resetLowerFilters("family");
-                  }}
-                >
-                  <option value={ALL}>Todos</option>
-                  {browser.familyOptions.map((family) => (
-                    <option key={family} value={family}>
-                      {family}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="smallLabel">Variacion</label>
-                <select
-                  className="input"
-                  value={selectedVariation}
-                  onChange={(e) => {
-                    setSelectedVariation(e.target.value);
-                    resetLowerFilters("variation");
-                  }}
-                >
-                  <option value={ALL}>Todas</option>
-                  {browser.variationOptions.map((variation) => (
-                    <option key={variation} value={variation}>
-                      {variation}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="smallLabel">Subvariacion</label>
-                <select
-                  className="input"
-                  value={selectedSubvariation}
-                  onChange={(e) => setSelectedSubvariation(e.target.value)}
-                >
-                  <option value={ALL}>Todas</option>
-                  {browser.subvariationOptions.map((subvariation) => (
-                    <option key={subvariation} value={subvariation}>
-                      {subvariation}
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
 
             <div style={{ marginTop: 12 }}>
@@ -719,9 +647,8 @@ export default function Routines() {
             <div className="chipRow" style={{ marginTop: 10, alignItems: "center" }}>
               <span className="chip">Catalogo total: {catalogEntries.length}</span>
               <span className="chip">Resultados: {filteredEntries.length}</span>
-              <span className="chip">
-                Ruta: {[selectedGroup, selectedFamily, selectedVariation, selectedSubvariation].filter((value) => value !== ALL).join(" > ") || "General"}
-              </span>
+              <span className="chip">Zona: {selectedZone === ALL_EXERCISE_ZONE_FILTER ? "Todas" : selectedZone === EXERCISE_ZONE_LOWER ? "Inferior" : "Superior"}</span>
+              <span className="chip">Grupo: {selectedGroup === ALL ? "Todos" : selectedGroup}</span>
             </div>
 
             <div className="quickActions" style={{ marginTop: 10 }}>

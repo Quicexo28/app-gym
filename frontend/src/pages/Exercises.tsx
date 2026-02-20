@@ -2,10 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   ALL_EXERCISE_FILTER as ALL,
+  ALL_EXERCISE_ZONE_FILTER,
   buildExerciseCatalogBrowser,
+  canonicalizeExerciseGroup,
   catalogPathKeyFromParts,
   cleanExerciseText,
+  computeExerciseEntrySearchScore,
+  EXERCISE_ZONE_LOWER,
+  EXERCISE_ZONE_UPPER,
   tokenizeExerciseSearch,
+  type ExerciseBodyZoneFilter,
   type ExerciseCatalogEntry,
   type ExerciseFilters,
 } from "../lib/exerciseCatalog";
@@ -26,11 +32,13 @@ type CatalogNode = {
   children: CatalogNode[];
   items: TreeItem[];
   totalItems: number;
+  maxScore: number;
 };
 
 type TreeItem = {
   entry: ExerciseCatalogEntry;
   treePath: string[];
+  matchScore: number;
 };
 
 type TreeActions = {
@@ -41,59 +49,47 @@ type TreeActions = {
   editingId: string;
 };
 
-function normalizePathSegment(value: string): string {
-  return value
-    .replace(/\s+/g, " ")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function firstMatchingPathIndex(path: string[], searchTokens: string[]): number {
-  if (searchTokens.length === 0) return 0;
-
-  for (let index = 0; index < path.length; index += 1) {
-    const normalizedSegment = normalizePathSegment(path[index]);
-    if (searchTokens.some((token) => normalizedSegment.includes(token))) {
-      return index;
-    }
-  }
-
-  return 0;
-}
-
 function toTreeItems(entries: ExerciseCatalogEntry[], searchTokens: string[]): TreeItem[] {
   return entries.map((entry) => {
-    if (searchTokens.length === 0) {
-      return { entry, treePath: entry.path };
-    }
-
-    const startIndex = firstMatchingPathIndex(entry.path, searchTokens);
-    const slicedPath = entry.path.slice(startIndex);
-    return { entry, treePath: slicedPath.length > 0 ? slicedPath : entry.path };
+    const matchScore = searchTokens.length > 0 ? computeExerciseEntrySearchScore(entry, searchTokens) : 0;
+    return { entry, treePath: entry.path, matchScore };
   });
 }
 
-function freezeNodes(source: Map<string, MutableNode>): CatalogNode[] {
-  return Array.from(source.values())
-    .sort((a, b) => a.label.localeCompare(b.label))
-    .map((node) => {
-      const children = freezeNodes(node.children);
-      const items = [...node.items].sort((a, b) => a.entry.name.localeCompare(b.entry.name));
-      const childCount = children.reduce((acc, child) => acc + child.totalItems, 0);
-
-      return {
-        label: node.label,
-        path: node.path,
-        children,
-        items,
-        totalItems: items.length + childCount,
-      };
+function freezeNodes(source: Map<string, MutableNode>, rankBySimilarity: boolean): CatalogNode[] {
+  const nodes = Array.from(source.values()).map((node) => {
+    const children = freezeNodes(node.children, rankBySimilarity);
+    const items = [...node.items].sort((a, b) => {
+      if (rankBySimilarity && b.matchScore !== a.matchScore) {
+        return b.matchScore - a.matchScore;
+      }
+      return a.entry.name.localeCompare(b.entry.name);
     });
+    const childCount = children.reduce((acc, child) => acc + child.totalItems, 0);
+    const itemMaxScore = items.reduce((maxScore, item) => Math.max(maxScore, item.matchScore), 0);
+    const childMaxScore = children.reduce((maxScore, child) => Math.max(maxScore, child.maxScore), 0);
+
+    return {
+      label: node.label,
+      path: node.path,
+      children,
+      items,
+      totalItems: items.length + childCount,
+      maxScore: Math.max(itemMaxScore, childMaxScore),
+    };
+  });
+
+  nodes.sort((a, b) => {
+    if (rankBySimilarity && b.maxScore !== a.maxScore) {
+      return b.maxScore - a.maxScore;
+    }
+    return a.label.localeCompare(b.label);
+  });
+
+  return nodes;
 }
 
-function buildTree(items: TreeItem[]): CatalogNode[] {
+function buildTree(items: TreeItem[], rankBySimilarity: boolean): CatalogNode[] {
   const root = new Map<string, MutableNode>();
 
   for (const item of items) {
@@ -123,7 +119,7 @@ function buildTree(items: TreeItem[]): CatalogNode[] {
     if (currentNode) currentNode.items.push(item);
   }
 
-  return freezeNodes(root);
+  return freezeNodes(root, rankBySimilarity);
 }
 
 function renderTree(nodes: CatalogNode[], actions: TreeActions, expandAll: boolean) {
@@ -187,52 +183,29 @@ export default function Exercises() {
   const [editSubvariation, setEditSubvariation] = useState("");
 
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
-  const [selectedFamily, setSelectedFamily] = useState<string>(ALL);
-  const [selectedVariation, setSelectedVariation] = useState<string>(ALL);
-  const [selectedSubvariation, setSelectedSubvariation] = useState<string>(ALL);
+  const [selectedZone, setSelectedZone] = useState<ExerciseBodyZoneFilter>(ALL_EXERCISE_ZONE_FILTER);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
   const filters = useMemo<ExerciseFilters>(
     () => ({
       group: selectedGroup,
-      family: selectedFamily,
-      variation: selectedVariation,
-      subvariation: selectedSubvariation,
+      zone: selectedZone,
       search,
     }),
-    [search, selectedFamily, selectedGroup, selectedSubvariation, selectedVariation],
+    [search, selectedGroup, selectedZone],
   );
   const browser = useMemo(() => buildExerciseCatalogBrowser(entries, filters), [entries, filters]);
 
   const filteredEntries = browser.filteredEntries;
   const searchTokens = useMemo(() => tokenizeExerciseSearch(search), [search]);
   const treeItems = useMemo(() => toTreeItems(filteredEntries, searchTokens), [filteredEntries, searchTokens]);
-  const tree = useMemo(() => buildTree(treeItems), [treeItems]);
+  const tree = useMemo(() => buildTree(treeItems, searchTokens.length > 0), [treeItems, searchTokens.length]);
   const editingItem = useMemo(() => items.find((item) => item.id === editId) || null, [editId, items]);
-
-  function resetLowerFilters(level: "group" | "family" | "variation") {
-    if (level === "group") {
-      setSelectedFamily(ALL);
-      setSelectedVariation(ALL);
-      setSelectedSubvariation(ALL);
-      return;
-    }
-
-    if (level === "family") {
-      setSelectedVariation(ALL);
-      setSelectedSubvariation(ALL);
-      return;
-    }
-
-    setSelectedSubvariation(ALL);
-  }
 
   function clearFilters() {
     setSelectedGroup(ALL);
-    setSelectedFamily(ALL);
-    setSelectedVariation(ALL);
-    setSelectedSubvariation(ALL);
+    setSelectedZone(ALL_EXERCISE_ZONE_FILTER);
     setSearch("");
   }
 
@@ -279,7 +252,7 @@ export default function Exercises() {
   async function add() {
     setError("");
 
-    const normalizedGroup = cleanExerciseText(group) || "General";
+    const normalizedGroup = canonicalizeExerciseGroup(group) || "General";
     const normalizedFamily = cleanExerciseText(family);
     const normalizedVariation = cleanExerciseText(variation);
     const normalizedSubvariation = cleanExerciseText(subvariation);
@@ -354,7 +327,7 @@ export default function Exercises() {
       return;
     }
 
-    const normalizedGroup = cleanExerciseText(editGroup) || "General";
+    const normalizedGroup = canonicalizeExerciseGroup(editGroup) || "General";
     const normalizedFamily = cleanExerciseText(editFamily);
     const normalizedVariation = cleanExerciseText(editVariation);
     const normalizedSubvariation = cleanExerciseText(editSubvariation);
@@ -464,76 +437,28 @@ export default function Exercises() {
       <section className="surface">
         <div className="sectionHead">
           <h3>Explorador</h3>
-          <p>Filtro jerarquico para navegar desde general hasta objetivo.</p>
+          <p>Filtra por zona y grupo muscular antes de buscar en el arbol.</p>
         </div>
 
         <div className="splitGrid" style={{ marginTop: 10 }}>
+          <div>
+            <label className="smallLabel">Zona</label>
+            <select className="input" value={selectedZone} onChange={(e) => setSelectedZone(e.target.value as ExerciseBodyZoneFilter)}>
+              <option value={ALL_EXERCISE_ZONE_FILTER}>Todas</option>
+              <option value={EXERCISE_ZONE_UPPER}>Superior</option>
+              <option value={EXERCISE_ZONE_LOWER}>Inferior</option>
+            </select>
+          </div>
+
           <div>
             <label className="smallLabel">Grupo muscular</label>
             <select
               className="input"
               value={selectedGroup}
-              onChange={(e) => {
-                setSelectedGroup(e.target.value);
-                resetLowerFilters("group");
-              }}
+              onChange={(e) => setSelectedGroup(e.target.value)}
             >
               <option value={ALL}>Todos</option>
               {browser.groupOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="smallLabel">Ejercicio base</label>
-            <select
-              className="input"
-              value={selectedFamily}
-              onChange={(e) => {
-                setSelectedFamily(e.target.value);
-                resetLowerFilters("family");
-              }}
-            >
-              <option value={ALL}>Todos</option>
-              {browser.familyOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="smallLabel">Variacion</label>
-            <select
-              className="input"
-              value={selectedVariation}
-              onChange={(e) => {
-                setSelectedVariation(e.target.value);
-                resetLowerFilters("variation");
-              }}
-            >
-              <option value={ALL}>Todas</option>
-              {browser.variationOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="smallLabel">Subvariacion</label>
-            <select
-              className="input"
-              value={selectedSubvariation}
-              onChange={(e) => setSelectedSubvariation(e.target.value)}
-            >
-              <option value={ALL}>Todas</option>
-              {browser.subvariationOptions.map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
@@ -554,9 +479,8 @@ export default function Exercises() {
 
         <div className="chipRow" style={{ marginTop: 10 }}>
           <span className="chip">Resultados: {filteredEntries.length}</span>
-          <span className="chip">
-            Ruta: {[selectedGroup, selectedFamily, selectedVariation, selectedSubvariation].filter((value) => value !== ALL).join(" > ") || "General"}
-          </span>
+          <span className="chip">Zona: {selectedZone === ALL_EXERCISE_ZONE_FILTER ? "Todas" : selectedZone === EXERCISE_ZONE_LOWER ? "Inferior" : "Superior"}</span>
+          <span className="chip">Grupo: {selectedGroup === ALL ? "Todos" : selectedGroup}</span>
           <button type="button" className="btn" onClick={clearFilters}>
             Limpiar filtros
           </button>
