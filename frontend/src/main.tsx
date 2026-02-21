@@ -2,6 +2,7 @@
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { ActiveSessionProvider } from "./state/activeSession";
 import { AthleteProvider } from "./state/athlete";
 import { AuthProvider } from "./state/auth";
 import { ExerciseCatalogProvider } from "./state/exerciseCatalog";
@@ -18,9 +19,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <PreferencesProvider>
             <ExerciseCatalogProvider>
               <UndoProvider>
-                <BrowserRouter>
-                  <App />
-                </BrowserRouter>
+                <ActiveSessionProvider>
+                  <BrowserRouter>
+                    <App />
+                  </BrowserRouter>
+                </ActiveSessionProvider>
               </UndoProvider>
             </ExerciseCatalogProvider>
           </PreferencesProvider>

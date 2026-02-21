@@ -28,9 +28,12 @@ Servicios:
 
 ```powershell
 npm run dev
+npm run voice:model:sync
 npm run build
 npm run preview
 ```
+
+`voice:model:sync` descarga el modelo offline de voz en `frontend/public/models/vosk-model-small-es-0.42.zip`.
 
 ## 4) Migraciones DB (Alembic)
 

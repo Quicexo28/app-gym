@@ -266,6 +266,10 @@ textarea.input:focus,
   gap: 8px;
 }
 
+.desktopDockOnly {
+  display: block;
+}
+
 .quickGrid {
   display: grid;
   gap: 14px;
@@ -462,6 +466,67 @@ textarea.input:focus,
   border-radius: 14px;
   padding: 12px;
   background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
+  cursor: grab;
+}
+
+.exerciseCardDragging {
+  opacity: 0.58;
+  border-color: color-mix(in srgb, var(--accent), var(--border) 42%);
+}
+
+.exerciseCardDragArmed {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 35%);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.routineSortableList {
+  gap: 0;
+}
+
+.routineSortableEntry {
+  display: grid;
+  gap: 6px;
+}
+
+.routineDropSlot {
+  height: 8px;
+  border: 1px dashed transparent;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.routineSortableListDragging .routineDropSlot {
+  background: color-mix(in srgb, var(--accent), transparent 92%);
+  border-color: color-mix(in srgb, var(--accent), transparent 70%);
+}
+
+.routineDropSlot.active {
+  background: color-mix(in srgb, var(--accent), transparent 76%);
+  border-color: color-mix(in srgb, var(--accent), transparent 35%);
+}
+
+.routineDragHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  user-select: none;
+  pointer-events: none;
+}
+
+.routineDragHandleIcon {
+  width: 14px;
+  height: 14px;
+}
+
+.routineDragHandleArmed {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
 }
 
 .setGrid {
@@ -475,7 +540,86 @@ textarea.input:focus,
   border-radius: 10px;
   padding: 7px 8px;
   background: color-mix(in srgb, var(--bg-elevated), white 8%);
-  overflow-x: hidden;
+  overflow: hidden;
+  position: relative;
+}
+
+.setRowCard::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent), var(--bg-elevated) 78%),
+    color-mix(in srgb, var(--accent), var(--bg-elevated) 84%)
+  );
+  transform: scaleX(0);
+  transform-origin: left center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.setRowCard::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.completedSetRow {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 30%);
+}
+
+.completedSetRow::before {
+  opacity: 1;
+  animation: setRowFillIn 320ms cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+
+.uncheckingSetRow {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 26%);
+}
+
+.uncheckingSetRow::before {
+  opacity: 0;
+  animation: none;
+}
+
+.uncheckingSetRow::after {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--danger), var(--bg-elevated) 66%),
+    color-mix(in srgb, var(--danger), var(--bg-elevated) 74%)
+  );
+  opacity: 1;
+  transform-origin: left center;
+  animation: setRowDrainOut 700ms ease-out forwards;
+}
+
+.deletingSetRow {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 20%);
+  pointer-events: none;
+}
+
+.deletingSetRow::before {
+  opacity: 0;
+  animation: none;
+}
+
+.deletingSetRow::after {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--danger), var(--bg-elevated) 70%),
+    color-mix(in srgb, var(--danger), var(--bg-elevated) 62%)
+  );
+  opacity: 1;
+  transform-origin: left center;
+  animation: setRowDeleteFill 1.5s linear forwards;
+}
+
+.deletingSetRow .setRow {
+  opacity: 0.78;
 }
 
 .setRow {
@@ -484,6 +628,35 @@ textarea.input:focus,
   gap: 8px;
   grid-template-columns: auto minmax(96px, 1.4fr) minmax(78px, 1fr) minmax(78px, 1fr) auto auto;
   align-items: end;
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes setRowFillIn {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes setRowDrainOut {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes setRowDeleteFill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 .iconBtn {
@@ -631,6 +804,181 @@ textarea.input:focus,
   flex-wrap: wrap;
 }
 
+.activeSessionBar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 88;
+  width: min(480px, calc(100% - 24px));
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 48%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--accent) 9%);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  animation: activeSessionBarEnter 320ms cubic-bezier(0.2, 0.9, 0.2, 1);
+  will-change: transform, opacity;
+}
+
+.activeSessionMain {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.activeSessionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.activeSessionRestRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.activeSessionTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%);
+  overflow: hidden;
+}
+
+.activeSessionFill {
+  height: 100%;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent), white 12%), var(--accent));
+  transition: width 0.35s linear;
+}
+
+.activeSessionActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.activeSessionCheckBtn {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.activeSessionCheckBtn .iconGlyph {
+  width: 16px;
+  height: 16px;
+}
+
+.voicePanel {
+  display: grid;
+  gap: 10px;
+}
+
+.voiceStatusDock {
+  position: fixed;
+  right: 14px;
+  top: 96px;
+  z-index: 92;
+  width: min(360px, calc(100vw - 28px));
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--accent) 7%);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
+
+.voiceStatusHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.voiceDockActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voiceDockTranscript {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 20%);
+  padding: 8px;
+  font-size: 13px;
+  min-height: 52px;
+  overflow-wrap: anywhere;
+}
+
+.voiceInfoGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin-top: 10px;
+}
+
+.voiceInfoCard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.voiceLog {
+  display: grid;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.voiceLogItem {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 22%);
+  padding: 10px;
+  display: grid;
+  gap: 5px;
+}
+
+.voiceLogItem.applied {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 50%);
+}
+
+.voiceLogItem.rejected {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 45%);
+  background: color-mix(in srgb, var(--danger-bg), var(--bg-elevated) 75%);
+}
+
+.voiceChipError {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 35%);
+  color: var(--danger);
+}
+
+@keyframes activeSessionBarEnter {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .setTag {
   font-size: 12px;
   font-weight: 700;
@@ -695,6 +1043,45 @@ textarea.input:focus,
   display: grid;
   gap: 8px;
   color: var(--text);
+}
+
+.routinePickGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.routinePickCard {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
+  display: grid;
+  gap: 10px;
+}
+
+.routinePickCard.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.routinePickActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.routineStartBtn {
+  flex: 1;
+  min-height: 44px;
+  font-size: 15px;
+}
+
+.routineGotoBtn {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .catalogList {
@@ -838,6 +1225,80 @@ textarea.input:focus,
   background: var(--bg-elevated);
   box-shadow: var(--shadow);
   padding: 16px;
+}
+
+.routineInfoLayout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(230px, 1fr) minmax(240px, 1fr);
+  align-items: start;
+}
+
+.routineInfoList {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.routineInfoRow {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+}
+
+.routineInfoRowMeta {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+}
+
+.routineRadarWrap {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 12%);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.routineRadarSvg {
+  width: min(100%, 360px);
+  height: auto;
+  overflow: visible;
+}
+
+.routineRadarRing {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-soft), transparent 55%);
+  stroke-width: 1;
+}
+
+.routineRadarAxis {
+  stroke: color-mix(in srgb, var(--text-soft), transparent 52%);
+  stroke-width: 1;
+}
+
+.routineRadarArea {
+  fill: color-mix(in srgb, var(--accent), transparent 55%);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.routineRadarLabel {
+  fill: var(--text-soft);
+  font-size: 11px;
+  dominant-baseline: middle;
+}
+
+.routineRadarCaption {
+  margin: 0;
+  text-align: center;
 }
 
 .metricBlock {
@@ -1020,6 +1481,10 @@ textarea.input:focus,
     grid-template-columns: 1fr;
   }
 
+  .desktopDockOnly {
+    display: none !important;
+  }
+
   .setRowCard {
     padding: 6px;
   }
@@ -1039,12 +1504,22 @@ textarea.input:focus,
     width: calc(100% - 20px);
   }
 
+  .activeSessionBar {
+    right: 10px;
+    bottom: 76px;
+    width: calc(100% - 20px);
+  }
+
   .planningEditor {
     grid-template-columns: 1fr;
   }
 
   .planningConfigCard {
     position: static;
+  }
+
+  .routineInfoLayout {
+    grid-template-columns: 1fr;
   }
 
   .planningMosaic {
@@ -1068,8 +1543,24 @@ textarea.input:focus,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .restFloatBar {
+  .restFloatBar,
+  .activeSessionBar {
     animation: none;
+  }
+
+  .completedSetRow::before {
+    animation: none;
+    transform: scaleX(1);
+  }
+
+  .uncheckingSetRow::after {
+    animation: none;
+    transform: scaleX(0);
+  }
+
+  .deletingSetRow::after {
+    animation: none;
+    transform: scaleX(1);
   }
 }
 

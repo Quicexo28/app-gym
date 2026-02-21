@@ -8,6 +8,10 @@ import { formatWeight } from "../lib/units";
 import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 
+function formatExerciseNameForList(name: string): string {
+  return name.replace(/\s*>\s*/g, " - ").trim();
+}
+
 function volumeLoadKg(session: SessionRecord): number {
   const ex = session.exercises || [];
   let total = 0;
@@ -123,7 +127,10 @@ export default function History() {
           <div className="stack compactStack" style={{ marginTop: 10 }}>
             {sessionsSorted.slice(0, 30).map((s, idx) => {
               const volKg = volumeLoadKg(s);
-              const exercises = (s.exercises || []).map((e) => e.name).filter(Boolean).join(" - ");
+              const exercises = (s.exercises || [])
+                .map((e) => formatExerciseNameForList(e.name))
+                .filter(Boolean)
+                .join(" - ");
 
               return (
                 <article key={idx} className="listItem">

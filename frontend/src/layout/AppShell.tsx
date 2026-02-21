@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 
+import ActiveSessionBar from "../components/ActiveSessionBar";
 import UndoBar from "../components/UndoBar";
 import { useAthleteAccess } from "../state/athlete";
 import { useAuth } from "../state/auth";
@@ -151,6 +152,7 @@ export default function AppShell() {
       <main className="content2">
         <Outlet />
       </main>
+      <ActiveSessionBar />
       <UndoBar />
     </div>
   );

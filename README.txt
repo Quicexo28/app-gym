@@ -139,3 +139,26 @@ Guest login:
 Phone format accepted in login/register:
 - E.164-like normalization is applied (digits only, stored as `+<digits>`).
 - Examples: `+5491112345678`, `54 9 11 1234 5678`.
+
+## Offline voice capture (V1)
+- Scope: only `Nueva sesion` (`/session/new`) and only set variables.
+- Feature flag: `VITE_ENABLE_OFFLINE_VOICE_CAPTURE=true`.
+- Model sync (required before build/deploy):
+  ```bash
+  npm run voice:model:sync
+  ```
+- Local model path: `frontend/public/models/vosk-model-small-es-0.42.zip`.
+- Engine: `vosk-browser@0.0.8` (offline on-device, no audio upload).
+- Wake phrase: `coach`.
+- Current target: first pending set in routine order.
+
+Supported command intents (Spanish bounded free language):
+- `set_load`: "coach peso 80", "coach carga 65.5"
+- `set_reps`: "coach reps 8", "coach repeticiones 10"
+- `set_set_effort`: "coach rpe 9", "coach intensidad 7"
+- `set_set_completed`: "coach completar", "coach listo"
+
+Current V1 limits:
+- Desktop modern browsers only (Chrome/Edge).
+- No mobile-browser guarantee in this iteration.
+- No audio persistence. Only normalized transcript + applied/rejected audit is stored in `session.meta`.

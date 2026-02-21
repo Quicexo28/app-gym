@@ -56,6 +56,14 @@ type SubvariationChain = {
   executionType: string;
 };
 
+function formatExerciseNameForList(name: string): string {
+  return name.replace(/\s*>\s*/g, " - ").trim();
+}
+
+function formatExercisePathForList(path: string[]): string {
+  return path.map((segment) => formatExerciseNameForList(segment)).join(" - ");
+}
+
 function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }
@@ -209,8 +217,8 @@ function renderTree(
               {node.items.map((item) => (
                 <article key={item.entry.id} className="treeLeaf">
                   <div>
-                    <strong>{item.entry.name}</strong>
-                    <div className="small">{item.treePath.join(" > ")}</div>
+                    <strong>{formatExerciseNameForList(item.entry.name)}</strong>
+                    <div className="small">{formatExercisePathForList(item.treePath)}</div>
                     <div className="chipRow" style={{ marginTop: 6 }}>
                       <span className="chip">{item.entry.scope === "global" ? "Global" : "Personal"}</span>
                     </div>

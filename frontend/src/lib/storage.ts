@@ -49,6 +49,7 @@ export type RoutineTemplate = {
 
 export type RoutineExerciseTemplate = {
   name: string;
+  group?: string;
   target_sets: number;
   target_reps_min: number;
   target_reps_max: number;
@@ -147,12 +148,24 @@ function parseLegacyRepsRange(value: unknown): { min: number; max: number } | nu
   };
 }
 
+function inferGroupFromRoutineExerciseName(name: string): string | null {
+  if (!name.includes(">")) return null;
+  const parts = name
+    .split(">")
+    .map((part) => clean(part))
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  return clean(parts[0]) || null;
+}
+
 function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null {
   if (typeof raw === "string") {
     const name = clean(raw);
     if (!name) return null;
+    const inferredGroup = inferGroupFromRoutineExerciseName(name);
     return {
       name,
+      group: inferredGroup || undefined,
       target_sets: DEFAULT_TARGET_SETS,
       target_reps_min: DEFAULT_TARGET_REPS_MIN,
       target_reps_max: DEFAULT_TARGET_REPS_MAX,
@@ -173,6 +186,7 @@ function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null 
     reps?: unknown;
     rest_seconds?: unknown;
     rest_sec?: unknown;
+    group?: unknown;
   };
 
   const name = clean(source.name);
@@ -187,9 +201,13 @@ function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null 
   const restSeconds = parseBoundedInt(source.rest_seconds ?? source.rest_sec, DEFAULT_REST_SECONDS, 0, 900);
   const normalizedRepsMin = Math.min(repsMin, repsMax);
   const normalizedRepsMax = Math.max(repsMin, repsMax);
+  const explicitGroup = clean(source.group);
+  const inferredGroup = inferGroupFromRoutineExerciseName(name);
+  const normalizedGroup = explicitGroup || inferredGroup;
 
   return {
     name,
+    group: normalizedGroup || undefined,
     target_sets: targetSets,
     target_reps_min: normalizedRepsMin,
     target_reps_max: normalizedRepsMax,
@@ -204,7 +222,7 @@ function normalizeRoutineExerciseList(raw: unknown): RoutineExerciseTemplate[] {
   for (const entry of raw) {
     const next = normalizeRoutineExercise(entry);
     if (!next) continue;
-    const key = normalizeKey(next.name);
+    const key = `${normalizeKey(next.group || "")}|${normalizeKey(next.name)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(next);

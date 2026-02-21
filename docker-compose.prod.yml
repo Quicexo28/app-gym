@@ -53,6 +53,7 @@ services:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
         VITE_ENABLE_GUEST_LOGIN: ${VITE_ENABLE_GUEST_LOGIN:-false}
+        VITE_ENABLE_OFFLINE_VOICE_CAPTURE: ${VITE_ENABLE_OFFLINE_VOICE_CAPTURE:-false}
     restart: unless-stopped
     depends_on:
       api:
