@@ -38,6 +38,7 @@ Recommended to update:
 - `POSTGRES_DB`
 - `API_PORT`
 - `WEB_PORT`
+- `CORS_ORIGINS` (include your real frontend origin)
 - `VITE_API_BASE_URL`
 - `VITE_GOOGLE_CLIENT_ID`
 
