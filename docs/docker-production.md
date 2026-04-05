@@ -86,6 +86,16 @@ Use the same Google OAuth client id in backend (`GOOGLE_CLIENT_ID`) and frontend
 
 Guest login endpoint (`/api/v1/auth/guest`) is disabled automatically when backend runs with `ENV=prod`.
 
+### Google Login checklist (production)
+- Add your exact frontend origin in Google Cloud Console -> OAuth client -> **Authorized JavaScript origins**.
+  - Include scheme and port when applicable (e.g. `https://app.midominio.com`, `http://localhost:5173`).
+- Ensure backend CORS allows your frontend origin (not only localhost).
+- Ensure `GOOGLE_CLIENT_ID` (backend) and `VITE_GOOGLE_CLIENT_ID` (frontend) are identical.
+- After deploy, test:
+  - frontend can open Google sign-in prompt,
+  - backend `POST /api/v1/auth/google` returns 200,
+  - user reaches authenticated `/home`.
+
 ## 3.2) Keep service alive after VM reboot
 Container restart policies are already `unless-stopped`. For extra safety you can also install the optional systemd unit:
 

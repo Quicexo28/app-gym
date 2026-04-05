@@ -11,8 +11,10 @@ type GoogleCredentialResponse = {
 type GooglePromptNotification = {
   isNotDisplayed: () => boolean;
   isSkippedMoment: () => boolean;
+  isDismissedMoment?: () => boolean;
   getNotDisplayedReason?: () => string;
   getSkippedReason?: () => string;
+  getDismissedReason?: () => string;
 };
 
 declare global {
@@ -23,6 +25,11 @@ declare global {
           initialize: (config: {
             client_id: string;
             callback: (response: GoogleCredentialResponse) => void;
+            use_fedcm_for_prompt?: boolean;
+            auto_select?: boolean;
+            context?: "signin" | "signup" | "use";
+            itp_support?: boolean;
+            cancel_on_tap_outside?: boolean;
           }) => void;
           prompt: (listener?: (notification: GooglePromptNotification) => void) => void;
         };
@@ -42,9 +49,25 @@ function loadGoogleScript(): Promise<void> {
   }
 
   googleScriptPromise = new Promise((resolve, reject) => {
+    const finishIfReady = () => {
+      if (window.google?.accounts?.id) {
+        resolve();
+        return true;
+      }
+      return false;
+    };
+
+    if (finishIfReady()) {
+      return;
+    }
+
     const existing = document.querySelector('script[data-google-identity="true"]') as HTMLScriptElement | null;
     if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("load", () => {
+        if (!finishIfReady()) {
+          reject(new Error("Google se cargo, pero el SDK no quedo disponible."));
+        }
+      }, { once: true });
       existing.addEventListener("error", () => reject(new Error("No se pudo cargar Google.")), { once: true });
       return;
     }
@@ -54,7 +77,11 @@ function loadGoogleScript(): Promise<void> {
     script.async = true;
     script.defer = true;
     script.dataset.googleIdentity = "true";
-    script.onload = () => resolve();
+    script.onload = () => {
+      if (!finishIfReady()) {
+        reject(new Error("Google se cargo, pero el SDK no quedo disponible."));
+      }
+    };
     script.onerror = () => reject(new Error("No se pudo cargar Google."));
     document.head.appendChild(script);
   });
@@ -101,21 +128,40 @@ function requestGoogleCredential(clientId: string): Promise<string> {
         }
         resolveOnce(credential);
       },
+      // reduce falsos negativos al abrir el prompt en navegadores modernos.
+      use_fedcm_for_prompt: true,
+      auto_select: false,
+      context: "signin",
+      itp_support: true,
+      cancel_on_tap_outside: false,
     });
 
     googleId.prompt((notification) => {
       if (notification.isNotDisplayed()) {
         const reason = notification.getNotDisplayedReason?.();
         if (reason === "unregistered_origin") {
-          rejectOnce(`Origen no autorizado para Google (${window.location.origin}).`);
+          rejectOnce(`Origen no autorizado para Google (${window.location.origin}). Revisa Authorized JavaScript origins en Google Cloud.`);
+          return;
+        }
+        if (reason === "invalid_client") {
+          rejectOnce("Client ID de Google invalido para este frontend.");
+          return;
+        }
+        if (reason === "missing_client_id") {
+          rejectOnce("Falta VITE_GOOGLE_CLIENT_ID en frontend.");
           return;
         }
         rejectOnce(`No se pudo abrir el cuadro de Google${reason ? ` (${reason})` : ""}.`);
         return;
       }
+
+      // skipped/dismissed suelen ocurrir por estado del navegador (cookies, sesiones, prompts previos).
+      // dejamos que opere el timeout para permitir reintento del usuario sin cortar prematuramente.
       if (notification.isSkippedMoment()) {
-        const reason = notification.getSkippedReason?.();
-        rejectOnce(`No se pudo abrir el cuadro de Google${reason ? ` (${reason})` : ""}.`);
+        return;
+      }
+      if (notification.isDismissedMoment?.()) {
+        return;
       }
     });
   });
