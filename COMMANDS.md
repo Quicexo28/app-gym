@@ -19,6 +19,18 @@ docker compose logs -f api
 docker compose logs -f frontend
 ```
 
+### One-click dev up (recomendado)
+
+```powershell
+.\run_dev.ps1
+.\run_dev.ps1 -NoFrontend
+.\run_dev.ps1 -DockerFrontend
+```
+
+- `run_dev.ps1` levanta `db + api`, espera `health=ok` y luego arranca frontend.
+- `-NoFrontend`: deja solo backend+db listos.
+- `-DockerFrontend`: levanta frontend en Docker en lugar de `npm run dev`.
+
 Servicios:
 - Frontend: `http://localhost:5173`
 - API: `http://localhost:8000`
