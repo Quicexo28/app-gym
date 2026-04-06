@@ -59,8 +59,8 @@ export default function RunDetail() {
   return (
     <div className="container stack">
       <header className="titleBlock">
-        <h1>Run summary</h1>
-        <p>Escenarios con incertidumbre explicita. Nunca reemplaza criterio humano.</p>
+        <h1>Resumen del análisis</h1>
+        <p>Escenarios sugeridos para apoyar tu decisión, no para reemplazarla.</p>
         <div className="quickActions">
           <Link className="btn" to="/history">
             Volver al historial
@@ -78,9 +78,8 @@ export default function RunDetail() {
         <>
           <section className="surface">
             <div className="chipRow">
-              <span className="chip">Metric: {data.metric_key}</span>
-              <span className="chip">Confianza ultima: {toPercent(data.confidence_last)}</span>
-              <span className="chip">{new Date(data.generated_at_utc).toLocaleString()}</span>
+              <span className="chip">Confianza actual: {toPercent(data.confidence_last)}</span>
+              <span className="chip">Actualizado: {new Date(data.generated_at_utc).toLocaleString()}</span>
             </div>
           </section>
 

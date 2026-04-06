@@ -1998,6 +1998,12 @@ textarea.input:focus,
   font-size: 14px;
   font-weight: 700;
   color: var(--text-soft);
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.navItem:hover {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 55%);
+  color: var(--text);
 }
 
 .navItem.active {

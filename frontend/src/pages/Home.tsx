@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { apiPing, getSessions, listRuns } from "../api";
+import { getSessions, listRuns } from "../api";
 import { useAthleteAccess } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import { useViewMode } from "../state/viewMode";
@@ -11,7 +11,6 @@ export default function Home() {
     useAthleteAccess();
   const { prefs, resolvedTheme } = usePreferences();
   const { viewMode } = useViewMode();
-  const [ping, setPing] = useState<string>("Conectando API...");
   const [todayMs] = useState<number>(() => Date.now());
   const [sessionCount, setSessionCount] = useState<number>(0);
   const [runCount, setRunCount] = useState<number>(0);
@@ -103,12 +102,6 @@ export default function Home() {
   }, [funnelStages]);
 
   useEffect(() => {
-    apiPing()
-      .then((r) => setPing(r.pong ? "API conectada" : "API sin respuesta valida"))
-      .catch((e) => setPing(`API error: ${String(e.message || e)}`));
-  }, []);
-
-  useEffect(() => {
     if (!athleteId) {
       return;
     }
@@ -151,9 +144,8 @@ export default function Home() {
         <div className="stack compactStack">
           <div className="sectionHead">
             <h3>Estado actual</h3>
-            <p>Conectividad de API y contexto activo.</p>
+            <p>Resumen del atleta y progreso reciente.</p>
           </div>
-          <div className="statusText">{ping}</div>
           <div className="statsGrid">
             <article className="statCard">
               <div className="smallLabel">{isCoachScope ? "Sujeto activo" : "Perfil activo"}</div>

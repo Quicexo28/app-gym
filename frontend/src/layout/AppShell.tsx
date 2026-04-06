@@ -21,16 +21,16 @@ type NavSections = {
 
 function buildNavSections(mode: "admin" | "coach" | "user_plus" | "user_normal"): NavSections {
   const sharedPrimary: NavItemDef[] = [
-    { to: "/home", label: "Dashboard" },
-    { to: "/session/new", label: "Nueva sesion" },
-    { to: "/routines", label: "Rutina" },
-    { to: "/exercises", label: "Ejercicio" },
-    { to: "/planning", label: "Planificacion" },
+    { to: "/home", label: "Inicio" },
+    { to: "/session/new", label: "Nueva sesión" },
+    { to: "/history", label: "Historial" },
+    { to: "/planning", label: "Planificación" },
+    { to: "/routines", label: "Rutinas" },
   ];
 
   const sharedMore: NavItemDef[] = [
     { to: "/measurements", label: "Medidas" },
-    { to: "/history", label: "Historial" },
+    { to: "/exercises", label: "Ejercicios" },
     { to: "/achievements", label: "Logros" },
   ];
 
@@ -94,14 +94,14 @@ function MoreMenu({ items, pathname }: { items: NavItemDef[]; pathname: string }
         className={`navItem moreTrigger ${open || isAnyItemActive ? "active" : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Mas secciones"
+        aria-label="Más secciones"
         onClick={() => setOpen((value) => !value)}
       >
-        Mas
+        Más
       </button>
 
       {open ? (
-        <div className="morePopover" role="menu" aria-label="Mas secciones">
+        <div className="morePopover" role="menu" aria-label="Más secciones">
           {items.map((item) => (
             <NavLink
               key={item.to}
@@ -168,7 +168,7 @@ export default function AppShell() {
         <div className="topbarRow">
           <div className="brand2">
             <div className="brandTitle">Coach AI Engineer</div>
-            <div className="brandSub">seguimiento rapido para decisiones de entrenamiento</div>
+            <div className="brandSub">Seguimiento simple para decisiones de entrenamiento</div>
           </div>
 
           <div className="hstack compact topbarActions">
