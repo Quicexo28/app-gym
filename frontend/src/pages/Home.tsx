@@ -169,21 +169,14 @@ export default function Home() {
     return Math.round((ok / funnelStages.length) * 100);
   }, [funnelStages]);
 
-  const dashboardMomentum = useMemo(() => {
-    const sessionScore = Math.min(40, sessionCount * 8);
-    const runScore = Math.min(35, runCount * 10);
-    const freshnessPenalty = typeof daysSinceLastSession === "number" ? Math.min(25, daysSinceLastSession * 4) : 12;
-    const raw = sessionScore + runScore - freshnessPenalty + 25;
-    return Math.max(0, Math.min(100, Math.round(raw)));
-  }, [daysSinceLastSession, runCount, sessionCount]);
-
   const momentumLabel = useMemo(() => {
-    if (dashboardMomentum >= 80) return "Excelente ritmo";
-    if (dashboardMomentum >= 60) return "Buen ritmo";
-    if (dashboardMomentum >= 40) return "Ritmo estable";
-    return "Necesita impulso";
-  }, [dashboardMomentum]);
-
+    if (sessionCount === 0) return "Sin datos aún";
+    if (typeof daysSinceLastSession === "number" && daysSinceLastSession >= 7) return "Necesita impulso";
+    if (runCount === 0) return "Falta análisis";
+    if (streakDays >= 4) return "Excelente ritmo";
+    if (streakDays >= 2) return "Buen ritmo";
+    return "Ritmo estable";
+  }, [daysSinceLastSession, runCount, sessionCount, streakDays]);
   useEffect(() => {
     if (!athleteId) {
       return;
@@ -226,18 +219,12 @@ export default function Home() {
 
       <section className="surface dashboardPulseCard">
         <div className="sectionHead">
-          <h3>Ritmo del día</h3>
+          <h3>Estado de hoy</h3>
           <p>{momentumLabel}</p>
         </div>
         <div className="dashboardPulseRow">
-          <div className="dashboardPulseValue">{dashboardMomentum}%</div>
-          <div className="dashboardPulseMeta">
-            <div>{`Embudo completado: ${funnelCompletionPct}%`}</div>
-            <div>{`🔥 racha: ${streakDays} día${streakDays === 1 ? "" : "s"}`}</div>
-          </div>
-        </div>
-        <div className="progressRail" aria-label="Ritmo del dashboard">
-          <span className="progressFill" style={{ width: `${dashboardMomentum}%` }} />
+          <div className="dashboardPulseMeta">{`🔥 racha: ${streakDays} día${streakDays === 1 ? "" : "s"}`}</div>
+          <div className="dashboardPulseMeta">{`Embudo completado: ${funnelCompletionPct}%`}</div>
         </div>
       </section>
 
