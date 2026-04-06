@@ -101,6 +101,21 @@ export default function Home() {
     return Math.round((ok / funnelStages.length) * 100);
   }, [funnelStages]);
 
+  const dashboardMomentum = useMemo(() => {
+    const sessionScore = Math.min(40, sessionCount * 8);
+    const runScore = Math.min(35, runCount * 10);
+    const freshnessPenalty = typeof daysSinceLastSession === "number" ? Math.min(25, daysSinceLastSession * 4) : 12;
+    const raw = sessionScore + runScore - freshnessPenalty + 25;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [daysSinceLastSession, runCount, sessionCount]);
+
+  const momentumLabel = useMemo(() => {
+    if (dashboardMomentum >= 80) return "Excelente ritmo";
+    if (dashboardMomentum >= 60) return "Buen ritmo";
+    if (dashboardMomentum >= 40) return "Ritmo estable";
+    return "Necesita impulso";
+  }, [dashboardMomentum]);
+
   useEffect(() => {
     if (!athleteId) {
       return;
@@ -139,6 +154,20 @@ export default function Home() {
         <h1>Dashboard</h1>
         <p>Vista principal simplificada para iniciar flujo rapido de registro y analisis.</p>
       </header>
+
+      <section className="surface dashboardPulseCard">
+        <div className="sectionHead">
+          <h3>Ritmo del día</h3>
+          <p>{momentumLabel}</p>
+        </div>
+        <div className="dashboardPulseRow">
+          <div className="dashboardPulseValue">{dashboardMomentum}%</div>
+          <div className="dashboardPulseMeta">{`Embudo completado: ${funnelCompletionPct}%`}</div>
+        </div>
+        <div className="progressRail" aria-label="Ritmo del dashboard">
+          <span className="progressFill" style={{ width: `${dashboardMomentum}%` }} />
+        </div>
+      </section>
 
       <section className="surface homeHero">
         <div className="stack compactStack">
@@ -231,11 +260,16 @@ export default function Home() {
           <h3>Embudo de uso</h3>
           <p>{`Progreso operacional: ${funnelCompletionPct}%`}</p>
         </div>
-        <div className="statsGrid" style={{ marginTop: 10 }}>
+        <div className="stack compactStack" style={{ marginTop: 10 }}>
           {funnelStages.map((stage) => (
-            <article key={stage.id} className="statCard">
-              <div className="smallLabel">{stage.label}</div>
-              <strong>{stage.ok ? "OK" : "Pendiente"}</strong>
+            <article key={stage.id} className="listItem">
+              <div className="listMain">
+                <strong>{stage.label}</strong>
+                <span className="small">{stage.ok ? "Completado" : "Pendiente"}</span>
+              </div>
+              <div className="progressRail" aria-label={stage.label}>
+                <span className="progressFill" style={{ width: stage.ok ? "100%" : "26%" }} />
+              </div>
             </article>
           ))}
         </div>
