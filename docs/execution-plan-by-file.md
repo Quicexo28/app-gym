@@ -254,3 +254,6 @@ Escala usada:
 - P2 observabilidad funcional: helper `log_business_event` + eventos de negocio en `auth.py`, `sessions.py`, `runs.py` (`login_*`, `session_ingested`, `run_created*`).
 - P2 Home operativo v2: alertas con severidad (`high/medium/low`) y CTA contextual en `Home.tsx`.
 - P2 Planning insights: indicador `atRisk` en tracking + riesgo por asignación en `Planning.tsx`.
+- P3 embudo de uso visible en Home: etapas operativas (`subject/sessions/runs/quality`) + % de completitud.
+- P3 voz adaptativa: ya disponible en Settings con wake aliases, phrase corrections, import/export y wizard de calibración/autoguardado.
+- P3 plantillas por objetivo: disponible en Planning (`OBJECTIVE_PRESETS`) para foco de micro/meso/macro.

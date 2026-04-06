@@ -82,6 +82,26 @@ export default function Home() {
     return alerts;
   }, [athleteId, daysSinceLastSession, runCount, sessionCount]);
 
+  const funnelStages = useMemo(() => {
+    const hasSubject = Boolean(athleteId);
+    const hasSessions = sessionCount > 0;
+    const hasRuns = runCount > 0;
+    const qualityReady = hasRuns && homeAlerts.filter((item) => item.severity === "high").length === 0;
+
+    return [
+      { id: "subject", label: "Sujeto activo", ok: hasSubject },
+      { id: "sessions", label: "Sesiones registradas", ok: hasSessions },
+      { id: "runs", label: "Escenarios ejecutados", ok: hasRuns },
+      { id: "quality", label: "Operacion estable", ok: qualityReady },
+    ];
+  }, [athleteId, homeAlerts, runCount, sessionCount]);
+
+  const funnelCompletionPct = useMemo(() => {
+    if (funnelStages.length === 0) return 0;
+    const ok = funnelStages.filter((stage) => stage.ok).length;
+    return Math.round((ok / funnelStages.length) * 100);
+  }, [funnelStages]);
+
   useEffect(() => {
     apiPing()
       .then((r) => setPing(r.pong ? "API conectada" : "API sin respuesta valida"))
@@ -211,6 +231,21 @@ export default function Home() {
               </>
             ) : null}
           </div>
+        </div>
+      </section>
+
+      <section className="surface">
+        <div className="sectionHead">
+          <h3>Embudo de uso</h3>
+          <p>{`Progreso operacional: ${funnelCompletionPct}%`}</p>
+        </div>
+        <div className="statsGrid" style={{ marginTop: 10 }}>
+          {funnelStages.map((stage) => (
+            <article key={stage.id} className="statCard">
+              <div className="smallLabel">{stage.label}</div>
+              <strong>{stage.ok ? "OK" : "Pendiente"}</strong>
+            </article>
+          ))}
         </div>
       </section>
 
