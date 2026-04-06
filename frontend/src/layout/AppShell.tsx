@@ -9,6 +9,7 @@ import { DEFAULT_PROFILE_AVATAR_URL, loadProfileAvatarUrl, PROFILE_AVATAR_CHANGE
 import { useAthleteAccess } from "../state/athlete";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
+import type { NavModuleId } from "../state/preferences";
 import { useViewMode, viewModeLabel } from "../state/viewMode";
 
 type NavItemDef = {
@@ -21,39 +22,38 @@ type NavSections = {
   more: NavItemDef[];
 };
 
-function buildNavSections(mode: "admin" | "coach" | "user_plus" | "user_normal"): NavSections {
-  const sharedPrimary: NavItemDef[] = [
-    { to: "/home", label: "Inicio" },
-    { to: "/session/new", label: "Nueva sesión" },
-    { to: "/history", label: "Historial" },
-    { to: "/planning", label: "Planificación" },
-    { to: "/routines", label: "Rutinas" },
-  ];
-
-  const sharedMore: NavItemDef[] = [
-    { to: "/measurements", label: "Medidas" },
-    { to: "/exercises", label: "Ejercicios" },
-    { to: "/achievements", label: "Logros" },
-  ];
-
-  if (mode === "admin") {
-    return {
-      primary: [...sharedPrimary, { to: "/users", label: "Usuarios" }],
-      more: sharedMore,
-    };
-  }
-
-  if (mode === "coach") {
-    return {
-      primary: [...sharedPrimary, { to: "/users", label: "Usuarios" }],
-      more: sharedMore,
-    };
-  }
-
-  return {
-    primary: sharedPrimary,
-    more: sharedMore,
+function buildNavSections(
+  mode: "admin" | "coach" | "user_plus" | "user_normal",
+  pinnedModules: NavModuleId[],
+): NavSections {
+  const moduleCatalog: Record<NavModuleId, NavItemDef> = {
+    session: { to: "/session/new", label: "Nueva sesión" },
+    history: { to: "/history", label: "Historial" },
+    planning: { to: "/planning", label: "Planificación" },
+    routines: { to: "/routines", label: "Rutinas" },
+    measurements: { to: "/measurements", label: "Medidas" },
+    exercises: { to: "/exercises", label: "Ejercicios" },
+    achievements: { to: "/achievements", label: "Logros" },
+    users: { to: "/users", label: "Usuarios" },
   };
+
+  const allowedModules: NavModuleId[] =
+    mode === "admin" || mode === "coach"
+      ? ["session", "history", "planning", "routines", "measurements", "exercises", "achievements", "users"]
+      : ["session", "history", "planning", "routines", "measurements", "exercises", "achievements"];
+
+  const normalizedPinned = pinnedModules.filter((moduleId) => allowedModules.includes(moduleId));
+  const fallbackPinned: NavModuleId[] = ["session", "history", "planning", "routines"];
+  const finalPinned = (normalizedPinned.length > 0 ? normalizedPinned : fallbackPinned)
+    .filter((moduleId, index, arr) => arr.indexOf(moduleId) === index)
+    .slice(0, 5);
+
+  const primary: NavItemDef[] = [{ to: "/home", label: "Inicio" }, ...finalPinned.map((moduleId) => moduleCatalog[moduleId])];
+  const more: NavItemDef[] = allowedModules
+    .filter((moduleId) => !finalPinned.includes(moduleId))
+    .map((moduleId) => moduleCatalog[moduleId]);
+
+  return { primary, more };
 }
 
 function pathMatches(pathname: string, to: string): boolean {
@@ -133,7 +133,7 @@ export default function AppShell() {
   const [, setAvatarRefreshCounter] = useState(0);
   const nav = useNavigate();
 
-  const navSections = buildNavSections(viewMode);
+  const navSections = buildNavSections(viewMode, prefs.pinnedModules);
   const avatarUrl = loadProfileAvatarUrl(user?.id) || DEFAULT_PROFILE_AVATAR_URL;
   const themeLabel =
     prefs.theme === "system" ? `Sistema (${resolvedTheme})` : prefs.theme === "dark" ? "Oscuro" : "Claro";

@@ -33,6 +33,7 @@ import { useAthleteAccess } from "../state/athlete";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
+import type { NavModuleId } from "../state/preferences";
 import { useUndo } from "../state/undo";
 import { useViewMode } from "../state/viewMode";
 
@@ -49,6 +50,17 @@ const LIFT_TIER_LABELS: Record<LiftTierKey, string> = {
   bench_press: "Press banca plano",
   deadlift: "Peso muerto convencional",
 };
+
+const NAV_MODULE_OPTIONS: Array<{ id: NavModuleId; label: string; hint: string }> = [
+  { id: "session", label: "Nueva sesión", hint: "Registro rápido" },
+  { id: "history", label: "Historial", hint: "Ver sesiones" },
+  { id: "planning", label: "Planificación", hint: "Ciclos y progreso" },
+  { id: "routines", label: "Rutinas", hint: "Plantillas" },
+  { id: "measurements", label: "Medidas", hint: "Seguimiento corporal" },
+  { id: "exercises", label: "Ejercicios", hint: "Catálogo" },
+  { id: "achievements", label: "Logros", hint: "Motivación" },
+  { id: "users", label: "Usuarios", hint: "Gestión coach/admin" },
+];
 
 const SESSION_IMPORT_SAMPLE = [
   {
@@ -419,7 +431,7 @@ function TierEditor({
 export default function Settings() {
   const nav = useNavigate();
   const { athleteId, activeSubject } = useAthleteAccess();
-  const { prefs, setTheme, setEffortScale, setWeightUnit, setDistanceUnit } = usePreferences();
+  const { prefs, setTheme, setEffortScale, setWeightUnit, setDistanceUnit, setPinnedModules } = usePreferences();
   const { user, planLabel, isAdmin, refreshMe, logout } = useAuth();
   const { registerUndo } = useUndo();
   const { viewMode } = useViewMode();
@@ -479,6 +491,11 @@ export default function Settings() {
   const [dangerError, setDangerError] = useState("");
   const [dangerInfo, setDangerInfo] = useState("");
   const dangerBtnStyle = { borderColor: "var(--danger)", color: "var(--danger)" } as const;
+
+  const availableNavModules = useMemo(() => {
+    if (viewMode === "coach" || viewMode === "admin") return NAV_MODULE_OPTIONS;
+    return NAV_MODULE_OPTIONS.filter((item) => item.id !== "users");
+  }, [viewMode]);
 
   useEffect(() => {
     if (!user) return;
@@ -572,6 +589,18 @@ export default function Settings() {
     if (!recognizer) return;
     void recognizer.disarm();
   }, [isAdminMode]);
+
+  function togglePinnedModule(moduleId: NavModuleId) {
+    const current = prefs.pinnedModules.filter((entry) => availableNavModules.some((mod) => mod.id === entry));
+    const exists = current.includes(moduleId);
+    if (exists) {
+      const next = current.filter((entry) => entry !== moduleId);
+      setPinnedModules(next);
+      return;
+    }
+    const next = [...current, moduleId].slice(0, 5);
+    setPinnedModules(next);
+  }
 
   async function submitSwitchPlan() {
     if (!switchEmail.trim()) {
@@ -1497,6 +1526,32 @@ export default function Settings() {
           <span className="chip">Email: {user?.email || "-"}</span>
           <span className="chip">Rol: {user?.role || "-"}</span>
           <span className="chip">Plan: {planLabel || "-"}</span>
+        </div>
+      </section>
+
+      <section className="surface">
+        <div className="sectionHead">
+          <h3>Barra principal</h3>
+          <p>Fija hasta 5 módulos frecuentes en la barra superior. El resto queda en “Más”.</p>
+        </div>
+        <div className="pillGroup" style={{ marginTop: 10 }}>
+          {availableNavModules.map((module) => {
+            const active = prefs.pinnedModules.includes(module.id);
+            return (
+              <button
+                key={module.id}
+                type="button"
+                className={`pill ${active ? "active" : ""}`}
+                onClick={() => togglePinnedModule(module.id)}
+              >
+                <span>{module.label}</span>
+                <small>{active ? "Anclado en barra" : module.hint}</small>
+              </button>
+            );
+          })}
+        </div>
+        <div className="small" style={{ marginTop: 10 }}>
+          {`Módulos anclados: ${prefs.pinnedModules.length} / 5`}
         </div>
       </section>
 

@@ -8,11 +8,14 @@ export type EffortScale = "rpe" | "rir";
 export type WeightUnit = "kg" | "lb";
 export type DistanceUnit = "m" | "mi";
 
+export type NavModuleId = "session" | "history" | "planning" | "routines" | "measurements" | "exercises" | "achievements" | "users";
+
 export type UserPreferences = {
   theme: ThemePreference;
   effortScale: EffortScale;
   weightUnit: WeightUnit;
   distanceUnit: DistanceUnit;
+  pinnedModules: NavModuleId[];
 };
 
 type PreferencesContextValue = {
@@ -22,6 +25,7 @@ type PreferencesContextValue = {
   setEffortScale: (scale: EffortScale) => void;
   setWeightUnit: (unit: WeightUnit) => void;
   setDistanceUnit: (unit: DistanceUnit) => void;
+  setPinnedModules: (modules: NavModuleId[]) => void;
   toggleTheme: () => void;
 };
 
@@ -29,14 +33,21 @@ const KEY = "coach_ai_user_prefs_v1";
 const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
 const THEME_CYCLE: ThemePreference[] = ["system", "light", "dark"];
 
+const DEFAULT_PINNED_MODULES: NavModuleId[] = ["session", "history", "planning", "routines"];
+
 const DEFAULT_PREFS: UserPreferences = {
   theme: "system",
   effortScale: "rpe",
   weightUnit: "kg",
   distanceUnit: "m",
+  pinnedModules: DEFAULT_PINNED_MODULES,
 };
 
 const PreferencesContext = createContext<PreferencesContextValue | null>(null);
+
+function isNavModuleId(value: string): value is NavModuleId {
+  return ["session", "history", "planning", "routines", "measurements", "exercises", "achievements", "users"].includes(value);
+}
 
 function readStoredPreferences(): UserPreferences {
   try {
@@ -45,11 +56,17 @@ function readStoredPreferences(): UserPreferences {
     const parsed = JSON.parse(raw) as Partial<UserPreferences>;
     const parsedTheme: ThemePreference =
       parsed.theme === "dark" || parsed.theme === "light" || parsed.theme === "system" ? parsed.theme : "system";
+
+    const pinnedModules = Array.isArray(parsed.pinnedModules)
+      ? parsed.pinnedModules.filter((entry): entry is NavModuleId => typeof entry === "string" && isNavModuleId(entry)).slice(0, 6)
+      : DEFAULT_PINNED_MODULES;
+
     return {
       theme: parsedTheme,
       effortScale: parsed.effortScale === "rir" ? "rir" : "rpe",
       weightUnit: parsed.weightUnit === "lb" ? "lb" : "kg",
       distanceUnit: parsed.distanceUnit === "mi" ? "mi" : "m",
+      pinnedModules: pinnedModules.length > 0 ? pinnedModules : DEFAULT_PINNED_MODULES,
     };
   } catch {
     return DEFAULT_PREFS;
@@ -110,6 +127,11 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       setEffortScale: (effortScale) => setPrefs((prev) => ({ ...prev, effortScale })),
       setWeightUnit: (weightUnit) => setPrefs((prev) => ({ ...prev, weightUnit })),
       setDistanceUnit: (distanceUnit) => setPrefs((prev) => ({ ...prev, distanceUnit })),
+      setPinnedModules: (pinnedModules) =>
+        setPrefs((prev) => ({
+          ...prev,
+          pinnedModules: pinnedModules.filter((entry, index, arr) => arr.indexOf(entry) === index).slice(0, 6),
+        })),
       toggleTheme: () =>
         setPrefs((prev) => {
           const idx = THEME_CYCLE.indexOf(prev.theme);
