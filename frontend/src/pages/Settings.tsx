@@ -428,6 +428,8 @@ function TierEditor({
   );
 }
 
+type SettingsPanel = "general" | "navigation" | "account" | "admin" | "security";
+
 export default function Settings() {
   const nav = useNavigate();
   const { athleteId, activeSubject } = useAthleteAccess();
@@ -490,6 +492,7 @@ export default function Settings() {
   const [dangerBusy, setDangerBusy] = useState(false);
   const [dangerError, setDangerError] = useState("");
   const [dangerInfo, setDangerInfo] = useState("");
+  const [activePanel, setActivePanel] = useState<SettingsPanel>("general");
   const dangerBtnStyle = { borderColor: "var(--danger)", color: "var(--danger)" } as const;
 
   const availableNavModules = useMemo(() => {
@@ -1519,109 +1522,145 @@ export default function Settings() {
 
       <section className="surface">
         <div className="sectionHead">
-          <h3>Cuenta</h3>
-          <p>Estado actual de autenticacion y plan.</p>
-        </div>
-        <div className="chipRow">
-          <span className="chip">Email: {user?.email || "-"}</span>
-          <span className="chip">Rol: {user?.role || "-"}</span>
-          <span className="chip">Plan: {planLabel || "-"}</span>
-        </div>
-      </section>
-
-      <section className="surface">
-        <div className="sectionHead">
-          <h3>Barra principal</h3>
-          <p>Fija hasta 5 módulos frecuentes en la barra superior. El resto queda en “Más”.</p>
+          <h3>Módulos de ajustes</h3>
+          <p>Muestra solo el bloque que quieres editar para evitar ruido visual.</p>
         </div>
         <div className="pillGroup" style={{ marginTop: 10 }}>
-          {availableNavModules.map((module) => {
-            const active = prefs.pinnedModules.includes(module.id);
-            return (
-              <button
-                key={module.id}
-                type="button"
-                className={`pill ${active ? "active" : ""}`}
-                onClick={() => togglePinnedModule(module.id)}
-              >
-                <span>{module.label}</span>
-                <small>{active ? "Anclado en barra" : module.hint}</small>
-              </button>
-            );
-          })}
-        </div>
-        <div className="small" style={{ marginTop: 10 }}>
-          {`Módulos anclados: ${prefs.pinnedModules.length} / 5`}
-        </div>
-      </section>
-
-      <section className="surface">
-        <div className="sectionHead">
-          <h3>Planes (roadmap inicial)</h3>
-          <p>Nomenclatura de producto: standard, plus y coach.</p>
-        </div>
-        <div className="gridCards">
-          <article className="surfaceButton">
-            <strong>Standard</strong>
-            <span className="small">Base individual: registro, historial y escenarios esenciales.</span>
-          </article>
-          <article className="surfaceButton">
-            <strong>Plus</strong>
-            <span className="small">Mas analitica y modulos habilitables para seguimiento avanzado.</span>
-          </article>
-          <article className="surfaceButton">
-            <strong>Coach</strong>
-            <span className="small">Gestion de varios atletas y operaciones de coaching.</span>
-          </article>
+          {[
+            { id: "general", label: "General" },
+            { id: "navigation", label: "Navegación" },
+            { id: "account", label: "Cuenta" },
+            { id: "admin", label: "Admin" },
+            { id: "security", label: "Seguridad" },
+          ].map((panel) => (
+            <button
+              key={panel.id}
+              type="button"
+              className={`pill ${activePanel === panel.id ? "active" : ""}`}
+              onClick={() => setActivePanel(panel.id as SettingsPanel)}
+            >
+              <span>{panel.label}</span>
+            </button>
+          ))}
         </div>
       </section>
 
-      <OptionRow
-        label="Tema"
-        description="Interfaz clara u oscura para entrenar en cualquier entorno."
-        value={prefs.theme}
-        onChange={setTheme}
-        options={[
-          { label: "Sistema", value: "system", hint: "sigue modo del navegador/SO" },
-          { label: "Claro", value: "light", hint: "alto contraste en luz" },
-          { label: "Oscuro", value: "dark", hint: "comodidad en noche/gym" },
-        ]}
-      />
+      {activePanel === "account" ? (
+        <>
+          <section className="surface">
+            <div className="sectionHead">
+              <h3>Cuenta</h3>
+              <p>Estado actual de autenticación y plan.</p>
+            </div>
+            <div className="chipRow">
+              <span className="chip">Email: {user?.email || "-"}</span>
+              <span className="chip">Rol: {user?.role || "-"}</span>
+              <span className="chip">Plan: {planLabel || "-"}</span>
+            </div>
+          </section>
 
-      <OptionRow
-        label="Escala de esfuerzo"
-        description="El formulario de sesiones se adapta a tu forma de anotar intensidad."
-        value={prefs.effortScale}
-        onChange={setEffortScale}
-        options={[
-          { label: "RPE", value: "rpe", hint: "0-10 esfuerzo percibido" },
-          { label: "RIR", value: "rir", hint: "reps en reserva" },
-        ]}
-      />
+          <section className="surface">
+            <div className="sectionHead">
+              <h3>Planes</h3>
+              <p>Resumen rápido de las modalidades disponibles.</p>
+            </div>
+            <div className="gridCards">
+              <article className="surfaceButton">
+                <strong>Standard</strong>
+                <span className="small">Base individual: registro, historial y escenarios esenciales.</span>
+              </article>
+              <article className="surfaceButton">
+                <strong>Plus</strong>
+                <span className="small">Más analítica y módulos habilitables para seguimiento avanzado.</span>
+              </article>
+              <article className="surfaceButton">
+                <strong>Coach</strong>
+                <span className="small">Gestión de varios atletas y operaciones de coaching.</span>
+              </article>
+            </div>
+          </section>
+        </>
+      ) : null}
 
-      <OptionRow
-        label="Unidad de carga"
-        description="Como deseas ver y capturar pesos de entrenamiento."
-        value={prefs.weightUnit}
-        onChange={setWeightUnit}
-        options={[
-          { label: "Kilogramos", value: "kg", hint: "estandar tecnico" },
-          { label: "Libras", value: "lb", hint: "convencion comercial" },
-        ]}
-      />
+      {activePanel === "navigation" ? (
+        <section className="surface">
+          <div className="sectionHead">
+            <h3>Barra principal</h3>
+            <p>Fija hasta 5 módulos frecuentes en la barra superior. El resto queda en “Más”.</p>
+          </div>
+          <div className="pillGroup" style={{ marginTop: 10 }}>
+            {availableNavModules.map((module) => {
+              const active = prefs.pinnedModules.includes(module.id);
+              return (
+                <button
+                  key={module.id}
+                  type="button"
+                  className={`pill ${active ? "active" : ""}`}
+                  onClick={() => togglePinnedModule(module.id)}
+                >
+                  <span>{module.label}</span>
+                  <small>{active ? "Anclado en barra" : module.hint}</small>
+                </button>
+              );
+            })}
+          </div>
+          <div className="small" style={{ marginTop: 10 }}>
+            {`Módulos anclados: ${prefs.pinnedModules.length} / 5`}
+          </div>
+        </section>
+      ) : null}
 
-      <OptionRow
-        label="Unidad de distancia"
-        description="Preparado para trabajo de cardio/traslados."
-        value={prefs.distanceUnit}
-        onChange={setDistanceUnit}
-        options={[
-          { label: "Metros", value: "m", hint: "precision corta" },
-          { label: "Millas", value: "mi", hint: "referencia imperial" },
-        ]}
-      />
+      {activePanel === "general" ? (
+        <>
+          <OptionRow
+            label="Tema"
+            description="Interfaz clara u oscura para entrenar en cualquier entorno."
+            value={prefs.theme}
+            onChange={setTheme}
+            options={[
+              { label: "Sistema", value: "system", hint: "sigue modo del navegador/SO" },
+              { label: "Claro", value: "light", hint: "alto contraste en luz" },
+              { label: "Oscuro", value: "dark", hint: "comodidad en noche/gym" },
+            ]}
+          />
 
-      {isAdminMode ? (
+          <OptionRow
+            label="Escala de esfuerzo"
+            description="El formulario de sesiones se adapta a tu forma de anotar intensidad."
+            value={prefs.effortScale}
+            onChange={setEffortScale}
+            options={[
+              { label: "RPE", value: "rpe", hint: "0-10 esfuerzo percibido" },
+              { label: "RIR", value: "rir", hint: "reps en reserva" },
+            ]}
+          />
+
+          <OptionRow
+            label="Unidad de carga"
+            description="Cómo deseas ver y capturar pesos de entrenamiento."
+            value={prefs.weightUnit}
+            onChange={setWeightUnit}
+            options={[
+              { label: "Kilogramos", value: "kg", hint: "estándar técnico" },
+              { label: "Libras", value: "lb", hint: "convención comercial" },
+            ]}
+          />
+
+          <OptionRow
+            label="Unidad de distancia"
+            description="Preparado para trabajo de cardio/traslados."
+            value={prefs.distanceUnit}
+            onChange={setDistanceUnit}
+            options={[
+              { label: "Metros", value: "m", hint: "precisión corta" },
+              { label: "Millas", value: "mi", hint: "referencia imperial" },
+            ]}
+          />
+        </>
+      ) : null}
+
+      {activePanel === "admin" ? (
+        isAdminMode ? (
         <>
           <section className="surface">
             <div className="sectionHead">
@@ -2178,8 +2217,10 @@ export default function Settings() {
             Las funciones admin solo aparecen en modo admin.
           </div>
         </section>
-      )}
+      )
+      ) : null}
 
+      {activePanel === "security" ? (
       <section className="surface">
         <div className="sectionHead">
           <h3>Zona sensible</h3>
@@ -2206,6 +2247,7 @@ export default function Settings() {
         {dangerError ? <div className="message error" style={{ marginTop: 12 }}>{dangerError}</div> : null}
         {dangerInfo ? <div className="message" style={{ marginTop: 12 }}>{dangerInfo}</div> : null}
       </section>
+      ) : null}
     </div>
   );
 }
