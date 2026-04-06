@@ -22,6 +22,7 @@ import {
 import { useSessionClock } from "../lib/session/useSessionClock";
 import { useSessionDraftSync } from "../lib/session/useSessionDraftSync";
 import { parseVoiceCommand, parseVoiceCommandBatch, parseVoiceSetTuple, type ParsedVoiceCommandBatch, type ParsedVoiceSetTuple } from "../lib/voice/commandParser";
+import { useVoiceAssistantResponse } from "../lib/voice/useVoiceAssistantResponse";
 import type { OfflineVoskRecognizer as OfflineVoskRecognizerClass } from "../lib/voice/offlineRecognizer";
 import { findCurrentSetTarget } from "../lib/voice/setTarget";
 import {
@@ -473,8 +474,8 @@ export default function NewSession() {
   );
   const [voiceOrbFocusedUntilMs, setVoiceOrbFocusedUntilMs] = useState<number | null>(null);
   const [, setVoiceOrbWakeAnimationTick] = useState(0);
-  const [voiceAssistantResponse, setVoiceAssistantResponse] = useState<string>("");
-  const [voiceAssistantResponseUntilMs, setVoiceAssistantResponseUntilMs] = useState<number | null>(null);
+  const { voiceAssistantResponse, emitVoiceAssistantResponse, clearVoiceAssistantResponse } =
+    useVoiceAssistantResponse(VOICE_ASSISTANT_RESPONSE_MS);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
@@ -599,8 +600,7 @@ export default function NewSession() {
       setVoiceUsed(false);
       setVoiceError("");
       setVoicePartial("");
-      setVoiceAssistantResponse("");
-      setVoiceAssistantResponseUntilMs(null);
+      clearVoiceAssistantResponse();
       pendingWakeRef.current = null;
       setVoiceStatus("inactive");
       setVoiceOrbFocusedUntilMs(null);
@@ -628,8 +628,7 @@ export default function NewSession() {
       setVoiceUsed(stored.voiceUsed);
       setVoiceError("");
       setVoicePartial("");
-      setVoiceAssistantResponse("");
-      setVoiceAssistantResponseUntilMs(null);
+      clearVoiceAssistantResponse();
       pendingWakeRef.current = null;
       setVoiceStatus("inactive");
       setVoiceOrbFocusedUntilMs(null);
@@ -658,13 +657,12 @@ export default function NewSession() {
     setVoiceUsed(false);
     setVoiceError("");
     setVoicePartial("");
-    setVoiceAssistantResponse("");
-    setVoiceAssistantResponseUntilMs(null);
+    clearVoiceAssistantResponse();
     pendingWakeRef.current = null;
     setVoiceStatus("inactive");
     setVoiceOrbFocusedUntilMs(null);
     setVoiceOrbMode(readVoiceAssistDesktopPreference() ? "docked_idle" : "muted");
-  }, [athleteId, resetSetAnimations]);
+  }, [athleteId, clearVoiceAssistantResponse, resetSetAnimations]);
 
   const sortedRoutines = useMemo(() => [...routines].sort((a, b) => a.name.localeCompare(b.name)), [routines]);
   const selectedRoutine = useMemo(() => sortedRoutines.find((routine) => routine.id === routineId) || null, [routineId, sortedRoutines]);
@@ -1336,12 +1334,6 @@ export default function NewSession() {
     [syncVoiceOrbDeployWithWake, voiceAssistDesktopEnabled],
   );
 
-  const emitVoiceAssistantResponse = useCallback((message: string, durationMs = VOICE_ASSISTANT_RESPONSE_MS) => {
-    if (!message.trim()) return;
-    setVoiceAssistantResponse(message.trim());
-    setVoiceAssistantResponseUntilMs(Date.now() + Math.max(800, durationMs));
-  }, []);
-
   const playVoiceSfxCue = useCallback((cue: VoiceSfxCue) => {
     const AudioContextCtor = getVoiceSfxAudioContextCtor();
     if (!AudioContextCtor) return;
@@ -1588,16 +1580,6 @@ export default function NewSession() {
     return () => window.clearTimeout(timeoutId);
   }, [voiceOrbFocusedUntilMs]);
 
-  useEffect(() => {
-    if (voiceAssistantResponseUntilMs === null) return;
-    const delayMs = Math.max(0, voiceAssistantResponseUntilMs - Date.now());
-    const timeoutId = window.setTimeout(() => {
-      setVoiceAssistantResponse("");
-      setVoiceAssistantResponseUntilMs(null);
-    }, delayMs);
-    return () => window.clearTimeout(timeoutId);
-  }, [voiceAssistantResponseUntilMs]);
-
   const startVoiceCapture = useCallback(async () => {
     setVoiceError("");
     pendingWakeRef.current = null;
@@ -1736,15 +1718,13 @@ export default function NewSession() {
       pendingWakeRef.current = null;
       setVoiceOrbFocusedUntilMs(null);
       setVoiceOrbMode("muted");
-      setVoiceAssistantResponse("Asistente silenciado.");
-      setVoiceAssistantResponseUntilMs(Date.now() + VOICE_ASSISTANT_RESPONSE_MS);
+      emitVoiceAssistantResponse("Asistente silenciado.");
     } else {
       setVoiceOrbMode("docked_idle");
-      setVoiceAssistantResponse("Asistente reactivado.");
-      setVoiceAssistantResponseUntilMs(Date.now() + VOICE_ASSISTANT_RESPONSE_MS);
+      emitVoiceAssistantResponse("Asistente reactivado.");
     }
     setVoiceAssistDesktopEnabled((prev) => !prev);
-  }, [deactivateVoiceCapture, voiceAssistDesktopEnabled]);
+  }, [deactivateVoiceCapture, emitVoiceAssistantResponse, voiceAssistDesktopEnabled]);
 
   useEffect(() => {
     if (step === "capture_session") return;
@@ -1846,8 +1826,7 @@ export default function NewSession() {
     setVoiceUsed(false);
     setVoiceError("");
     setVoicePartial("");
-    setVoiceAssistantResponse("");
-    setVoiceAssistantResponseUntilMs(null);
+    clearVoiceAssistantResponse();
     pendingWakeRef.current = null;
     setVoiceStatus("inactive");
     setVoiceOrbFocusedUntilMs(null);
@@ -1862,8 +1841,7 @@ export default function NewSession() {
     setRestTimer(null);
     setVoiceError("");
     setVoicePartial("");
-    setVoiceAssistantResponse("");
-    setVoiceAssistantResponseUntilMs(null);
+    clearVoiceAssistantResponse();
     pendingWakeRef.current = null;
     setVoiceStatus("inactive");
     setVoiceOrbFocusedUntilMs(null);
@@ -1895,8 +1873,7 @@ export default function NewSession() {
     setVoiceUsed(false);
     setVoiceError("");
     setVoicePartial("");
-    setVoiceAssistantResponse("");
-    setVoiceAssistantResponseUntilMs(null);
+    clearVoiceAssistantResponse();
     pendingWakeRef.current = null;
     setVoiceStatus("inactive");
     setVoiceOrbFocusedUntilMs(null);

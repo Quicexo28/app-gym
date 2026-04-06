@@ -248,3 +248,5 @@ Escala usada:
 - `auth.py`: errores críticos de autenticación (incluyendo Google) alineados a contrato `code/detail/context`.
 - `main.py`: middleware de observabilidad por request (request_id + latencia + headers `X-Request-Id` / `X-Response-Time-Ms`).
 - Tests críticos actualizados/extendidos (`tests/test_auth_flow.py`, `tests/test_health.py`) para contrato de errores y endpoint `/ready`.
+- `NewSession.tsx` fase 4 (parcial): extracción de estado/timeout de respuesta del asistente de voz a `frontend/src/lib/voice/useVoiceAssistantResponse.ts`.
+- Tests de acceso mínimo para endpoints de sesiones/planificación (`tests/test_sessions_planning_access.py`) validando contrato de error sin autenticación.
