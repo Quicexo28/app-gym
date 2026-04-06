@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
 import { ApiError } from "../api";
@@ -17,6 +17,16 @@ type GooglePromptNotification = {
   getDismissedReason?: () => string;
 };
 
+type GoogleButtonConfig = {
+  type?: "standard" | "icon";
+  theme?: "outline" | "filled_blue" | "filled_black";
+  size?: "large" | "medium" | "small";
+  text?: "signin_with" | "signup_with" | "continue_with" | "signin";
+  shape?: "rectangular" | "pill" | "circle" | "square";
+  logo_alignment?: "left" | "center";
+  width?: string | number;
+};
+
 declare global {
   interface Window {
     google?: {
@@ -31,7 +41,9 @@ declare global {
             itp_support?: boolean;
             cancel_on_tap_outside?: boolean;
           }) => void;
+          renderButton: (parent: HTMLElement, options: GoogleButtonConfig) => void;
           prompt: (listener?: (notification: GooglePromptNotification) => void) => void;
+          cancel?: () => void;
         };
       };
     };
@@ -57,17 +69,17 @@ function loadGoogleScript(): Promise<void> {
       return false;
     };
 
-    if (finishIfReady()) {
-      return;
-    }
+    if (finishIfReady()) return;
 
     const existing = document.querySelector('script[data-google-identity="true"]') as HTMLScriptElement | null;
     if (existing) {
-      existing.addEventListener("load", () => {
-        if (!finishIfReady()) {
-          reject(new Error("Google se cargo, pero el SDK no quedo disponible."));
-        }
-      }, { once: true });
+      existing.addEventListener(
+        "load",
+        () => {
+          if (!finishIfReady()) reject(new Error("Google se cargo, pero el SDK no quedo disponible."));
+        },
+        { once: true },
+      );
       existing.addEventListener("error", () => reject(new Error("No se pudo cargar Google.")), { once: true });
       return;
     }
@@ -78,93 +90,13 @@ function loadGoogleScript(): Promise<void> {
     script.defer = true;
     script.dataset.googleIdentity = "true";
     script.onload = () => {
-      if (!finishIfReady()) {
-        reject(new Error("Google se cargo, pero el SDK no quedo disponible."));
-      }
+      if (!finishIfReady()) reject(new Error("Google se cargo, pero el SDK no quedo disponible."));
     };
     script.onerror = () => reject(new Error("No se pudo cargar Google."));
     document.head.appendChild(script);
   });
 
   return googleScriptPromise;
-}
-
-function requestGoogleCredential(clientId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const googleId = window.google?.accounts?.id;
-    if (!googleId) {
-      reject(new Error("Google no esta disponible en este navegador."));
-      return;
-    }
-
-    let settled = false;
-    const timeout = window.setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      reject(new Error("Tiempo agotado al iniciar sesion con Google."));
-    }, 20000);
-
-    const resolveOnce = (value: string) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      resolve(value);
-    };
-
-    const rejectOnce = (message: string) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      reject(new Error(message));
-    };
-
-    googleId.initialize({
-      client_id: clientId,
-      callback: (response) => {
-        const credential = response.credential?.trim();
-        if (!credential) {
-          rejectOnce("No se pudo obtener la credencial de Google.");
-          return;
-        }
-        resolveOnce(credential);
-      },
-      // reduce falsos negativos al abrir el prompt en navegadores modernos.
-      use_fedcm_for_prompt: true,
-      auto_select: false,
-      context: "signin",
-      itp_support: true,
-      cancel_on_tap_outside: false,
-    });
-
-    googleId.prompt((notification) => {
-      if (notification.isNotDisplayed()) {
-        const reason = notification.getNotDisplayedReason?.();
-        if (reason === "unregistered_origin") {
-          rejectOnce(`Origen no autorizado para Google (${window.location.origin}). Revisa Authorized JavaScript origins en Google Cloud.`);
-          return;
-        }
-        if (reason === "invalid_client") {
-          rejectOnce("Client ID de Google invalido para este frontend.");
-          return;
-        }
-        if (reason === "missing_client_id") {
-          rejectOnce("Falta VITE_GOOGLE_CLIENT_ID en frontend.");
-          return;
-        }
-        rejectOnce(`No se pudo abrir el cuadro de Google${reason ? ` (${reason})` : ""}.`);
-        return;
-      }
-
-      // skipped/dismissed suelen ocurrir por estado del navegador (cookies, sesiones, prompts previos).
-      // dejamos que opere el timeout para permitir reintento del usuario sin cortar prematuramente.
-      if (notification.isSkippedMoment()) {
-        return;
-      }
-      if (notification.isDismissedMoment?.()) {
-        return;
-      }
-    });
-  });
 }
 
 function toFriendlyError(error: unknown): string {
@@ -240,11 +172,101 @@ export default function Login() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [googleReady, setGoogleReady] = useState(false);
+  const [googleBootError, setGoogleBootError] = useState("");
+  const googleBtnRef = useRef<HTMLDivElement | null>(null);
 
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ?? "";
   const canGuestLogin =
     import.meta.env.DEV ||
     ((import.meta.env.VITE_ENABLE_GUEST_LOGIN as string | undefined)?.trim().toLowerCase() === "true");
+
+  useEffect(() => {
+    if (!googleClientId || !googleBtnRef.current) {
+      setGoogleReady(false);
+      return;
+    }
+
+    let alive = true;
+
+    const setupGoogle = async () => {
+      try {
+        setGoogleBootError("");
+        await loadGoogleScript();
+
+        const googleId = window.google?.accounts?.id;
+        if (!googleId || !googleBtnRef.current) {
+          throw new Error("Google no esta disponible en este navegador.");
+        }
+
+        googleId.initialize({
+          client_id: googleClientId,
+          callback: async (response) => {
+            const credential = response.credential?.trim();
+            if (!credential) {
+              setError("No se pudo obtener la credencial de Google.");
+              return;
+            }
+
+            setBusy(true);
+            setError("");
+            try {
+              await loginWithGoogle(credential);
+              nav("/home", { replace: true });
+            } catch (e: unknown) {
+              setError(toFriendlyError(e));
+            } finally {
+              setBusy(false);
+            }
+          },
+          use_fedcm_for_prompt: true,
+          auto_select: false,
+          context: "signin",
+          itp_support: true,
+          cancel_on_tap_outside: false,
+        });
+
+        googleBtnRef.current.innerHTML = "";
+        googleId.renderButton(googleBtnRef.current, {
+          type: "standard",
+          theme: "outline",
+          size: "large",
+          text: "continue_with",
+          shape: "pill",
+          logo_alignment: "left",
+          width: 320,
+        });
+
+        // one tap no bloqueante; si falla mostramos error solo en casos útiles.
+        googleId.prompt((notification) => {
+          if (!notification.isNotDisplayed()) return;
+          const reason = notification.getNotDisplayedReason?.() || "";
+          if (reason === "unregistered_origin") {
+            setGoogleBootError(
+              `Origen no autorizado para Google (${window.location.origin}). Revisa Authorized JavaScript origins.`,
+            );
+          } else if (reason === "invalid_client") {
+            setGoogleBootError("Client ID de Google invalido para este frontend.");
+          }
+        });
+
+        if (alive) {
+          setGoogleReady(true);
+        }
+      } catch (e: unknown) {
+        if (!alive) return;
+        setGoogleReady(false);
+        setGoogleBootError(toFriendlyError(e));
+      }
+    };
+
+    setupGoogle();
+
+    return () => {
+      alive = false;
+      window.google?.accounts?.id?.cancel?.();
+    };
+  }, [googleClientId, loginWithGoogle, nav]);
 
   if (isAuthenticated) {
     return <Navigate to="/home" replace />;
@@ -271,43 +293,6 @@ export default function Login() {
       nav("/home", { replace: true });
     } catch (e: unknown) {
       setError(toFriendlyError(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitGoogle() {
-    if (!googleClientId) {
-      setError("Falta VITE_GOOGLE_CLIENT_ID en frontend.");
-      return;
-    }
-
-    setBusy(true);
-    setError("");
-    try {
-      const origin = window.location.origin;
-      const debugClientId =
-        googleClientId.length > 18
-          ? `${googleClientId.slice(0, 10)}...${googleClientId.slice(-8)}`
-          : googleClientId;
-
-      console.info("[GSI DEBUG]", {
-        origin,
-        clientId: googleClientId,
-      });
-
-      await loadGoogleScript();
-      const credential = await requestGoogleCredential(googleClientId);
-      await loginWithGoogle(credential);
-      nav("/home", { replace: true });
-    } catch (e: unknown) {
-      const baseError = toFriendlyError(e);
-      const origin = window.location.origin;
-      const debugClientId =
-        googleClientId.length > 18
-          ? `${googleClientId.slice(0, 10)}...${googleClientId.slice(-8)}`
-          : googleClientId;
-      setError(`${baseError} [debug origin=${origin} client=${debugClientId}]`);
     } finally {
       setBusy(false);
     }
@@ -356,7 +341,13 @@ export default function Login() {
 
         {error ? <div className="message error">{error}</div> : null}
 
-        <div className="stack">
+        <form
+          className="stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
           {mode === "login" ? (
             <div>
               <label className="smallLabel">Correo o celular</label>
@@ -433,20 +424,25 @@ export default function Login() {
               </div>
             </div>
           ) : null}
-        </div>
 
-        <div className="quickActions">
-          <button type="button" className="btn primary" onClick={submit} disabled={busy || !canSubmit}>
-            {busy ? "Procesando..." : mode === "login" ? "Entrar" : "Crear cuenta"}
-          </button>
-          <button type="button" className="btn" onClick={submitGoogle} disabled={busy}>
-            Continuar con Google
-          </button>
-          {canGuestLogin ? (
-            <button type="button" className="btn" onClick={submitGuest} disabled={busy}>
-              Entrar como invitado (debug)
+          <div className="quickActions">
+            <button type="submit" className="btn primary" disabled={busy || !canSubmit}>
+              {busy ? "Procesando..." : mode === "login" ? "Entrar" : "Crear cuenta"}
             </button>
-          ) : null}
+            {canGuestLogin ? (
+              <button type="button" className="btn" onClick={submitGuest} disabled={busy}>
+                Entrar como invitado (debug)
+              </button>
+            ) : null}
+          </div>
+        </form>
+
+        <div className="stack" style={{ marginTop: 12 }}>
+          <div className="smallLabel">Google</div>
+          {!googleClientId ? <div className="message error">Falta VITE_GOOGLE_CLIENT_ID en frontend.</div> : null}
+          {googleBootError ? <div className="message error">{googleBootError}</div> : null}
+          <div ref={googleBtnRef} style={{ minHeight: 44, display: "flex", alignItems: "center" }} />
+          {!googleReady && googleClientId ? <div className="small">Cargando acceso con Google...</div> : null}
         </div>
       </section>
     </div>
