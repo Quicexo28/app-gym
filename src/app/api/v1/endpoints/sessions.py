@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth.athlete_access import require_athlete_access, require_athlete_access_many
 from app.auth.deps import get_current_user
 from app.db.engine import get_db
+from app.core.logging import log_business_event
 from app.db.models_auth import User
 from app.db.repo import list_sessions_for_athlete, upsert_session
 from app.planning.service import reconcile_active_assignments_for_athletes
@@ -40,6 +41,14 @@ def ingest_sessions(
             duplicates += 1
 
     planning_reconcile = reconcile_active_assignments_for_athletes(db, athlete_ids=athlete_ids)
+    log_business_event(
+        "session_ingested",
+        user_id=str(user.id),
+        athlete_ids=sorted(athlete_ids),
+        inserted=inserted,
+        duplicates=duplicates,
+        batch_size=len(sessions),
+    )
     return {
         "inserted": inserted,
         "duplicates": duplicates,

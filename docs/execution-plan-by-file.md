@@ -251,3 +251,6 @@ Escala usada:
 - Tests críticos actualizados/extendidos (`tests/test_auth_flow.py`, `tests/test_health.py`) para contrato de errores y endpoint `/ready`.
 - `NewSession.tsx` fase 4 (parcial): extracción de estado/timeout de respuesta del asistente de voz a `frontend/src/lib/voice/useVoiceAssistantResponse.ts`.
 - Tests de acceso mínimo para endpoints de sesiones/planificación (`tests/test_sessions_planning_access.py`) validando contrato de error sin autenticación.
+- P2 observabilidad funcional: helper `log_business_event` + eventos de negocio en `auth.py`, `sessions.py`, `runs.py` (`login_*`, `session_ingested`, `run_created*`).
+- P2 Home operativo v2: alertas con severidad (`high/medium/low`) y CTA contextual en `Home.tsx`.
+- P2 Planning insights: indicador `atRisk` en tracking + riesgo por asignación en `Planning.tsx`.

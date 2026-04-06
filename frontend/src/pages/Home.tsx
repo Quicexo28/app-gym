@@ -43,15 +43,41 @@ export default function Home() {
   }, [lastSessionAt, todayMs]);
 
   const homeAlerts = useMemo(() => {
-    const alerts: string[] = [];
+    const alerts: Array<{ id: string; severity: "high" | "medium" | "low"; message: string; ctaLabel?: string; ctaPath?: string }> = [];
     if (!athleteId) {
-      alerts.push("Selecciona un sujeto para habilitar registro y analisis.");
+      alerts.push({
+        id: "no_subject",
+        severity: "high",
+        message: "Selecciona un sujeto para habilitar registro y analisis.",
+      });
       return alerts;
     }
-    if (sessionCount === 0) alerts.push("Aun no hay sesiones registradas. Crea la primera sesion para activar analisis.");
-    if (sessionCount > 0 && runCount === 0) alerts.push("Tienes sesiones sin escenarios. Corre un run para obtener recomendaciones.");
+    if (sessionCount === 0) {
+      alerts.push({
+        id: "no_sessions",
+        severity: "high",
+        message: "Aun no hay sesiones registradas. Crea la primera sesion para activar analisis.",
+        ctaLabel: "Crear sesion",
+        ctaPath: "/session/new",
+      });
+    }
+    if (sessionCount > 0 && runCount === 0) {
+      alerts.push({
+        id: "no_runs",
+        severity: "medium",
+        message: "Tienes sesiones sin escenarios. Corre un run para obtener recomendaciones.",
+        ctaLabel: "Ver historial",
+        ctaPath: "/history",
+      });
+    }
     if (typeof daysSinceLastSession === "number" && daysSinceLastSession >= 4) {
-      alerts.push(`Han pasado ${daysSinceLastSession} dias desde la ultima sesion.`);
+      alerts.push({
+        id: "inactive_days",
+        severity: daysSinceLastSession >= 7 ? "high" : "medium",
+        message: `Han pasado ${daysSinceLastSession} dias desde la ultima sesion.`,
+        ctaLabel: "Registrar sesion",
+        ctaPath: "/session/new",
+      });
     }
     return alerts;
   }, [athleteId, daysSinceLastSession, runCount, sessionCount]);
@@ -196,11 +222,23 @@ export default function Home() {
         {homeAlerts.length === 0 ? (
           <div className="small" style={{ marginTop: 10 }}>Sin alertas criticas por ahora.</div>
         ) : (
-          <ul className="compactList cleanList" style={{ marginTop: 10 }}>
+          <div className="stack compactStack" style={{ marginTop: 10 }}>
             {homeAlerts.map((alert) => (
-              <li key={alert}>{alert}</li>
+              <article key={alert.id} className="listItem">
+                <div className="listMain">
+                  <strong>{alert.message}</strong>
+                  <span className="small">{`Prioridad: ${alert.severity}`}</span>
+                </div>
+                {alert.ctaLabel && alert.ctaPath ? (
+                  <div className="listMeta">
+                    <button className="btn" onClick={() => nav(alert.ctaPath!)}>
+                      {alert.ctaLabel}
+                    </button>
+                  </div>
+                ) : null}
+              </article>
             ))}
-          </ul>
+          </div>
         )}
       </section>
 

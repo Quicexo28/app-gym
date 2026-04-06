@@ -21,6 +21,7 @@ from app.auth.deps import get_current_user
 from app.auth.security import create_access_token, hash_password, verify_password
 from app.auth.types import Plan, Role
 from app.core.config import Settings
+from app.core.logging import log_business_event
 from app.db.engine import get_db
 from app.db.models import Athlete, CoachAthleteAssignment, ExerciseCatalog, Run, TrainingSession
 from app.db.models_auth import User, UserSettings
@@ -134,6 +135,7 @@ def _fetch_google_tokeninfo(id_token: str) -> dict[str, str]:
         with urlopen(url, timeout=8) as response:
             raw = response.read().decode("utf-8")
     except HTTPError as err:
+        log_business_event("login_google_fail", reason="google_token_invalid", http_status=getattr(err, "code", None))
         raise HTTPException(
             status_code=401,
             detail=_error_detail(
@@ -143,6 +145,7 @@ def _fetch_google_tokeninfo(id_token: str) -> dict[str, str]:
             ),
         ) from err
     except URLError as err:
+        log_business_event("login_google_fail", reason="google_token_validation_unreachable")
         raise HTTPException(
             status_code=502,
             detail=_error_detail("google_token_validation_unreachable", "Could not validate Google token.", {"provider": "google"}),
@@ -166,6 +169,7 @@ def _fetch_google_tokeninfo(id_token: str) -> dict[str, str]:
 
 def _validate_google_identity(id_token: str) -> tuple[str, str]:
     if not settings.google_client_id:
+        log_business_event("login_google_fail", reason="google_login_not_configured")
         raise HTTPException(
             status_code=503,
             detail=_error_detail("google_login_not_configured", "Google login is not configured.", {"provider": "google"}),
@@ -174,6 +178,7 @@ def _validate_google_identity(id_token: str) -> tuple[str, str]:
     payload = _fetch_google_tokeninfo(id_token)
     token_audience = payload.get("aud")
     if token_audience != settings.google_client_id:
+        log_business_event("login_google_fail", reason="google_token_audience_mismatch", received_aud=token_audience)
         raise HTTPException(
             status_code=401,
             detail=_error_detail(
@@ -192,6 +197,7 @@ def _validate_google_identity(id_token: str) -> tuple[str, str]:
     email_verified = payload.get("email_verified", "").lower() == "true"
 
     if not email or not sub or not email_verified:
+        log_business_event("login_google_fail", reason="google_token_payload_invalid", has_email=bool(email), has_sub=bool(sub), email_verified=email_verified)
         raise HTTPException(
             status_code=401,
             detail=_error_detail(
@@ -257,11 +263,14 @@ def login(
         user = db.execute(select(User).where(User.phone_number == normalized_identifier)).scalar_one_or_none()
 
     if user is None or not user.is_active:
+        log_business_event("login_password_fail", reason="invalid_credentials", identifier_type=identifier_type)
         raise HTTPException(status_code=401, detail=_error_detail("auth_invalid_credentials", "Invalid credentials."))
 
     if not verify_password(payload.password, user.password_hash):
+        log_business_event("login_password_fail", reason="invalid_credentials", identifier_type=identifier_type)
         raise HTTPException(status_code=401, detail=_error_detail("auth_invalid_credentials", "Invalid credentials."))
 
+    log_business_event("login_password_ok", user_id=str(user.id), identifier_type=identifier_type)
     return _auth_response_for_user(user)
 
 
@@ -270,6 +279,7 @@ def guest_login(
     db: Annotated[DbSession, Depends(get_db)],
 ) -> AuthResponse:
     if not _is_guest_login_enabled():
+        log_business_event("login_guest_fail", reason="disabled_in_production")
         raise HTTPException(status_code=403, detail="Guest login is disabled in production.")
 
     user = db.execute(select(User).where(User.email == DEBUG_GUEST_EMAIL)).scalar_one_or_none()
@@ -309,8 +319,10 @@ def guest_login(
             ) from err
 
     if not user.is_active:
+        log_business_event("login_guest_fail", reason="guest_user_inactive")
         raise HTTPException(status_code=401, detail="Guest user is inactive.")
 
+    log_business_event("login_guest_ok", user_id=str(user.id))
     return _auth_response_for_user(user)
 
 
@@ -328,6 +340,7 @@ def google_login(
         user_by_email = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
         if user_by_email is not None:
             if user_by_email.google_sub and user_by_email.google_sub != google_sub:
+                log_business_event("login_google_fail", reason="google_account_already_linked", email=email)
                 raise HTTPException(status_code=409, detail="Google account already linked.")
             user_by_email.google_sub = google_sub
             user = user_by_email
@@ -355,12 +368,14 @@ def google_login(
             should_commit = True
 
     if user is None or not user.is_active:
+        log_business_event("login_google_fail", reason="invalid_credentials")
         raise HTTPException(status_code=401, detail=_error_detail("auth_invalid_credentials", "Invalid credentials."))
 
     if should_commit:
         db.commit()
         db.refresh(user)
 
+    log_business_event("login_google_ok", user_id=str(user.id), email=user.email)
     return _auth_response_for_user(user)
 
 

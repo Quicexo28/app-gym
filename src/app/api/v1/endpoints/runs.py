@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.auth.athlete_access import require_athlete_access
 from app.auth.deps import get_current_user
 from app.db.engine import get_db
+from app.core.logging import log_business_event
 from app.db.models import Run
 from app.db.repo import list_sessions_for_athlete
 from app.db.models_auth import User
@@ -34,6 +35,7 @@ def run_pipeline_for_athlete(
 
     sessions = list_sessions_for_athlete(db, athlete_id)
     if not sessions:
+        log_business_event("run_created_fail", user_id=str(user.id), athlete_id=athlete_id, reason="no_sessions")
         raise HTTPException(status_code=404, detail="No sessions found for athlete.")
 
     cfg = EndToEndConfig(
@@ -66,6 +68,16 @@ def run_pipeline_for_athlete(
     db.add(row)
     db.commit()
     db.refresh(row)
+
+    log_business_event(
+        "run_created",
+        user_id=str(user.id),
+        athlete_id=athlete_id,
+        run_id=str(row.run_id),
+        metric_key=metric_key,
+        use_normalized=use_normalized,
+        sessions_count=len(sessions),
+    )
 
     return {"run_id": str(row.run_id), "summary": row.summary}
 

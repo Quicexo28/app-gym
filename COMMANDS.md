@@ -40,6 +40,10 @@ Checks de salud:
 - `http://127.0.0.1:8000/health` (liveness)
 - `http://127.0.0.1:8000/ready` (readiness: DB + migraciones)
 
+Observabilidad (eventos de negocio):
+- Logs API incluyen eventos `app.business` como `login_*`, `session_ingested`, `run_created`.
+- Ver en vivo: `docker compose logs -f api | findstr /I "business_event"`
+
 ## 3) Frontend
 
 ```powershell

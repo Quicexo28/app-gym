@@ -973,12 +973,18 @@ export default function Planning() {
       .map((item) => Number(item.adherence))
       .filter((value) => Number.isFinite(value));
 
+    const atRisk = assignments.filter((item) => {
+      const adherence = Number(item.adherence || 0);
+      const hasOverdue = (item.next_blocks || []).some((block) => !!block.target_date && Date.parse(String(block.target_date)) < Date.now());
+      return adherence < 0.7 || hasOverdue;
+    }).length;
+
     const avgAdherence =
       adherenceValues.length > 0
         ? Number((adherenceValues.reduce((acc, value) => acc + value, 0) / adherenceValues.length).toFixed(3))
         : null;
 
-    return { total, active, overdue, avgAdherence };
+    return { total, active, overdue, atRisk, avgAdherence };
   }, [assignments]);
 
   return (
@@ -1087,6 +1093,10 @@ export default function Planning() {
               <strong>{trackingSummary.overdue}</strong>
             </article>
             <article className="statCard">
+              <div className="smallLabel">En riesgo</div>
+              <strong>{trackingSummary.atRisk}</strong>
+            </article>
+            <article className="statCard">
               <div className="smallLabel">Adherencia promedio</div>
               <strong>{trackingSummary.avgAdherence === null ? "-" : `${Math.round(trackingSummary.avgAdherence * 100)}%`}</strong>
             </article>
@@ -1100,6 +1110,14 @@ export default function Planning() {
                   <strong>{item.template_name || item.template_id}</strong>
                   <span className="small">{`${levelLabel(item.level)} | ${statusLabel(item.status)}`}</span>
                   <span className="small">{`Adherencia: ${Math.round((item.adherence || 0) * 100)}%`}</span>
+                  <span className="small">
+                    {`Riesgo: ${
+                      (Number(item.adherence || 0) < 0.7 ||
+                      (item.next_blocks || []).some((block) => !!block.target_date && Date.parse(String(block.target_date)) < Date.now()))
+                        ? "alto"
+                        : "controlado"
+                    }`}
+                  </span>
                   {(item.next_blocks || []).length > 0 ? (
                     <span className="small">
                       {`Proximo: ${(item.next_blocks || [])[0]?.title || "-"}${(item.next_blocks || [])[0]?.target_date ? ` (${(item.next_blocks || [])[0]?.target_date})` : ""}`}
