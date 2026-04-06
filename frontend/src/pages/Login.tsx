@@ -227,6 +227,7 @@ export default function Login() {
         });
 
         googleBtnRef.current.innerHTML = "";
+        const buttonWidth = Math.max(220, Math.min(320, window.innerWidth - 56));
         googleId.renderButton(googleBtnRef.current, {
           type: "standard",
           theme: "outline",
@@ -234,7 +235,7 @@ export default function Login() {
           text: "continue_with",
           shape: "pill",
           logo_alignment: "left",
-          width: 320,
+          width: buttonWidth,
         });
 
         // one tap no bloqueante; si falla mostramos error solo en casos útiles.

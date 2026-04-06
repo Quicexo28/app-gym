@@ -127,6 +127,7 @@ a {
 select.input,
 textarea.input {
   width: 100%;
+  min-height: 42px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-elevated);
@@ -201,6 +202,7 @@ textarea.input:focus,
   background: var(--bg-soft);
   color: var(--text);
   border-radius: 12px;
+  min-height: 42px;
   padding: 10px 12px;
   font: inherit;
   font-weight: 700;
@@ -2150,6 +2152,19 @@ textarea.input:focus,
     flex-direction: column;
   }
 
+  .topnav2 {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 4px;
+  }
+
+  .navItem,
+  .moreMenu {
+    flex: 0 0 auto;
+  }
+
   .container {
     padding: 14px 12px;
   }
@@ -2194,7 +2209,21 @@ textarea.input:focus,
 
   .setRow {
     gap: 6px;
-    grid-template-columns: auto minmax(84px, 1.25fr) minmax(68px, 1fr) minmax(68px, 1fr) auto auto;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .setRow .setTag {
+    grid-column: 1 / -1;
+    padding-bottom: 0;
+  }
+
+  .setRow .setFieldMini {
+    grid-column: span 1;
+  }
+
+  .setRow .iconBtn {
+    min-height: 38px;
   }
 
   .wellnessScale {
@@ -2242,6 +2271,21 @@ textarea.input:focus,
   .undoBarActions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .listMain,
+  .listMeta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .loginWrap {
+    padding: 10px;
+  }
+
+  .loginCard {
+    width: 100%;
+    border-radius: 14px;
   }
 }
 
