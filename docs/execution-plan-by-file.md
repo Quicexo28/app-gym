@@ -230,3 +230,11 @@ Escala usada:
 ## Estado
 - Documento creado para ejecución incremental.
 - Incluye fix y estabilización del login con Google como prioridad P0.
+
+## Avance aplicado (sesión actual)
+- Login Google rehecho con botón oficial GSI y diagnóstico robusto.
+- `CORS_ORIGINS` configurable por env (CSV/JSON) + documentación de deploy.
+- Script `run_dev.ps1` para levantar `db+api` y validar health antes de frontend.
+- `GET /ready` agregado (check DB + revisión de migración presente).
+- Contrato de error backend unificado (`code`, `detail`, `context`) con handlers globales.
+- Cliente frontend (`api.ts`) actualizado para leer `code/context` en errores.

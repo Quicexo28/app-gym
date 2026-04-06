@@ -80,12 +80,16 @@ export type GlobalExerciseExportPayload = {
 export class ApiError extends Error {
   status: number;
   detail: string;
+  code?: string;
+  context?: JsonObject;
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, options?: { code?: string; context?: JsonObject }) {
     super(detail);
     this.name = "ApiError";
     this.status = status;
     this.detail = detail;
+    this.code = options?.code;
+    this.context = options?.context;
   }
 }
 
@@ -529,6 +533,23 @@ export type GamificationConfigResponse = {
   defaults: GamificationConfig;
 };
 
+export type VoicePhraseCorrection = {
+  from: string;
+  to: string;
+};
+
+export type VoiceTrainingConfig = {
+  updated_at_ms: number;
+  custom_keywords: {
+    set_reps: string[];
+    set_load: string[];
+    set_set_effort: string[];
+    set_set_completed: string[];
+  };
+  wake_aliases: string[];
+  phrase_corrections: VoicePhraseCorrection[];
+};
+
 let authToken: string | null = null;
 let apiViewMode: ViewMode | null = null;
 const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "").replace(/\/+$/, "");
@@ -572,10 +593,25 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const raw = await res.text();
     let detail = raw.trim();
+    let code: string | undefined;
+    let context: JsonObject | undefined;
 
     if (raw) {
       try {
-        const parsed = JSON.parse(raw) as { detail?: unknown };
+        const parsed = JSON.parse(raw) as {
+          detail?: unknown;
+          code?: unknown;
+          context?: unknown;
+        };
+
+        if (typeof parsed.code === "string" && parsed.code.trim()) {
+          code = parsed.code.trim();
+        }
+
+        if (parsed.context && typeof parsed.context === "object" && !Array.isArray(parsed.context)) {
+          context = parsed.context as JsonObject;
+        }
+
         if (typeof parsed.detail === "string" && parsed.detail.trim()) {
           detail = parsed.detail.trim();
         } else if (
@@ -594,7 +630,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
     if (!detail) {
       detail = `${res.status} ${res.statusText}`;
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, { code, context });
   }
 
   return (await res.json()) as T;
@@ -787,6 +823,17 @@ export function getAdminGamificationConfig(): Promise<GamificationConfigResponse
 
 export function updateAdminGamificationConfig(payload: GamificationConfig): Promise<GamificationConfig> {
   return http("/api/v1/admin/dev/gamification-config", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getVoiceTrainingConfig(): Promise<VoiceTrainingConfig> {
+  return http("/api/v1/settings/voice-training-config");
+}
+
+export function updateVoiceTrainingConfig(payload: VoiceTrainingConfig): Promise<VoiceTrainingConfig> {
+  return http("/api/v1/settings/voice-training-config", {
     method: "PUT",
     body: JSON.stringify(payload),
   });

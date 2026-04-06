@@ -36,6 +36,10 @@ Servicios:
 - API: `http://localhost:8000`
 - Postgres: `localhost:5432`
 
+Checks de salud:
+- `http://127.0.0.1:8000/health` (liveness)
+- `http://127.0.0.1:8000/ready` (readiness: DB + migraciones)
+
 ## 3) Frontend
 
 ```powershell
