@@ -72,17 +72,6 @@ export default function Home() {
     return streak;
   }, [athleteId, sessionsData, todayMs]);
 
-  const hasSessionToday = useMemo(() => {
-    if (sessionsData.length === 0) return false;
-    const todayKey = new Date(todayMs).toISOString().slice(0, 10);
-    return sessionsData.some((session) => String(session.start_time || "").slice(0, 10) === todayKey);
-  }, [sessionsData, todayMs]);
-
-  const streakVisualState = useMemo<"ashes" | "inactive" | "active">(() => {
-    if (streakDays <= 0) return "ashes";
-    return hasSessionToday ? "active" : "inactive";
-  }, [hasSessionToday, streakDays]);
-
   const todaySessionSuggestion = useMemo(() => {
     if (!athleteId) return "Selecciona un sujeto para definir la sesión de hoy.";
     if (sessionCount === 0) return "Sesión inicial corta: técnica + registro base.";
@@ -221,14 +210,6 @@ export default function Home() {
     };
   }, [athleteId]);
 
-  function handleStreakIconClick() {
-    if (!athleteId || streakVisualState === "active") {
-      nav("/history");
-      return;
-    }
-    nav("/session/new");
-  }
-
   return (
     <div className="container stack">
       <header className="titleBlock">
@@ -242,26 +223,6 @@ export default function Home() {
           <p>{momentumLabel}</p>
         </div>
         <div className="dashboardPulseRow">
-          <button
-            type="button"
-            className={`streakIconButton ${streakVisualState}`}
-            onClick={handleStreakIconClick}
-            title={
-              streakVisualState === "active"
-                ? "Racha activa hoy. Toca para ver historial."
-                : streakVisualState === "inactive"
-                  ? "Tienes racha, pero hoy aún no entrenas. Toca para iniciar sesión."
-                  : "Sin racha activa. Toca para crear tu primera sesión."
-            }
-            aria-label={`Racha: ${streakDays} día${streakDays === 1 ? "" : "s"}`}
-          >
-            <span className="streakIconCore" aria-hidden="true">
-              <span className="streakFlameOuter" />
-              <span className="streakFlameInner" />
-              <span className="streakAshPile" />
-            </span>
-            <span className="streakIconLabel">{`${streakDays} día${streakDays === 1 ? "" : "s"}`}</span>
-          </button>
           <div className="dashboardPulseMeta">{`Embudo completado: ${funnelCompletionPct}%`}</div>
         </div>
       </section>
@@ -290,10 +251,6 @@ export default function Home() {
             <article className="statCard">
               <div className="smallLabel">{isCoachScope ? "Sujeto activo" : "Perfil activo"}</div>
               <strong>{activeSubject?.label || "Sin asignar"}</strong>
-            </article>
-            <article className="statCard">
-              <div className="smallLabel">Racha</div>
-              <strong>{`${streakDays} día${streakDays === 1 ? "" : "s"}`}</strong>
             </article>
             <article className="statCard">
               <div className="smallLabel">Última sesión</div>

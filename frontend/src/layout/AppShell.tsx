@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import ActiveSessionBar from "../components/ActiveSessionBar";
 import UndoBar from "../components/UndoBar";
+import { getSessions } from "../api";
+import type { SessionRecord } from "../api";
 import { DEFAULT_PROFILE_AVATAR_URL, loadProfileAvatarUrl, PROFILE_AVATAR_CHANGED_EVENT } from "../lib/profileAvatar";
 import { useAthleteAccess } from "../state/athlete";
 import { useAuth } from "../state/auth";
@@ -126,7 +128,10 @@ export default function AppShell() {
   const { prefs, resolvedTheme, toggleTheme } = usePreferences();
   const { user, logout } = useAuth();
   const { viewMode, allowedModes, canSwitchMode, setViewMode } = useViewMode();
+  const [sessionsData, setSessionsData] = useState<SessionRecord[]>([]);
+  const [todayMs] = useState<number>(() => Date.now());
   const [, setAvatarRefreshCounter] = useState(0);
+  const nav = useNavigate();
 
   const navSections = buildNavSections(viewMode);
   const avatarUrl = loadProfileAvatarUrl(user?.id) || DEFAULT_PROFILE_AVATAR_URL;
@@ -134,6 +139,73 @@ export default function AppShell() {
     prefs.theme === "system" ? `Sistema (${resolvedTheme})` : prefs.theme === "dark" ? "Oscuro" : "Claro";
   const selectedSubjectLabel = subjects.find((subject) => subject.id === athleteId)?.label || "Sin sujeto";
   const canSwitchSubject = canSwitch && (viewMode === "coach" || viewMode === "admin");
+
+  useEffect(() => {
+    if (!athleteId) {
+      return;
+    }
+
+    let cancelled = false;
+    getSessions(athleteId)
+      .then((sessions) => {
+        if (cancelled) return;
+        const ordered = [...sessions].sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)));
+        setSessionsData(ordered);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSessionsData([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [athleteId]);
+
+  const streakDays = useMemo(() => {
+    if (!athleteId || sessionsData.length === 0) return 0;
+    const dayKeys = Array.from(
+      new Set(
+        sessionsData
+          .map((session) => String(session.start_time || "").slice(0, 10))
+          .filter((value) => value.length === 10),
+      ),
+    ).sort((a, b) => b.localeCompare(a));
+
+    if (dayKeys.length === 0) return 0;
+
+    const todayKey = new Date(todayMs).toISOString().slice(0, 10);
+    const yesterdayKey = new Date(todayMs - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (dayKeys[0] !== todayKey && dayKeys[0] !== yesterdayKey) return 0;
+
+    let streak = 1;
+    for (let i = 1; i < dayKeys.length; i += 1) {
+      const prev = new Date(`${dayKeys[i - 1]}T00:00:00Z`).getTime();
+      const current = new Date(`${dayKeys[i]}T00:00:00Z`).getTime();
+      if (prev - current === 24 * 60 * 60 * 1000) streak += 1;
+      else break;
+    }
+    return streak;
+  }, [athleteId, sessionsData, todayMs]);
+
+  const hasSessionToday = useMemo(() => {
+    if (sessionsData.length === 0) return false;
+    const todayKey = new Date(todayMs).toISOString().slice(0, 10);
+    return sessionsData.some((session) => String(session.start_time || "").slice(0, 10) === todayKey);
+  }, [sessionsData, todayMs]);
+
+  const streakVisualState = useMemo<"ashes" | "inactive" | "active">(() => {
+    if (streakDays <= 0) return "ashes";
+    return hasSessionToday ? "active" : "inactive";
+  }, [hasSessionToday, streakDays]);
+
+  const onStreakClick = () => {
+    if (streakVisualState === "active") {
+      nav("/history");
+      return;
+    }
+    nav("/session/new");
+  };
 
   useEffect(() => {
     const onAvatarChanged = (event: Event) => {
@@ -218,6 +290,27 @@ export default function AppShell() {
             ) : (
               <span className="chip">{selectedSubjectLabel}</span>
             )}
+
+            <button
+              type="button"
+              className={`streakIconButton ${streakVisualState}`}
+              onClick={onStreakClick}
+              title={
+                streakVisualState === "active"
+                  ? "Racha activa hoy. Toca para ver historial."
+                  : streakVisualState === "inactive"
+                    ? "Tienes racha, pero hoy aún no entrenas. Toca para iniciar sesión."
+                    : "Sin racha activa. Toca para crear tu primera sesión."
+              }
+              aria-label={`Racha: ${streakDays} día${streakDays === 1 ? "" : "s"}`}
+            >
+              <span className="streakIconCore" aria-hidden="true">
+                <span className="streakFlameOuter" />
+                <span className="streakFlameInner" />
+                <span className="streakAshPile" />
+              </span>
+              <span className="streakIconLabel">{`${streakDays} día${streakDays === 1 ? "" : "s"}`}</span>
+            </button>
 
             <button type="button" className="btn" onClick={toggleTheme}>
               Tema: {themeLabel}
