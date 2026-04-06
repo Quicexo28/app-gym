@@ -1,9 +1,11 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 import {
   ALL_EXERCISE_FILTER as ALL,
   ALL_EXERCISE_ZONE_FILTER,
   buildExerciseCatalogBrowser,
+  canonicalizeExerciseGroup,
   computeExerciseEntrySearchScore,
   EXERCISE_ZONE_LOWER,
   EXERCISE_ZONE_UPPER,
@@ -56,6 +58,7 @@ const MAX_REST_MINUTES = Math.floor(MAX_REST_SECONDS / 60);
 const DRAG_HOLD_TO_REORDER_MS = 280;
 const DRAG_AUTO_SCROLL_EDGE_PX = 92;
 const DRAG_AUTO_SCROLL_MAX_STEP_PX = 16;
+const MIN_DRAG_PREVIEW_GAP_PX = 92;
 
 type DraftRoutineExercise = Omit<RoutineExerciseTemplate, "target_reps_min" | "target_reps_max" | "rest_seconds"> & {
   target_reps_min: string;
@@ -159,6 +162,20 @@ function normalizeGroupLabel(value: string | undefined): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+const PLACEHOLDER_GROUP_KEYS = new Set(["general", "sin grupo"]);
+
+function canonicalizeGroupLabel(value: string | undefined): string {
+  const cleaned = normalizeGroupLabel(value);
+  if (!cleaned) return "";
+  return canonicalizeExerciseGroup(cleaned) || cleaned;
+}
+
+function isPlaceholderGroup(value: string | undefined): boolean {
+  const cleaned = normalizeGroupLabel(value);
+  if (!cleaned) return false;
+  return PLACEHOLDER_GROUP_KEYS.has(normalizeLookupText(cleaned));
+}
+
 function totalSeries(exercises: Array<{ target_sets: number }>): number {
   return exercises.reduce((acc, exercise) => acc + normalizeSetTarget(exercise.target_sets), 0);
 }
@@ -167,36 +184,67 @@ function routineExerciseIdentity(exercise: Pick<RoutineExerciseTemplate, "name" 
   return `${normalizeLookupText(exercise.group || "")}|${normalizeLookupText(exercise.name)}`;
 }
 
-function inferLegacyExerciseGroup(name: string): string | null {
-  if (!name.includes(">")) return null;
-  const parts = name
-    .split(">")
-    .map((part) => part.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-  if (parts.length < 2) return null;
-  return parts[0] || null;
+function inferLegacyExerciseGroup(name: string, catalogGroupsByKey?: Map<string, string>): string | null {
+  const normalizedName = name.replace(/\s+/g, " ").trim();
+  if (!normalizedName) return null;
+
+  const resolveCandidate = (value: string, requireCatalogMatch = false): string | null => {
+    const candidate = canonicalizeGroupLabel(value);
+    if (!candidate) return null;
+    const match = catalogGroupsByKey?.get(normalizeLookupText(candidate)) || null;
+    if (match) return match;
+    if (requireCatalogMatch) return null;
+    return candidate;
+  };
+
+  if (normalizedName.includes(">")) {
+    const fromChevron = normalizedName
+      .split(">")
+      .map((part) => part.replace(/\s+/g, " ").trim())
+      .filter(Boolean)[0];
+    const resolved = fromChevron ? resolveCandidate(fromChevron) : null;
+    if (resolved) return resolved;
+  }
+
+  if (normalizedName.includes(" - ")) {
+    const fromDash = normalizedName
+      .split(" - ")
+      .map((part) => part.replace(/\s+/g, " ").trim())
+      .filter(Boolean)[0];
+    const resolved = fromDash ? resolveCandidate(fromDash, true) : null;
+    if (resolved) return resolved;
+  }
+
+  return null;
 }
 
 function resolveExerciseGroup(
   exercise: Pick<RoutineExerciseTemplate, "name" | "group">,
   catalogGroupByName: Map<string, string>,
+  catalogGroupsByKey: Map<string, string>,
 ): string {
-  const explicitGroup = normalizeGroupLabel(exercise.group);
-  if (explicitGroup) return explicitGroup;
-  const fromLegacy = inferLegacyExerciseGroup(exercise.name);
+  const explicitGroup = canonicalizeGroupLabel(exercise.group);
+  if (explicitGroup && !isPlaceholderGroup(explicitGroup)) return explicitGroup;
+  const fromLegacy = inferLegacyExerciseGroup(exercise.name, catalogGroupsByKey);
   if (fromLegacy) return fromLegacy;
-  return catalogGroupByName.get(normalizeLookupText(exercise.name)) || "Sin grupo";
+  const fromCatalog = catalogGroupByName.get(normalizeLookupText(exercise.name));
+  if (fromCatalog) {
+    return canonicalizeGroupLabel(fromCatalog) || fromCatalog;
+  }
+  if (explicitGroup) return explicitGroup;
+  return "Sin grupo";
 }
 
 function buildRoutineSeriesByGroup(
   routine: RoutineTemplate,
   catalogGroupByName: Map<string, string>,
+  catalogGroupsByKey: Map<string, string>,
 ): RoutineGroupSeries[] {
   const grouped = new Map<string, number>();
   for (const exercise of routine.exercises) {
     const sets = normalizeSetTarget(exercise.target_sets);
     if (sets <= 0) continue;
-    const group = resolveExerciseGroup(exercise, catalogGroupByName);
+    const group = resolveExerciseGroup(exercise, catalogGroupByName, catalogGroupsByKey);
     grouped.set(group, (grouped.get(group) || 0) + sets);
   }
 
@@ -415,6 +463,7 @@ export default function Routines() {
   const [infoRoutineId, setInfoRoutineId] = useState<string | null>(null);
   const [draggedExerciseIdentity, setDraggedExerciseIdentity] = useState<string | null>(null);
   const [dropSlotIndex, setDropSlotIndex] = useState<number | null>(null);
+  const [dragPreviewSlotHeight, setDragPreviewSlotHeight] = useState<number>(0);
   const [dragArmedExerciseIdentity, setDragArmedExerciseIdentity] = useState<string | null>(null);
 
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
@@ -424,6 +473,7 @@ export default function Routines() {
   const dragHoldTimeoutRef = useRef<number | null>(null);
   const dragAutoScrollRafRef = useRef<number | null>(null);
   const dragPointerClientYRef = useRef<number | null>(null);
+  const dragDropCommittedRef = useRef(false);
 
   const filters = useMemo<ExerciseFilters>(
     () => ({
@@ -465,8 +515,10 @@ export default function Routines() {
     for (const entry of catalogEntries) {
       const key = normalizeLookupText(entry.name);
       if (!key) continue;
+      const normalizedGroup = canonicalizeGroupLabel(entry.group) || entry.group;
+      if (!normalizedGroup) continue;
       const bucket = grouped.get(key) || new Set<string>();
-      bucket.add(entry.group);
+      bucket.add(normalizedGroup);
       grouped.set(key, bucket);
     }
 
@@ -479,10 +531,22 @@ export default function Routines() {
     }
     return map;
   }, [catalogEntries]);
+  const catalogGroupsByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of catalogEntries) {
+      const normalizedGroup = canonicalizeGroupLabel(entry.group) || normalizeGroupLabel(entry.group);
+      if (!normalizedGroup) continue;
+      const key = normalizeLookupText(normalizedGroup);
+      if (key && !map.has(key)) {
+        map.set(key, normalizedGroup);
+      }
+    }
+    return map;
+  }, [catalogEntries]);
   const infoRoutineSeriesByGroup = useMemo(() => {
     if (!infoRoutine) return [];
-    return buildRoutineSeriesByGroup(infoRoutine, catalogGroupByName);
-  }, [catalogGroupByName, infoRoutine]);
+    return buildRoutineSeriesByGroup(infoRoutine, catalogGroupByName, catalogGroupsByKey);
+  }, [catalogGroupByName, catalogGroupsByKey, infoRoutine]);
   const infoRoutineTotalSeries = useMemo(() => {
     if (!infoRoutine) return 0;
     return totalSeries(infoRoutine.exercises);
@@ -560,7 +624,9 @@ export default function Routines() {
       setInfoRoutineId(null);
       setDraggedExerciseIdentity(null);
       setDropSlotIndex(null);
+      setDragPreviewSlotHeight(0);
       setDragArmedExerciseIdentity(null);
+      dragDropCommittedRef.current = false;
       return;
     }
     setItems(loadRoutines(athleteId));
@@ -570,7 +636,9 @@ export default function Routines() {
     setInfoRoutineId(null);
     setDraggedExerciseIdentity(null);
     setDropSlotIndex(null);
+    setDragPreviewSlotHeight(0);
     setDragArmedExerciseIdentity(null);
+    dragDropCommittedRef.current = false;
     setError("");
     setFeedback("");
   }, [athleteId]);
@@ -645,7 +713,8 @@ export default function Routines() {
 
     setError("");
     const next = entry.name;
-    const nextIdentity = routineExerciseIdentity({ name: next, group: entry.group });
+    const entryGroup = canonicalizeGroupLabel(entry.group) || normalizeGroupLabel(entry.group) || "General";
+    const nextIdentity = routineExerciseIdentity({ name: next, group: entryGroup });
     let added = false;
     setDraftExercises((prev) => {
       if (prev.some((value) => routineExerciseIdentity(value) === nextIdentity)) return prev;
@@ -654,7 +723,7 @@ export default function Routines() {
         ...prev,
         {
           name: next,
-          group: entry.group,
+          group: entryGroup,
           target_sets: DEFAULT_TARGET_SETS,
           target_reps_min: String(DEFAULT_TARGET_REPS_MIN),
           target_reps_max: String(DEFAULT_TARGET_REPS_MAX),
@@ -740,6 +809,7 @@ export default function Routines() {
     stopDraftAutoScroll();
     setDraggedExerciseIdentity(null);
     setDropSlotIndex(null);
+    setDragPreviewSlotHeight(0);
     setDragArmedExerciseIdentity(null);
   }
 
@@ -801,6 +871,9 @@ export default function Routines() {
       return;
     }
 
+    dragDropCommittedRef.current = false;
+    const previewHeight = Math.max(MIN_DRAG_PREVIEW_GAP_PX, Math.round(event.currentTarget.getBoundingClientRect().height));
+    setDragPreviewSlotHeight(previewHeight);
     setDraggedExerciseIdentity(identityValue);
     setDropSlotIndex(null);
     setDragArmedExerciseIdentity(null);
@@ -829,8 +902,20 @@ export default function Routines() {
       clearDraftExerciseDragState();
       return;
     }
+    dragDropCommittedRef.current = true;
     moveDraftExercise(nextIdentity, slotIndexValue);
     clearDraftExerciseDragState();
+  }
+
+  function handleDraftExerciseDragEnd() {
+    const pendingIdentity = draggedExerciseIdentity;
+    const pendingSlotIndex = dropSlotIndex;
+    if (!dragDropCommittedRef.current && pendingIdentity && pendingSlotIndex !== null) {
+      moveDraftExercise(pendingIdentity, pendingSlotIndex);
+      dragDropCommittedRef.current = true;
+    }
+    clearDraftExerciseDragState();
+    dragDropCommittedRef.current = false;
   }
 
   function clearFilters() {
@@ -849,7 +934,9 @@ export default function Routines() {
     setEditingRoutineId(null);
     setDraggedExerciseIdentity(null);
     setDropSlotIndex(null);
+    setDragPreviewSlotHeight(0);
     setDragArmedExerciseIdentity(null);
+    dragDropCommittedRef.current = false;
   }
 
   function startEditRoutine(routine: RoutineTemplate) {
@@ -858,7 +945,9 @@ export default function Routines() {
     setDraftExercises(routine.exercises.map((exercise) => toDraftExercise(exercise)));
     setDraggedExerciseIdentity(null);
     setDropSlotIndex(null);
+    setDragPreviewSlotHeight(0);
     setDragArmedExerciseIdentity(null);
+    dragDropCommittedRef.current = false;
     setError("");
     setFeedback("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -884,6 +973,8 @@ export default function Routines() {
       return;
     }
 
+    const currentItems = loadRoutines(athleteId);
+
     const hasMissingReps = draftExercises.some(
       (exercise) => exercise.target_reps_min.trim() === "" || exercise.target_reps_max.trim() === "",
     );
@@ -892,7 +983,7 @@ export default function Routines() {
       return;
     }
 
-    const exists = items.some(
+    const exists = currentItems.some(
       (entry) => entry.name.toLowerCase() === trimmed.toLowerCase() && entry.id !== editingRoutineId,
     );
     if (exists) {
@@ -903,10 +994,14 @@ export default function Routines() {
     const normalizedExercises: RoutineExerciseTemplate[] = draftExercises.map((exercise) => {
       const parsedMin = parseBoundedInt(exercise.target_reps_min, DEFAULT_TARGET_REPS_MIN, 1, 100);
       const parsedMax = parseBoundedInt(exercise.target_reps_max, DEFAULT_TARGET_REPS_MAX, 1, 100);
-      const explicitGroup = normalizeGroupLabel(exercise.group);
+      const explicitGroup = canonicalizeGroupLabel(exercise.group);
       const inferredGroup =
-        inferLegacyExerciseGroup(exercise.name) || catalogGroupByName.get(normalizeLookupText(exercise.name)) || "";
-      const nextGroup = explicitGroup || inferredGroup;
+        inferLegacyExerciseGroup(exercise.name, catalogGroupsByKey) ||
+        catalogGroupByName.get(normalizeLookupText(exercise.name)) ||
+        "";
+      const normalizedInferredGroup = canonicalizeGroupLabel(inferredGroup) || inferredGroup;
+      const nextGroup =
+        (!isPlaceholderGroup(explicitGroup) ? explicitGroup : "") || normalizedInferredGroup || explicitGroup;
 
       return {
         name: exercise.name,
@@ -922,14 +1017,14 @@ export default function Routines() {
 
     if (editingRoutineId) {
       const sourceAthleteId = athleteId;
-      const previous = items.find((entry) => entry.id === editingRoutineId);
+      const previous = currentItems.find((entry) => entry.id === editingRoutineId);
       if (!previous) {
         setError("No se encontro la rutina seleccionada para editar.");
         return;
       }
       const previousRoutine = cloneRoutine(previous);
 
-      const next = items.map((entry) =>
+      const next = currentItems.map((entry) =>
         entry.id !== editingRoutineId
           ? entry
           : {
@@ -1043,7 +1138,7 @@ export default function Routines() {
     }
 
     const next: RoutineTemplate[] = [
-      ...items,
+      ...currentItems,
       {
         id: uid("rt"),
         name: trimmed,
@@ -1063,9 +1158,10 @@ export default function Routines() {
   function removeRoutine(id: string) {
     if (!athleteId) return;
     const sourceAthleteId = athleteId;
-    const removedRoutine = items.find((entry) => entry.id === id);
+    const currentItems = loadRoutines(sourceAthleteId);
+    const removedRoutine = currentItems.find((entry) => entry.id === id);
     if (!removedRoutine) return;
-    const next = items.filter((entry) => entry.id !== id);
+    const next = currentItems.filter((entry) => entry.id !== id);
     setItems(next);
     saveRoutines(next, athleteId);
     if (editingRoutineId === id) {
@@ -1152,187 +1248,199 @@ export default function Routines() {
             style={{ marginTop: 12 }}
             onDragOverCapture={handleDraftSortableListDragOverCapture}
           >
-            {draftExercises.map((exercise, exerciseIndex) => {
-              const exerciseIdentity = routineExerciseIdentity(exercise);
-              const beforeSlotIsActive = dropSlotIndex === exerciseIndex;
-              const isDragged = draggedExerciseIdentity === exerciseIdentity;
-              const isDragArmed = dragArmedExerciseIdentity === exerciseIdentity;
-              return (
-                <div key={`${exerciseIdentity}_${exerciseIndex}`} className="routineSortableEntry">
-                  <div
-                    className={`routineDropSlot ${beforeSlotIsActive ? "active" : ""}`}
-                    onDragOver={(event) => handleDraftDropSlotDragOver(event, exerciseIndex)}
-                    onDragEnter={(event) => handleDraftDropSlotDragOver(event, exerciseIndex)}
-                    onDrop={(event) => handleDraftDropSlotDrop(event, exerciseIndex)}
-                  />
+            {(() => {
+              const activeDropSlotHeight = Math.max(MIN_DRAG_PREVIEW_GAP_PX, dragPreviewSlotHeight || 0);
+              return draftExercises.map((exercise, exerciseIndex) => {
+                const exerciseIdentity = routineExerciseIdentity(exercise);
+                const beforeSlotIsActive = dropSlotIndex === exerciseIndex;
+                const isDragged = draggedExerciseIdentity === exerciseIdentity;
+                const isDragArmed = dragArmedExerciseIdentity === exerciseIdentity;
+                const slotHeight = draggedExerciseIdentity ? (beforeSlotIsActive ? activeDropSlotHeight : 8) : 8;
+                return (
+                  <div key={`${exerciseIdentity}_${exerciseIndex}`} className="routineSortableEntry">
+                    <div
+                      className={`routineDropSlot ${beforeSlotIsActive ? "active" : ""}`}
+                      style={{ height: slotHeight }}
+                      onDragOver={(event) => handleDraftDropSlotDragOver(event, exerciseIndex)}
+                      onDragEnter={(event) => handleDraftDropSlotDragOver(event, exerciseIndex)}
+                      onDrop={(event) => handleDraftDropSlotDrop(event, exerciseIndex)}
+                    />
 
-                  <article
-                    className={`exerciseCard ${isDragged ? "exerciseCardDragging" : ""} ${isDragArmed ? "exerciseCardDragArmed" : ""}`}
-                    draggable
-                    onPointerDown={(event) => handleDraftExercisePointerDown(event, exerciseIdentity)}
-                    onPointerUp={handleDraftExercisePointerRelease}
-                    onPointerCancel={handleDraftExercisePointerRelease}
-                    onDragStart={(event) => handleDraftExerciseDragStart(event, exerciseIdentity)}
-                    onDragEnd={clearDraftExerciseDragState}
-                  >
-                    <div className="hstack" style={{ justifyContent: "space-between" }}>
-                      <div className="hstack compact">
-                        <span className={`chip routineDragHandle ${isDragArmed ? "routineDragHandleArmed" : ""}`} aria-hidden="true">
-                          <svg className="iconGlyph routineDragHandleIcon" viewBox="0 0 24 24">
-                            <path d="M4 7h16M4 12h16M4 17h16" />
-                          </svg>
-                        </span>
-                        <strong>{formatExerciseNameForList(exercise.name)}</strong>
+                    <article
+                      className={`exerciseCard ${isDragged ? "exerciseCardDragging" : ""} ${isDragArmed ? "exerciseCardDragArmed" : ""}`}
+                      draggable
+                      onPointerDown={(event) => handleDraftExercisePointerDown(event, exerciseIdentity)}
+                      onPointerUp={handleDraftExercisePointerRelease}
+                      onPointerCancel={handleDraftExercisePointerRelease}
+                      onDragStart={(event) => handleDraftExerciseDragStart(event, exerciseIdentity)}
+                      onDragEnd={handleDraftExerciseDragEnd}
+                    >
+                      <div className="hstack" style={{ justifyContent: "space-between" }}>
+                        <div className="hstack compact">
+                          <span className={`chip routineDragHandle ${isDragArmed ? "routineDragHandleArmed" : ""}`} aria-hidden="true">
+                            <svg className="iconGlyph routineDragHandleIcon" viewBox="0 0 24 24">
+                              <path d="M4 7h16M4 12h16M4 17h16" />
+                            </svg>
+                          </span>
+                          <strong>{formatExerciseNameForList(exercise.name)}</strong>
+                        </div>
+                        <button className="btn" onClick={() => removeDraftExercise(exerciseIdentity)}>
+                          Quitar
+                        </button>
                       </div>
-                      <button className="btn" onClick={() => removeDraftExercise(exerciseIdentity)}>
-                        Quitar
-                      </button>
-                    </div>
 
-                    <div className="splitGrid" style={{ marginTop: 10 }}>
-                      <div>
-                        <label className="smallLabel">Series</label>
-                        <input
-                          className="input"
-                          type="number"
-                          min={1}
-                          max={30}
-                          value={exercise.target_sets}
-                          onChange={(e) =>
-                            updateDraftExercise(exerciseIdentity, {
-                              target_sets: parseBoundedInt(e.target.value, exercise.target_sets, 1, 30),
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="smallLabel">Reps min</label>
-                        <input
-                          className="input"
-                          type="number"
-                          min={1}
-                          max={100}
-                          value={exercise.target_reps_min}
-                          onChange={(e) => {
-                            const rawValue = e.target.value;
-                            if (rawValue === "") {
-                              updateDraftExercise(exerciseIdentity, { target_reps_min: "" });
-                              return;
-                            }
-
-                            const fallbackMin = parseBoundedInt(exercise.target_reps_min, DEFAULT_TARGET_REPS_MIN, 1, 100);
-                            const nextMin = parseBoundedInt(rawValue, fallbackMin, 1, 100);
-                            const patch: Partial<DraftRoutineExercise> = { target_reps_min: String(nextMin) };
-
-                            if (exercise.target_reps_max.trim() !== "") {
-                              const currentMax = parseBoundedInt(
-                                exercise.target_reps_max,
-                                DEFAULT_TARGET_REPS_MAX,
-                                1,
-                                100,
-                              );
-                              patch.target_reps_max = String(Math.max(nextMin, currentMax));
-                            }
-
-                            updateDraftExercise(exerciseIdentity, patch);
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label className="smallLabel">Reps max</label>
-                        <input
-                          className="input"
-                          type="number"
-                          min={1}
-                          max={100}
-                          value={exercise.target_reps_max}
-                          onChange={(e) => {
-                            const rawValue = e.target.value;
-                            if (rawValue === "") {
-                              updateDraftExercise(exerciseIdentity, { target_reps_max: "" });
-                              return;
-                            }
-
-                            const fallbackMax = parseBoundedInt(exercise.target_reps_max, DEFAULT_TARGET_REPS_MAX, 1, 100);
-                            const nextMax = parseBoundedInt(rawValue, fallbackMax, 1, 100);
-                            const patch: Partial<DraftRoutineExercise> = { target_reps_max: String(nextMax) };
-
-                            if (exercise.target_reps_min.trim() !== "") {
-                              const currentMin = parseBoundedInt(
-                                exercise.target_reps_min,
-                                DEFAULT_TARGET_REPS_MIN,
-                                1,
-                                100,
-                              );
-                              patch.target_reps_min = String(Math.min(currentMin, nextMax));
-                            }
-
-                            updateDraftExercise(exerciseIdentity, patch);
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label className="smallLabel">Descanso</label>
-                        <div className="hstack compact" style={{ flexWrap: "nowrap", gap: 6 }}>
+                      <div className="splitGrid" style={{ marginTop: 10 }}>
+                        <div>
+                          <label className="smallLabel">Series</label>
                           <input
                             className="input"
                             type="number"
-                            min={0}
-                            max={MAX_REST_MINUTES}
-                            inputMode="numeric"
-                            style={{ width: 62, minWidth: 62, padding: "8px 8px", textAlign: "center" }}
-                            value={exercise.rest_minutes}
-                            onChange={(e) => {
-                              const rawValue = e.target.value;
-                              if (rawValue === "") {
-                                updateDraftExercise(exerciseIdentity, { rest_minutes: "" });
-                                return;
-                              }
-
-                              const fallbackMinutes = parseOptionalBoundedInt(
-                                exercise.rest_minutes,
-                                0,
-                                MAX_REST_MINUTES,
-                              ) ?? 0;
-                              const nextMinutes = parseBoundedInt(rawValue, fallbackMinutes, 0, MAX_REST_MINUTES);
-                              updateDraftExercise(exerciseIdentity, { rest_minutes: String(nextMinutes) });
-                            }}
+                            min={1}
+                            max={30}
+                            value={exercise.target_sets}
+                            onChange={(e) =>
+                              updateDraftExercise(exerciseIdentity, {
+                                target_sets: parseBoundedInt(e.target.value, exercise.target_sets, 1, 30),
+                              })
+                            }
                           />
-                          <span className="smallLabel" style={{ margin: 0 }}>
-                            min
-                          </span>
+                        </div>
+                        <div>
+                          <label className="smallLabel">Reps min</label>
                           <input
                             className="input"
                             type="number"
-                            min={0}
-                            max={60}
-                            inputMode="numeric"
-                            style={{ width: 62, minWidth: 62, padding: "8px 8px", textAlign: "center" }}
-                            value={exercise.rest_seconds}
+                            min={1}
+                            max={100}
+                            value={exercise.target_reps_min}
                             onChange={(e) => {
                               const rawValue = e.target.value;
                               if (rawValue === "") {
-                                updateDraftExercise(exerciseIdentity, { rest_seconds: "" });
+                                updateDraftExercise(exerciseIdentity, { target_reps_min: "" });
                                 return;
                               }
 
-                              const fallbackSeconds = parseOptionalBoundedInt(exercise.rest_seconds, 0, 60) ?? 0;
-                              const nextSeconds = parseBoundedInt(rawValue, fallbackSeconds, 0, 60);
-                              updateDraftExercise(exerciseIdentity, { rest_seconds: String(nextSeconds) });
+                              const fallbackMin = parseBoundedInt(exercise.target_reps_min, DEFAULT_TARGET_REPS_MIN, 1, 100);
+                              const nextMin = parseBoundedInt(rawValue, fallbackMin, 1, 100);
+                              const patch: Partial<DraftRoutineExercise> = { target_reps_min: String(nextMin) };
+
+                              if (exercise.target_reps_max.trim() !== "") {
+                                const currentMax = parseBoundedInt(
+                                  exercise.target_reps_max,
+                                  DEFAULT_TARGET_REPS_MAX,
+                                  1,
+                                  100,
+                                );
+                                patch.target_reps_max = String(Math.max(nextMin, currentMax));
+                              }
+
+                              updateDraftExercise(exerciseIdentity, patch);
                             }}
                           />
-                          <span className="smallLabel" style={{ margin: 0 }}>
-                            seg
-                          </span>
+                        </div>
+                        <div>
+                          <label className="smallLabel">Reps max</label>
+                          <input
+                            className="input"
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={exercise.target_reps_max}
+                            onChange={(e) => {
+                              const rawValue = e.target.value;
+                              if (rawValue === "") {
+                                updateDraftExercise(exerciseIdentity, { target_reps_max: "" });
+                                return;
+                              }
+
+                              const fallbackMax = parseBoundedInt(exercise.target_reps_max, DEFAULT_TARGET_REPS_MAX, 1, 100);
+                              const nextMax = parseBoundedInt(rawValue, fallbackMax, 1, 100);
+                              const patch: Partial<DraftRoutineExercise> = { target_reps_max: String(nextMax) };
+
+                              if (exercise.target_reps_min.trim() !== "") {
+                                const currentMin = parseBoundedInt(
+                                  exercise.target_reps_min,
+                                  DEFAULT_TARGET_REPS_MIN,
+                                  1,
+                                  100,
+                                );
+                                patch.target_reps_min = String(Math.min(currentMin, nextMax));
+                              }
+
+                              updateDraftExercise(exerciseIdentity, patch);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="smallLabel">Descanso</label>
+                          <div className="hstack compact" style={{ flexWrap: "nowrap", gap: 6 }}>
+                            <input
+                              className="input"
+                              type="number"
+                              min={0}
+                              max={MAX_REST_MINUTES}
+                              inputMode="numeric"
+                              style={{ width: 62, minWidth: 62, padding: "8px 8px", textAlign: "center" }}
+                              value={exercise.rest_minutes}
+                              onChange={(e) => {
+                                const rawValue = e.target.value;
+                                if (rawValue === "") {
+                                  updateDraftExercise(exerciseIdentity, { rest_minutes: "" });
+                                  return;
+                                }
+
+                                const fallbackMinutes = parseOptionalBoundedInt(
+                                  exercise.rest_minutes,
+                                  0,
+                                  MAX_REST_MINUTES,
+                                ) ?? 0;
+                                const nextMinutes = parseBoundedInt(rawValue, fallbackMinutes, 0, MAX_REST_MINUTES);
+                                updateDraftExercise(exerciseIdentity, { rest_minutes: String(nextMinutes) });
+                              }}
+                            />
+                            <span className="smallLabel" style={{ margin: 0 }}>
+                              min
+                            </span>
+                            <input
+                              className="input"
+                              type="number"
+                              min={0}
+                              max={60}
+                              inputMode="numeric"
+                              style={{ width: 62, minWidth: 62, padding: "8px 8px", textAlign: "center" }}
+                              value={exercise.rest_seconds}
+                              onChange={(e) => {
+                                const rawValue = e.target.value;
+                                if (rawValue === "") {
+                                  updateDraftExercise(exerciseIdentity, { rest_seconds: "" });
+                                  return;
+                                }
+
+                                const fallbackSeconds = parseOptionalBoundedInt(exercise.rest_seconds, 0, 60) ?? 0;
+                                const nextSeconds = parseBoundedInt(rawValue, fallbackSeconds, 0, 60);
+                                updateDraftExercise(exerciseIdentity, { rest_seconds: String(nextSeconds) });
+                              }}
+                            />
+                            <span className="smallLabel" style={{ margin: 0 }}>
+                              seg
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </article>
-                </div>
-              );
-            })}
+                    </article>
+                  </div>
+                );
+              });
+            })()}
             <div
               className={`routineDropSlot ${dropSlotIndex === draftExercises.length ? "active" : ""}`}
+              style={{
+                height: draggedExerciseIdentity
+                  ? dropSlotIndex === draftExercises.length
+                    ? Math.max(MIN_DRAG_PREVIEW_GAP_PX, dragPreviewSlotHeight || 0)
+                    : 8
+                  : 8,
+              }}
               onDragOver={(event) => handleDraftDropSlotDragOver(event, draftExercises.length)}
               onDragEnter={(event) => handleDraftDropSlotDragOver(event, draftExercises.length)}
               onDrop={(event) => handleDraftDropSlotDrop(event, draftExercises.length)}

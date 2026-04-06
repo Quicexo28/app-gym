@@ -31,6 +31,16 @@ docker compose logs -f frontend
 - `-NoFrontend`: deja solo backend+db listos.
 - `-DockerFrontend`: levanta frontend en Docker en lugar de `npm run dev`.
 
+### Release gate (hardening)
+
+```powershell
+.\run_release_gate.ps1
+.\run_release_gate.ps1 -SkipFrontendBuild
+```
+
+- Valida `/ready`, tests críticos de backend, lint y build frontend.
+- Runbook: `docs/release-hardening-runbook.md`.
+
 Servicios:
 - Frontend: `http://localhost:5173`
 - API: `http://localhost:8000`
