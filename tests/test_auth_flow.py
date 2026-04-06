@@ -106,7 +106,8 @@ def test_login_rejects_invalid_password() -> None:
         auth_endpoint.login(LoginRequest(identifier="user@example.com", password="WrongPass999"), db)
 
     assert exc.value.status_code == 401
-    assert exc.value.detail == "Invalid credentials."
+    assert isinstance(exc.value.detail, dict)
+    assert exc.value.detail.get("code") == "auth_invalid_credentials"
 
 
 def test_login_rejects_unknown_password_hash_without_500() -> None:
@@ -118,7 +119,8 @@ def test_login_rejects_unknown_password_hash_without_500() -> None:
         auth_endpoint.login(LoginRequest(identifier="legacy@example.com", password="Password123"), db)
 
     assert exc.value.status_code == 401
-    assert exc.value.detail == "Invalid credentials."
+    assert isinstance(exc.value.detail, dict)
+    assert exc.value.detail.get("code") == "auth_invalid_credentials"
 
 
 def test_validate_google_identity_requires_server_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,7 +130,8 @@ def test_validate_google_identity_requires_server_configuration(monkeypatch: pyt
         auth_endpoint._validate_google_identity("x" * 32)
 
     assert exc.value.status_code == 503
-    assert exc.value.detail == "Google login is not configured."
+    assert isinstance(exc.value.detail, dict)
+    assert exc.value.detail.get("code") == "google_login_not_configured"
 
 
 def test_validate_google_identity_accepts_valid_payload(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import logging
+import time
+from uuid import uuid4
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +29,7 @@ def _error_payload(*, code: str, detail: str, context: dict | None = None) -> di
 def create_app() -> FastAPI:
     settings = Settings()
     configure_logging(settings.log_level)
+    logger = logging.getLogger("app.request")
 
     app = FastAPI(
         title=settings.app_name,
@@ -40,6 +45,42 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def request_observability(request: Request, call_next):
+        request_id = request.headers.get("X-Request-Id") or str(uuid4())
+        request.state.request_id = request_id
+        started = time.perf_counter()
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+            logger.exception(
+                "request_failed",
+                extra={
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "latency_ms": elapsed_ms,
+                },
+            )
+            raise
+
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        logger.info(
+            "request_completed",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "latency_ms": elapsed_ms,
+            },
+        )
+        response.headers["X-Request-Id"] = request_id
+        response.headers["X-Response-Time-Ms"] = str(elapsed_ms)
+        return response
 
     def build_http_error_response(status_code: int, detail_raw: object) -> JSONResponse:
         if isinstance(detail_raw, str):

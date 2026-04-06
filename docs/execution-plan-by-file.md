@@ -246,3 +246,5 @@ Escala usada:
 - `NewSession.tsx` fase 3 (parcial): extracción de sincronización de draft/autosave a `frontend/src/lib/session/useSessionDraftSync.ts`.
 - `Home.tsx` fase 1 P2: estado operativo (sesiones/runs/última sesión) + alertas accionables de recuperación.
 - `auth.py`: errores críticos de autenticación (incluyendo Google) alineados a contrato `code/detail/context`.
+- `main.py`: middleware de observabilidad por request (request_id + latencia + headers `X-Request-Id` / `X-Response-Time-Ms`).
+- Tests críticos actualizados/extendidos (`tests/test_auth_flow.py`, `tests/test_health.py`) para contrato de errores y endpoint `/ready`.
