@@ -1485,7 +1485,7 @@ export default function Settings() {
     <div className="container stack">
       <header className="titleBlock">
         <h1>Ajustes</h1>
-        <p>Personaliza la experiencia y gestiona cuenta/planes para esta etapa del producto.</p>
+        <p>Personaliza tu experiencia y gestiona tu cuenta de forma simple.</p>
       </header>
 
       <section className="surface">
@@ -2014,8 +2014,8 @@ export default function Settings() {
 
           <section className="surface">
             <div className="sectionHead">
-              <h3>Admin: import batch de sesiones (debug)</h3>
-              <p>Importa lotes JSON al sistema de sesiones sin usar una pestaña separada.</p>
+              <h3>Admin: importación de sesiones</h3>
+              <p>Herramienta avanzada para carga masiva de sesiones en JSON.</p>
             </div>
 
             <div className="quickActions" style={{ marginTop: 12 }}>
@@ -2127,8 +2127,8 @@ export default function Settings() {
 
       <section className="surface">
         <div className="sectionHead">
-          <h3>Danger Zone</h3>
-          <p>Acciones destructivas. Cada una exige confirmacion escrita.</p>
+          <h3>Zona sensible</h3>
+          <p>Acciones irreversibles. Cada una exige confirmación escrita.</p>
         </div>
 
         <div className="quickActions" style={{ marginTop: 12 }}>

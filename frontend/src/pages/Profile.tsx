@@ -86,8 +86,8 @@ export default function Profile() {
   return (
     <div className="container stack">
       <header className="titleBlock">
-        <h1>Perfil</h1>
-        <p>Identidad publica y datos de cuenta.</p>
+        <h1>Mi perfil</h1>
+        <p>Gestiona tu información personal y tu progreso.</p>
       </header>
 
       {error ? <section className="message error">{error}</section> : null}
@@ -102,7 +102,7 @@ export default function Profile() {
           <section className="surface">
             <div className="sectionHead">
               <h3>Imagen de perfil</h3>
-              <p>Sube una foto para usarla en la esquina superior de la app.</p>
+              <p>Sube una foto para personalizar tu cuenta.</p>
             </div>
 
             <div className="profileAvatarEditor" style={{ marginTop: 12 }}>

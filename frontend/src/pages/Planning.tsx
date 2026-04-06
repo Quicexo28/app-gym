@@ -990,7 +990,8 @@ export default function Planning() {
   return (
     <div className="container stack">
       <header className="titleBlock">
-        <h1>Planificacion</h1>
+        <h1>Planificación</h1>
+        <p>Organiza tus ciclos y da seguimiento al cumplimiento sin complicaciones.</p>
       </header>
 
       {templatesError ? <section className="message error">{templatesError}</section> : null}
@@ -999,19 +1000,19 @@ export default function Planning() {
       <section className="surface">
         <div className="quickActions">
           <button className={`btn ${tab === "micro" ? "primary" : ""}`} onClick={() => setTab("micro")}>
-            Microciclo
+            Plantilla semanal
           </button>
           <button className={`btn ${tab === "meso" ? "primary" : ""}`} onClick={() => setTab("meso")}>
-            Mesociclo
+            Bloque mensual
           </button>
           <button className={`btn ${tab === "macro" ? "primary" : ""}`} onClick={() => setTab("macro")}>
-            Macrociclo
+            Plan largo
           </button>
           <button className={`btn ${tab === "assignments" ? "primary" : ""}`} onClick={() => setTab("assignments")}>
-            Asignaciones
+            Asignar plan
           </button>
           <button className={`btn ${tab === "tracking" ? "primary" : ""}`} onClick={() => setTab("tracking")}>
-            Seguimiento
+            Progreso
           </button>
           <button className="btn" onClick={() => void refreshTemplates()} disabled={loadingTemplates}>
             Refrescar
@@ -1026,7 +1027,8 @@ export default function Planning() {
       {tab === "assignments" ? (
         <section className="surface stack">
           <div className="sectionHead">
-            <h3>Asignar ciclo</h3>
+            <h3>Asignar plan</h3>
+            <p>Elige sujeto y plantilla para iniciar seguimiento.</p>
           </div>
           <select className="input" value={assignmentAthleteId} onChange={(e) => setAssignmentAthleteId(e.target.value)}>
             <option value="">Sujeto</option>
@@ -1076,7 +1078,8 @@ export default function Planning() {
       {tab === "tracking" ? (
         <section className="surface stack">
           <div className="sectionHead">
-            <h3>Seguimiento</h3>
+            <h3>Progreso del plan</h3>
+            <p>Revisa cumplimiento, riesgo y próximos pasos.</p>
           </div>
 
           <div className="statsGrid" style={{ marginTop: 10 }}>
