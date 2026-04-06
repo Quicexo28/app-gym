@@ -16,6 +16,7 @@ export type ActiveSessionVoiceIntent =
   | "set_load"
   | "set_set_effort"
   | "set_set_completed"
+  | "set_bundle"
   | "none";
 
 export type ActiveSessionVoiceCommandAudit = {
@@ -163,7 +164,7 @@ function normalizeRestTimer(raw: unknown): ActiveRestTimerState | null {
   };
 }
 
-const VOICE_INTENTS: ActiveSessionVoiceIntent[] = ["set_reps", "set_load", "set_set_effort", "set_set_completed", "none"];
+const VOICE_INTENTS: ActiveSessionVoiceIntent[] = ["set_reps", "set_load", "set_set_effort", "set_set_completed", "set_bundle", "none"];
 const MAX_VOICE_AUDIT_ENTRIES = 50;
 
 function normalizeVoiceIntent(raw: unknown): ActiveSessionVoiceIntent {

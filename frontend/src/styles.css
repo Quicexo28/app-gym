@@ -490,20 +490,30 @@ textarea.input:focus,
 
 .routineDropSlot {
   height: 8px;
+  margin: 0;
   border: 1px dashed transparent;
   border-radius: 999px;
   background: transparent;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  opacity: 0;
+  transition:
+    height 0.2s ease,
+    margin 0.2s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .routineSortableListDragging .routineDropSlot {
+  opacity: 1;
   background: color-mix(in srgb, var(--accent), transparent 92%);
   border-color: color-mix(in srgb, var(--accent), transparent 70%);
 }
 
 .routineDropSlot.active {
+  margin: 4px 0 8px;
   background: color-mix(in srgb, var(--accent), transparent 76%);
   border-color: color-mix(in srgb, var(--accent), transparent 35%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent), transparent 55%);
 }
 
 .routineDragHandle {
@@ -878,6 +888,475 @@ textarea.input:focus,
 .voicePanel {
   display: grid;
   gap: 10px;
+}
+
+.holoVoiceOverlay {
+  position: fixed;
+  z-index: 94;
+  width: 154px;
+  height: 154px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  will-change: transform, opacity, left, right, top, bottom;
+  transition:
+    left 0.46s cubic-bezier(0.22, 0.82, 0.24, 1),
+    right 0.46s cubic-bezier(0.22, 0.82, 0.24, 1),
+    top 0.46s cubic-bezier(0.22, 0.82, 0.24, 1),
+    bottom 0.46s cubic-bezier(0.22, 0.82, 0.24, 1),
+    transform 0.46s cubic-bezier(0.22, 0.82, 0.24, 1),
+    opacity 0.3s ease;
+}
+
+.holoVoiceOverlayDocked {
+  right: 18px;
+  top: calc(40vh - 77px);
+  transform: scale(1);
+}
+
+.holoVoiceOverlayFocused {
+  right: calc(50vw - 77px);
+  top: calc(100vh - 212px);
+  transform: scale(1.48);
+  animation: holoVoiceFocusDeploy 0.52s cubic-bezier(0.16, 0.82, 0.22, 1) both;
+}
+
+.holoSolarSystem {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transform-style: preserve-3d;
+  perspective: 960px;
+  transform: rotateX(-18deg) rotateY(-3deg);
+}
+
+.holoSolarDepthGlow {
+  position: absolute;
+  inset: 3%;
+  border-radius: 50%;
+  opacity: 0.34;
+  background:
+    radial-gradient(circle at 44% 36%, color-mix(in srgb, var(--accent), white 30%) 0, transparent 42%),
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent), transparent 40%) 0, transparent 74%);
+  filter: blur(8px);
+}
+
+.holoSolarStarField {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.holoSolarStar {
+  position: absolute;
+  left: var(--star-left);
+  top: var(--star-top);
+  width: var(--star-size);
+  height: var(--star-size);
+  border-radius: 50%;
+  opacity: var(--star-opacity);
+  background: color-mix(in srgb, var(--accent), white 46%);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent), transparent 62%);
+  animation: holoSolarStarTwinkle var(--star-duration) ease-in-out infinite;
+  animation-delay: var(--star-delay);
+}
+
+.holoSolarCoreShell {
+  position: absolute;
+  width: 28%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--accent), white 18%);
+  background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--accent), white 18%) 0, transparent 55%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent), white 8%),
+    0 0 24px color-mix(in srgb, var(--accent), transparent 58%);
+}
+
+.holoSolarCore {
+  position: absolute;
+  width: 14%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--accent), white 24%);
+  background:
+    radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--accent), white 52%) 0, transparent 48%),
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent), white 14%) 0, color-mix(in srgb, var(--accent), black 26%) 100%);
+  box-shadow:
+    0 0 16px color-mix(in srgb, var(--accent), transparent 54%),
+    0 0 34px color-mix(in srgb, var(--accent), transparent 72%);
+}
+
+.holoSolarCoreDot {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent), white 68%);
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--accent), white 20%),
+    0 0 18px color-mix(in srgb, var(--accent), transparent 64%);
+}
+
+.holoSolarCoreSegments {
+  position: absolute;
+  width: 38%;
+  aspect-ratio: 1 / 1;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.holoSolarCoreSegment {
+  --segment-index: 0;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 10px;
+  border-radius: 999px;
+  transform-origin: 0 0;
+  transform: rotate(calc(var(--segment-index) * 22.5deg)) translate(28px, -1px);
+  background: color-mix(in srgb, var(--accent), white 18%);
+  opacity: 0.46;
+}
+
+.holoSolarPlane {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--plane-size);
+  aspect-ratio: 1 / 1;
+  transform-style: preserve-3d;
+  transform-origin: center;
+  transform: translate(-50%, -50%) rotateX(var(--plane-tilt-x)) rotateY(var(--plane-tilt-y)) rotate(0deg);
+  animation: holoSolarPlaneSpin var(--plane-spin) linear infinite;
+}
+
+.holoSolarPlane.isReverse {
+  animation-direction: reverse;
+}
+
+.holoSolarRingTrack,
+.holoSolarRingArc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--plane-thickness)),
+    #000 calc(100% - var(--plane-thickness))
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--plane-thickness)),
+    #000 calc(100% - var(--plane-thickness))
+  );
+}
+
+.holoSolarRingTrack {
+  opacity: var(--plane-opacity);
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 12deg,
+    color-mix(in srgb, var(--accent), white 16%) 12deg 46deg,
+    transparent 46deg 78deg,
+    color-mix(in srgb, var(--accent), black 8%) 78deg 120deg,
+    transparent 120deg 162deg,
+    color-mix(in srgb, var(--accent), white 10%) 162deg 196deg,
+    transparent 196deg 226deg,
+    color-mix(in srgb, var(--accent), black 12%) 226deg 262deg,
+    transparent 262deg 360deg
+  );
+}
+
+.holoSolarRingArc {
+  opacity: var(--arc-opacity);
+  background: conic-gradient(
+    from var(--arc-start),
+    color-mix(in srgb, var(--accent), white 24%) 0deg var(--arc-span),
+    transparent var(--arc-span) 360deg
+  );
+}
+
+.holoSolarBody {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--body-size);
+  height: var(--body-size);
+  margin-left: calc(var(--body-size) / -2);
+  margin-top: calc(var(--body-size) / -2);
+  animation: holoSolarBodyOrbit var(--body-period) linear infinite;
+  animation-delay: var(--body-phase);
+}
+
+.holoSolarBody.isReverse {
+  animation-direction: reverse;
+}
+
+.holoSolarBodyDot {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 28% 26%, color-mix(in srgb, var(--accent), white 62%) 0, transparent 58%),
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent), white 14%) 0, color-mix(in srgb, var(--accent), black 28%) 100%);
+  border: 1px solid color-mix(in srgb, var(--accent), white 20%);
+  opacity: var(--body-intensity);
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--accent), transparent 54%),
+    0 0 20px color-mix(in srgb, var(--accent), transparent 72%);
+}
+
+.holoVoiceHud {
+  position: fixed;
+  z-index: 94;
+  width: min(340px, 48vw);
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 44%);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--bg-elevated), var(--accent) 8%),
+      color-mix(in srgb, var(--bg-elevated), var(--accent) 18%)
+    );
+  box-shadow: var(--shadow);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.holoVoiceHudDocked {
+  right: 186px;
+  top: 40%;
+  transform: translateY(-50%);
+}
+
+.holoVoiceHudFocused {
+  left: 50%;
+  bottom: 226px;
+  transform: translateX(-50%);
+  width: min(440px, calc(100vw - 28px));
+}
+
+.holoVoiceHudHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.holoVoiceHudTranscript {
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 60%);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  padding: 8px;
+  min-height: 46px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  color: color-mix(in srgb, var(--text), var(--accent) 22%);
+}
+
+.holoVoiceResponse {
+  position: fixed;
+  z-index: 95;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
+  border-radius: 12px;
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--bg-elevated), var(--accent) 10%),
+    color-mix(in srgb, var(--bg-elevated), var(--accent) 24%)
+  );
+  box-shadow: var(--shadow);
+  color: color-mix(in srgb, var(--text), var(--accent) 24%);
+  width: min(360px, calc(100vw - 24px));
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.holoVoiceResponseDocked {
+  right: 186px;
+  top: calc(40% + 124px);
+  transform: translateY(-50%);
+}
+
+.holoVoiceResponseFocused {
+  left: 50%;
+  bottom: 174px;
+  transform: translateX(-50%);
+}
+
+.holoVoiceLiveRegion {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.holoVoiceListening .holoSolarDepthGlow {
+  opacity: 0.94;
+  filter: blur(12px);
+}
+
+.holoVoiceListening .holoSolarCore {
+  animation: holoSolarCorePulse 1.86s ease-in-out infinite;
+}
+
+.holoVoiceListening .holoSolarCoreSegment {
+  animation: holoSolarSegmentPulse 980ms ease-in-out infinite;
+  animation-delay: calc(var(--segment-index) * 24ms);
+}
+
+.holoVoiceListening .holoSolarPlane {
+  animation-duration: calc(var(--plane-spin) * 0.62);
+}
+
+.holoVoiceListening .holoSolarBody {
+  animation-duration: calc(var(--body-period) * 0.58);
+}
+
+.holoVoiceListening .holoSolarBodyDot {
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--accent), transparent 46%),
+    0 0 28px color-mix(in srgb, var(--accent), transparent 62%);
+}
+
+.holoVoiceError .holoSolarDepthGlow {
+  opacity: 0.82;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--danger), transparent 32%) 0, transparent 74%);
+  animation: holoSolarErrorPulse 680ms ease-in-out infinite alternate;
+}
+
+.holoVoiceError .holoSolarCore,
+.holoVoiceError .holoSolarCoreShell,
+.holoVoiceError .holoSolarRingTrack,
+.holoVoiceError .holoSolarRingArc,
+.holoVoiceError .holoSolarBodyDot {
+  border-color: color-mix(in srgb, var(--danger), white 18%);
+}
+
+.holoVoiceHudError {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 42%);
+}
+
+.holoVoiceMuted {
+  opacity: 0.56;
+}
+
+.holoVoiceMuted .holoSolarDepthGlow,
+.holoVoiceMuted .holoSolarCore,
+.holoVoiceMuted .holoSolarCoreSegment,
+.holoVoiceMuted .holoSolarPlane,
+.holoVoiceMuted .holoSolarBody,
+.holoVoiceMuted .holoSolarStar {
+  animation: none !important;
+}
+
+@keyframes holoVoiceFocusDeploy {
+  0% {
+    transform: scale(0.82);
+    opacity: 0.44;
+  }
+  62% {
+    transform: scale(1.62);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.48);
+    opacity: 1;
+  }
+}
+
+@keyframes holoSolarStarTwinkle {
+  0%,
+  100% {
+    opacity: var(--star-opacity);
+  }
+  50% {
+    opacity: calc(var(--star-opacity) * 1.7);
+  }
+}
+
+@keyframes holoSolarPlaneSpin {
+  from {
+    transform: translate(-50%, -50%) rotateX(var(--plane-tilt-x)) rotateY(var(--plane-tilt-y)) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotateX(var(--plane-tilt-x)) rotateY(var(--plane-tilt-y)) rotate(360deg);
+  }
+}
+
+@keyframes holoSolarBodyOrbit {
+  from {
+    transform: rotate(0deg) translateX(var(--body-radius));
+  }
+  to {
+    transform: rotate(360deg) translateX(var(--body-radius));
+  }
+}
+
+@keyframes holoSolarCorePulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.84;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes holoSolarSegmentPulse {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: rotate(calc(var(--segment-index) * 22.5deg)) translate(28px, -1px) scaleY(0.8);
+  }
+  50% {
+    opacity: 0.94;
+    transform: rotate(calc(var(--segment-index) * 22.5deg)) translate(28px, -1px) scaleY(1.35);
+  }
+}
+
+@keyframes holoSolarErrorPulse {
+  from {
+    opacity: 0.42;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+.voiceDebugDetails {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
+  padding: 10px 12px;
+}
+
+.voiceDebugDetails > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.voiceDebugBody {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
 }
 
 .voiceStatusDock {
@@ -1358,6 +1837,7 @@ textarea.input:focus,
   background: color-mix(in srgb, var(--bg-elevated), transparent 12%);
   backdrop-filter: blur(10px);
   padding: 10px 14px;
+  padding-right: 114px;
   display: grid;
   gap: 8px;
 }
@@ -1368,10 +1848,70 @@ textarea.input:focus,
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .topbarActions {
   justify-content: flex-end;
+}
+
+.topbarCornerActions {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 3;
+}
+
+.cornerIconBtn,
+.profileAvatarBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-soft);
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+}
+
+.cornerIconBtn.active,
+.profileAvatarBtn.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.cornerIconBtn.active {
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 88%);
+  color: var(--accent);
+}
+
+.cornerIconGlyph {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.profileAvatarBtn {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.profileAvatarImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .toolbarGroup {
@@ -1445,9 +1985,9 @@ textarea.input:focus,
 .topnav2 {
   display: flex;
   gap: 8px;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  overflow: visible;
   padding-bottom: 2px;
-  scrollbar-width: thin;
 }
 
 .navItem {
@@ -1466,12 +2006,82 @@ textarea.input:focus,
   color: var(--accent-contrast);
 }
 
+.moreMenu {
+  position: relative;
+}
+
+.moreTrigger {
+  min-height: 38px;
+  cursor: pointer;
+}
+
+.morePopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 35;
+  min-width: 180px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+}
+
+.moreItem {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-soft);
+  background: transparent;
+}
+
+.moreItem.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.profileAvatarEditor {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.profileAvatarLarge {
+  width: 82px;
+  height: 82px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+  background: var(--bg-soft);
+}
+
 .athleteInput {
   width: 180px;
   min-width: 180px;
 }
 
 @media (max-width: 720px) {
+  .topbar2 {
+    padding-right: 14px;
+  }
+
+  .topbarCornerActions {
+    top: 8px;
+    right: 10px;
+  }
+
+  .topbarActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .topbarRow {
     align-items: flex-start;
     flex-direction: column;
@@ -1546,6 +2156,26 @@ textarea.input:focus,
   .restFloatBar,
   .activeSessionBar {
     animation: none;
+  }
+
+  .holoVoiceOverlay,
+  .holoVoiceHud,
+  .holoVoiceResponse {
+    transition: none;
+  }
+
+  .holoVoiceOverlayFocused {
+    animation: none !important;
+  }
+
+  .holoSolarSystem,
+  .holoSolarDepthGlow,
+  .holoSolarStar,
+  .holoSolarCore,
+  .holoSolarCoreSegment,
+  .holoSolarPlane,
+  .holoSolarBody {
+    animation: none !important;
   }
 
   .completedSetRow::before {
@@ -1707,3 +2337,4 @@ textarea.input:focus,
   flex-wrap: wrap;
   gap: 8px;
 }
+

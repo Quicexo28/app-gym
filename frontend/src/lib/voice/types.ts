@@ -23,6 +23,7 @@ export type WakePhraseMatch = {
   detected: boolean;
   normalizedText: string;
   normalizedCommandText: string;
+  detectedWakePhrase: string | null;
 };
 
 export type VoiceSetTarget = {
@@ -44,4 +45,3 @@ export type OfflineRecognizerCallbacks = {
   onPartialTranscript?: (partial: string) => void;
   onError?: (message: string) => void;
 };
-

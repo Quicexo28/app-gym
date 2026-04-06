@@ -2,15 +2,31 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { getMyProfile, updateMyProfile, type ProfileResponse } from "../api";
+import {
+  clearProfileAvatarUrl,
+  DEFAULT_PROFILE_AVATAR_URL,
+  loadProfileAvatarUrl,
+  readProfileAvatarFile,
+  saveProfileAvatarUrl,
+} from "../lib/profileAvatar";
+import { useAuth } from "../state/auth";
 
 export default function Profile() {
+  const { user } = useAuth();
   const [data, setData] = useState<ProfileResponse | null>(null);
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState(DEFAULT_PROFILE_AVATAR_URL);
+  const [avatarError, setAvatarError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+
+  useEffect(() => {
+    setAvatarError("");
+    setAvatarUrl(loadProfileAvatarUrl(user?.id) || DEFAULT_PROFILE_AVATAR_URL);
+  }, [user?.id]);
 
   useEffect(() => {
     setLoading(true);
@@ -45,6 +61,28 @@ export default function Profile() {
     }
   }
 
+  async function uploadAvatar(file: File | null) {
+    if (!file || !user?.id) return;
+    setAvatarError("");
+    setInfo("");
+    try {
+      const imageAsDataUrl = await readProfileAvatarFile(file);
+      saveProfileAvatarUrl(user.id, imageAsDataUrl);
+      setAvatarUrl(imageAsDataUrl);
+      setInfo("Imagen de perfil actualizada.");
+    } catch (cause: unknown) {
+      setAvatarError(String((cause as { message?: string })?.message || cause));
+    }
+  }
+
+  function resetAvatar() {
+    if (!user?.id) return;
+    clearProfileAvatarUrl(user.id);
+    setAvatarUrl(DEFAULT_PROFILE_AVATAR_URL);
+    setAvatarError("");
+    setInfo("Se restauro la imagen de perfil por defecto.");
+  }
+
   return (
     <div className="container stack">
       <header className="titleBlock">
@@ -61,6 +99,42 @@ export default function Profile() {
         </section>
       ) : (
         <>
+          <section className="surface">
+            <div className="sectionHead">
+              <h3>Imagen de perfil</h3>
+              <p>Sube una foto para usarla en la esquina superior de la app.</p>
+            </div>
+
+            <div className="profileAvatarEditor" style={{ marginTop: 12 }}>
+              <img src={avatarUrl} alt="Imagen de perfil" className="profileAvatarLarge" />
+              <div className="quickActions">
+                <label className="btn primary" style={{ cursor: user?.id ? "pointer" : "not-allowed", opacity: user?.id ? 1 : 0.6 }}>
+                  Subir imagen
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    disabled={!user?.id}
+                    onChange={(e) => {
+                      void uploadAvatar(e.currentTarget.files?.[0] || null);
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={resetAvatar}
+                  disabled={!user?.id || avatarUrl === DEFAULT_PROFILE_AVATAR_URL}
+                >
+                  Usar imagen por defecto
+                </button>
+              </div>
+            </div>
+
+            {avatarError ? <div className="message error" style={{ marginTop: 12 }}>{avatarError}</div> : null}
+          </section>
+
           <section className="surface">
             <div className="sectionHead">
               <h3>Identidad</h3>

@@ -65,6 +65,8 @@ const DEFAULT_TARGET_SETS = 3;
 const DEFAULT_TARGET_REPS_MIN = 8;
 const DEFAULT_TARGET_REPS_MAX = 12;
 const DEFAULT_REST_SECONDS = 90;
+let uidLastTimestamp = 0;
+let uidSequence = 0;
 
 type RoutinesStoreV2 = {
   schema: typeof ROUTINES_SCHEMA;
@@ -393,11 +395,19 @@ function normalizeRoutineList(raw: unknown): RoutineTemplate[] {
   const seen = new Set<string>();
   const out: RoutineTemplate[] = [];
   for (const entry of raw) {
-    const next = normalizeRoutineTemplate(entry);
-    if (!next) continue;
-    if (seen.has(next.id)) continue;
-    seen.add(next.id);
-    out.push(next);
+    const normalized = normalizeRoutineTemplate(entry);
+    if (!normalized) continue;
+
+    let nextId = clean(normalized.id);
+    if (!nextId || seen.has(nextId)) {
+      nextId = uid("rt");
+      while (seen.has(nextId)) {
+        nextId = uid("rt");
+      }
+    }
+
+    seen.add(nextId);
+    out.push(nextId === normalized.id ? normalized : { ...normalized, id: nextId });
   }
   return out;
 }
@@ -596,5 +606,18 @@ export function propagateRoutineUpdate(params: {
 }
 
 export function uid(prefix = "id"): string {
-  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+  const now = Date.now();
+  if (now === uidLastTimestamp) {
+    uidSequence += 1;
+  } else {
+    uidLastTimestamp = now;
+    uidSequence = 0;
+  }
+
+  if (typeof globalThis !== "undefined" && globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+    return `${prefix}_${globalThis.crypto.randomUUID().replace(/-/g, "")}_${uidSequence.toString(16)}`;
+  }
+
+  const randomPart = Math.random().toString(16).slice(2) || "0";
+  return `${prefix}_${randomPart}_${now.toString(16)}_${uidSequence.toString(16)}`;
 }

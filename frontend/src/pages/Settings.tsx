@@ -1,12 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import {
+  createDefaultVoiceTrainingProfile,
+  loadVoiceTrainingProfile,
+  saveVoiceTrainingProfile,
+  VOICE_TRAINABLE_INTENT_LABELS,
+  VOICE_TRAINABLE_INTENTS,
+  type VoicePhraseCorrection,
+  type VoiceTrainingProfile,
+} from "../lib/voice/training";
 import {
   adminSwitchPlan,
   deleteMyAccount,
   getAdminGamificationConfig,
+  getVoiceTrainingConfig,
   ingestSessions,
   labelToBackendPlan,
+  updateVoiceTrainingConfig,
   updateAdminGamificationConfig,
   type GamificationConfig,
   type GamificationTier,
@@ -15,6 +26,9 @@ import {
 } from "../api";
 import { parseExerciseImportFile, type LegacyImportMode } from "../lib/legacyImport";
 import { loadRoutines, saveRoutines } from "../lib/storage";
+import type { OfflineVoskRecognizer as OfflineVoskRecognizerClass } from "../lib/voice/offlineRecognizer";
+import type { OfflineRecognizerState, VoiceCommandIntent } from "../lib/voice/types";
+import { normalizeVoiceTranscript } from "../lib/voice/wakePhrase";
 import { useAthleteAccess } from "../state/athlete";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
@@ -48,6 +62,154 @@ const SESSION_IMPORT_SAMPLE = [
     meta: { note: "baseline" },
   },
 ];
+
+const ENABLE_OFFLINE_VOICE_CAPTURE =
+  ((import.meta.env.VITE_ENABLE_OFFLINE_VOICE_CAPTURE as string | undefined)?.trim().toLowerCase() ?? "") === "true";
+const VOICE_MODEL_ID = "vosk-model-small-es-0.42";
+const VOICE_MODEL_URL = `/models/${VOICE_MODEL_ID}.zip`;
+
+type VoiceCalibrationStep = {
+  id: string;
+  title: string;
+  expected: string;
+};
+
+type VoiceCalibrationCapture = {
+  step_id: string;
+  step_index: number;
+  expected: string;
+  heard: string;
+  matched: boolean;
+  corrections: VoicePhraseCorrection[];
+};
+
+const VOICE_CALIBRATION_STEPS: VoiceCalibrationStep[] = [
+  { id: "wake_only", title: "Wake base", expected: "prueba" },
+  { id: "load", title: "Carga", expected: "prueba peso ciento veintitres" },
+  { id: "reps", title: "Reps", expected: "prueba reps ocho" },
+  { id: "effort", title: "Esfuerzo", expected: "prueba arroba diez" },
+  { id: "tuple", title: "Comando compacto", expected: "prueba ciento veintitres por ocho arroba diez" },
+  { id: "complete", title: "Completar serie", expected: "prueba completar serie" },
+];
+
+function keywordsToMultiline(keywords: string[]): string {
+  return keywords.join("\n");
+}
+
+function multilineToKeywords(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of raw.split(/\r?\n|,/g)) {
+    const keyword = line.trim();
+    if (!keyword || seen.has(keyword)) continue;
+    seen.add(keyword);
+    out.push(keyword);
+  }
+  return out;
+}
+
+type VoiceTrainingDraft = Record<VoiceCommandIntent, string> & {
+  wake_aliases: string;
+  phrase_corrections: string;
+};
+
+function phraseCorrectionsToMultiline(corrections: VoicePhraseCorrection[]): string {
+  return corrections.map((entry) => `${entry.from} => ${entry.to}`).join("\n");
+}
+
+function multilineToPhraseCorrections(raw: string): VoicePhraseCorrection[] {
+  const out: VoicePhraseCorrection[] = [];
+  const seen = new Set<string>();
+  for (const line of raw.split(/\r?\n/g)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const match = trimmed.split(/\s*=>\s*/g);
+    if (match.length < 2) continue;
+    const from = normalizeVoiceTranscript(match[0] || "");
+    const to = normalizeVoiceTranscript(match.slice(1).join(" => "));
+    if (!from || !to || from === to) continue;
+    const key = `${from}=>${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ from, to });
+  }
+  return out;
+}
+
+function mergePhraseCorrections(
+  base: VoicePhraseCorrection[],
+  extra: VoicePhraseCorrection[],
+): VoicePhraseCorrection[] {
+  const out: VoicePhraseCorrection[] = [];
+  const seen = new Set<string>();
+  for (const entry of [...base, ...extra]) {
+    const from = normalizeVoiceTranscript(entry.from);
+    const to = normalizeVoiceTranscript(entry.to);
+    if (!from || !to || from === to) continue;
+    const key = `${from}=>${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ from, to });
+  }
+  return out;
+}
+
+function buildCalibrationCorrections(expected: string, heard: string): VoicePhraseCorrection[] {
+  const expectedNormalized = normalizeVoiceTranscript(expected);
+  const heardNormalized = normalizeVoiceTranscript(heard);
+  if (!expectedNormalized || !heardNormalized || expectedNormalized === heardNormalized) return [];
+
+  const suggestions: VoicePhraseCorrection[] = [{ from: heardNormalized, to: expectedNormalized }];
+  const expectedTokens = expectedNormalized.split(/\s+/).filter(Boolean);
+  const heardTokens = heardNormalized.split(/\s+/).filter(Boolean);
+  const maxLen = Math.min(expectedTokens.length, heardTokens.length);
+  for (let index = 0; index < maxLen; index += 1) {
+    const from = heardTokens[index];
+    const to = expectedTokens[index];
+    if (!from || !to || from === to) continue;
+    if (from.length < 3 || to.length < 3) continue;
+    suggestions.push({ from, to });
+  }
+  return mergePhraseCorrections([], suggestions);
+}
+
+function collectCalibrationSuggestions(captures: VoiceCalibrationCapture[]): VoicePhraseCorrection[] {
+  const suggestions = captures.flatMap((entry) => entry.corrections);
+  return mergePhraseCorrections([], suggestions);
+}
+
+function buildVoiceTrainingProfileFromDraft(draft: VoiceTrainingDraft, current: VoiceTrainingProfile): VoiceTrainingProfile {
+  return {
+    ...current,
+    custom_keywords: {
+      set_reps: multilineToKeywords(draft.set_reps),
+      set_load: multilineToKeywords(draft.set_load),
+      set_set_effort: multilineToKeywords(draft.set_set_effort),
+      set_set_completed: multilineToKeywords(draft.set_set_completed),
+    },
+    wake_aliases: multilineToKeywords(draft.wake_aliases),
+    phrase_corrections: multilineToPhraseCorrections(draft.phrase_corrections),
+  };
+}
+
+function calibrationStatusLabel(status: OfflineRecognizerState): string {
+  if (status === "inactive") return "Inactiva";
+  if (status === "loading") return "Cargando modelo";
+  if (status === "listening") return "Escuchando";
+  if (status === "error") return "Error";
+  return "Armada";
+}
+
+function trainingProfileToDraft(profile: VoiceTrainingProfile): VoiceTrainingDraft {
+  return {
+    set_reps: keywordsToMultiline(profile.custom_keywords.set_reps),
+    set_load: keywordsToMultiline(profile.custom_keywords.set_load),
+    set_set_effort: keywordsToMultiline(profile.custom_keywords.set_set_effort),
+    set_set_completed: keywordsToMultiline(profile.custom_keywords.set_set_completed),
+    wake_aliases: keywordsToMultiline(profile.wake_aliases),
+    phrase_corrections: phraseCorrectionsToMultiline(profile.phrase_corrections),
+  };
+}
 
 function OptionRow<T extends string>({
   label,
@@ -288,6 +450,30 @@ export default function Settings() {
   const [gamificationBusy, setGamificationBusy] = useState(false);
   const [gamificationMsg, setGamificationMsg] = useState("");
   const [gamificationError, setGamificationError] = useState("");
+  const [voiceTrainingProfile, setVoiceTrainingProfile] = useState<VoiceTrainingProfile>(() =>
+    createDefaultVoiceTrainingProfile(),
+  );
+  const [voiceTrainingDraft, setVoiceTrainingDraft] = useState<VoiceTrainingDraft>(() =>
+    trainingProfileToDraft(createDefaultVoiceTrainingProfile()),
+  );
+  const [voiceTrainingBusy, setVoiceTrainingBusy] = useState(false);
+  const [voiceTrainingMsg, setVoiceTrainingMsg] = useState("");
+  const [voiceTrainingError, setVoiceTrainingError] = useState("");
+  const [voiceCalibrationStatus, setVoiceCalibrationStatus] = useState<OfflineRecognizerState>("inactive");
+  const [voiceCalibrationRunning, setVoiceCalibrationRunning] = useState(false);
+  const [voiceCalibrationAwaiting, setVoiceCalibrationAwaiting] = useState(false);
+  const [voiceCalibrationStepIndex, setVoiceCalibrationStepIndex] = useState(0);
+  const [voiceCalibrationPartial, setVoiceCalibrationPartial] = useState("");
+  const [voiceCalibrationCaptures, setVoiceCalibrationCaptures] = useState<VoiceCalibrationCapture[]>([]);
+  const [voiceCalibrationError, setVoiceCalibrationError] = useState("");
+  const [voiceCalibrationInfo, setVoiceCalibrationInfo] = useState("");
+  const [voiceCalibrationBusy, setVoiceCalibrationBusy] = useState(false);
+
+  const calibrationRecognizerRef = useRef<OfflineVoskRecognizerClass | null>(null);
+  const calibrationAwaitingRef = useRef(false);
+  const calibrationStepIndexRef = useRef(0);
+  const calibrationCapturesRef = useRef<VoiceCalibrationCapture[]>([]);
+  const voiceTrainingDraftRef = useRef<VoiceTrainingDraft>(voiceTrainingDraft);
 
   const [dangerBusy, setDangerBusy] = useState(false);
   const [dangerError, setDangerError] = useState("");
@@ -323,6 +509,70 @@ export default function Settings() {
     };
   }, [isAdminMode]);
 
+  useEffect(() => {
+    if (!isAdminMode) return;
+    let cancelled = false;
+    setVoiceTrainingMsg("");
+    setVoiceTrainingError("");
+    getVoiceTrainingConfig()
+      .then((profile) => {
+        if (cancelled) return;
+        const nextDraft = trainingProfileToDraft(profile);
+        setVoiceTrainingProfile(profile);
+        setVoiceTrainingDraft(nextDraft);
+        voiceTrainingDraftRef.current = nextDraft;
+        saveVoiceTrainingProfile(profile);
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        const cached = loadVoiceTrainingProfile();
+        const nextDraft = trainingProfileToDraft(cached);
+        setVoiceTrainingProfile(cached);
+        setVoiceTrainingDraft(nextDraft);
+        voiceTrainingDraftRef.current = nextDraft;
+        setVoiceTrainingError(
+          `No pude cargar entrenamiento global de voz. Usando cache local: ${String((cause as { message?: string })?.message || cause)}`,
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdminMode]);
+
+  useEffect(() => {
+    calibrationAwaitingRef.current = voiceCalibrationAwaiting;
+  }, [voiceCalibrationAwaiting]);
+
+  useEffect(() => {
+    calibrationStepIndexRef.current = voiceCalibrationStepIndex;
+  }, [voiceCalibrationStepIndex]);
+
+  useEffect(() => {
+    calibrationCapturesRef.current = voiceCalibrationCaptures;
+  }, [voiceCalibrationCaptures]);
+
+  useEffect(() => {
+    voiceTrainingDraftRef.current = voiceTrainingDraft;
+  }, [voiceTrainingDraft]);
+
+  useEffect(
+    () => () => {
+      const recognizer = calibrationRecognizerRef.current;
+      calibrationRecognizerRef.current = null;
+      if (!recognizer) return;
+      void recognizer.dispose();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (isAdminMode) return;
+    calibrationAwaitingRef.current = false;
+    const recognizer = calibrationRecognizerRef.current;
+    if (!recognizer) return;
+    void recognizer.disarm();
+  }, [isAdminMode]);
+
   async function submitSwitchPlan() {
     if (!switchEmail.trim()) {
       setSwitchMsg("Debes indicar un email.");
@@ -346,6 +596,375 @@ export default function Settings() {
     } finally {
       setSwitchBusy(false);
     }
+  }
+
+  function updateVoiceTrainingDraft(intent: VoiceCommandIntent, value: string) {
+    setVoiceTrainingDraft((prev) => ({ ...prev, [intent]: value }));
+    setVoiceTrainingMsg("");
+    setVoiceTrainingError("");
+  }
+
+  async function saveVoiceTrainingRules() {
+    setVoiceTrainingBusy(true);
+    setVoiceTrainingMsg("");
+    setVoiceTrainingError("");
+    try {
+      const draftProfile = buildVoiceTrainingProfileFromDraft(voiceTrainingDraft, voiceTrainingProfile);
+      const savedProfile = await updateVoiceTrainingConfig(draftProfile);
+      const nextProfile = saveVoiceTrainingProfile(savedProfile);
+      const nextDraft = trainingProfileToDraft(nextProfile);
+      setVoiceTrainingProfile(nextProfile);
+      setVoiceTrainingDraft(nextDraft);
+      voiceTrainingDraftRef.current = nextDraft;
+      setVoiceTrainingMsg("Entrenamiento de voz guardado. Aliases, comandos y autocorrecciones activas.");
+    } catch (cause: unknown) {
+      setVoiceTrainingError(String((cause as { message?: string })?.message || cause));
+    } finally {
+      setVoiceTrainingBusy(false);
+    }
+  }
+
+  async function resetVoiceTrainingRules() {
+    setVoiceTrainingBusy(true);
+    setVoiceTrainingMsg("");
+    setVoiceTrainingError("");
+    const defaults = createDefaultVoiceTrainingProfile();
+    try {
+      const savedProfile = await updateVoiceTrainingConfig(defaults);
+      const nextProfile = saveVoiceTrainingProfile(savedProfile);
+      const nextDraft = trainingProfileToDraft(nextProfile);
+      setVoiceTrainingProfile(nextProfile);
+      setVoiceTrainingDraft(nextDraft);
+      voiceTrainingDraftRef.current = nextDraft;
+      setVoiceTrainingMsg("Entrenamiento de voz restablecido al estado inicial.");
+    } catch (cause: unknown) {
+      setVoiceTrainingError(String((cause as { message?: string })?.message || cause));
+    } finally {
+      setVoiceTrainingBusy(false);
+    }
+  }
+
+  async function importVoiceTrainingFile(file: File | null) {
+    if (!file) return;
+    setVoiceTrainingBusy(true);
+    setVoiceTrainingMsg("");
+    setVoiceTrainingError("");
+    try {
+      const rawText = await file.text();
+      const parsed = JSON.parse(rawText) as VoiceTrainingProfile;
+      const savedProfile = await updateVoiceTrainingConfig(parsed);
+      const saved = saveVoiceTrainingProfile(savedProfile);
+      const nextDraft = trainingProfileToDraft(saved);
+      setVoiceTrainingProfile(saved);
+      setVoiceTrainingDraft(nextDraft);
+      voiceTrainingDraftRef.current = nextDraft;
+      setVoiceTrainingMsg("Entrenamiento de voz importado.");
+    } catch (cause: unknown) {
+      setVoiceTrainingError(`No pude importar el JSON: ${String((cause as { message?: string })?.message || cause)}`);
+    } finally {
+      setVoiceTrainingBusy(false);
+    }
+  }
+
+  function exportVoiceTrainingRules() {
+    setVoiceTrainingMsg("");
+    setVoiceTrainingError("");
+    try {
+      const profile = voiceTrainingProfile;
+      const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `voice-training-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setVoiceTrainingMsg("JSON de entrenamiento de voz exportado.");
+    } catch (cause: unknown) {
+      setVoiceTrainingError(String((cause as { message?: string })?.message || cause));
+    }
+  }
+
+  function describeMicrophoneError(cause: unknown): string {
+    const payload = cause as { name?: string; message?: string };
+    const name = String(payload?.name ?? "");
+    if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+      return "Permiso de microfono denegado en el navegador.";
+    }
+    if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+      return "No se detecto un microfono disponible.";
+    }
+    if (name === "NotReadableError" || name === "TrackStartError") {
+      return "El microfono esta ocupado por otra aplicacion.";
+    }
+    if (name === "SecurityError") {
+      return "La captura de microfono requiere HTTPS o localhost.";
+    }
+    const message = String(payload?.message ?? "");
+    return message || String(cause);
+  }
+
+  async function stopVoiceCalibrationRecognizer(disposeModel: boolean): Promise<void> {
+    calibrationAwaitingRef.current = false;
+    setVoiceCalibrationAwaiting(false);
+    setVoiceCalibrationPartial("");
+
+    const recognizer = calibrationRecognizerRef.current;
+    if (!recognizer) {
+      setVoiceCalibrationStatus("inactive");
+      return;
+    }
+
+    try {
+      await recognizer.disarm();
+    } catch (cause: unknown) {
+      const message = String((cause as { message?: string })?.message || cause);
+      setVoiceCalibrationError(message);
+      setVoiceCalibrationStatus("error");
+    }
+
+    if (!disposeModel) return;
+    try {
+      await recognizer.dispose();
+    } catch {
+      // no-op cleanup
+    } finally {
+      calibrationRecognizerRef.current = null;
+    }
+  }
+
+  function storeVoiceCalibrationCapture(stepIndex: number, heardRaw: string): void {
+    const step = VOICE_CALIBRATION_STEPS[stepIndex];
+    if (!step) return;
+
+    const expected = normalizeVoiceTranscript(step.expected);
+    const heard = normalizeVoiceTranscript(heardRaw);
+    const corrections = buildCalibrationCorrections(expected, heard);
+    const capture: VoiceCalibrationCapture = {
+      step_id: step.id,
+      step_index: stepIndex,
+      expected,
+      heard,
+      matched: expected === heard,
+      corrections,
+    };
+
+    const nextCaptures = [
+      ...calibrationCapturesRef.current.filter((entry) => entry.step_index !== stepIndex),
+      capture,
+    ].sort((a, b) => a.step_index - b.step_index);
+    calibrationCapturesRef.current = nextCaptures;
+    setVoiceCalibrationCaptures(nextCaptures);
+
+    calibrationAwaitingRef.current = false;
+    setVoiceCalibrationAwaiting(false);
+    setVoiceCalibrationPartial("");
+
+    const nextStepIndex = stepIndex + 1;
+    if (nextStepIndex >= VOICE_CALIBRATION_STEPS.length) {
+      calibrationStepIndexRef.current = VOICE_CALIBRATION_STEPS.length - 1;
+      setVoiceCalibrationRunning(false);
+      setVoiceCalibrationInfo("Wizard completado. Guardando sugerencias detectadas...");
+      void persistVoiceTrainingFromCorrections(collectCalibrationSuggestions(nextCaptures), "wizard_auto");
+      void stopVoiceCalibrationRecognizer(false);
+      return;
+    }
+
+    calibrationStepIndexRef.current = nextStepIndex;
+    setVoiceCalibrationStepIndex(nextStepIndex);
+    setVoiceCalibrationInfo(
+      capture.matched
+        ? `Paso ${stepIndex + 1} OK. Avanza al paso ${nextStepIndex + 1}.`
+        : `Paso ${stepIndex + 1} capturado con diferencia. Avanza al paso ${nextStepIndex + 1}.`,
+    );
+  }
+
+  async function ensureVoiceCalibrationRecognizerArmed(): Promise<boolean> {
+    setVoiceCalibrationError("");
+    if (!ENABLE_OFFLINE_VOICE_CAPTURE) {
+      setVoiceCalibrationError("La feature VITE_ENABLE_OFFLINE_VOICE_CAPTURE esta en false.");
+      return false;
+    }
+    if (!("mediaDevices" in navigator) || typeof navigator.mediaDevices?.getUserMedia !== "function") {
+      setVoiceCalibrationError("Este navegador no permite acceso al microfono.");
+      setVoiceCalibrationStatus("error");
+      return false;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          channelCount: 1,
+        },
+      });
+      stream.getTracks().forEach((track) => track.stop());
+    } catch (cause: unknown) {
+      setVoiceCalibrationError(`No se pudo obtener permiso de microfono: ${describeMicrophoneError(cause)}`);
+      setVoiceCalibrationStatus("error");
+      return false;
+    }
+
+    let voiceModule: typeof import("../lib/voice/offlineRecognizer");
+    try {
+      voiceModule = await import("../lib/voice/offlineRecognizer");
+    } catch (cause: unknown) {
+      const message = String((cause as { message?: string })?.message || cause);
+      setVoiceCalibrationError(`No pude cargar el motor de voz: ${message}`);
+      setVoiceCalibrationStatus("error");
+      return false;
+    }
+
+    if (!voiceModule.browserSupportsOfflineRecognizer()) {
+      setVoiceCalibrationError("Este navegador no soporta captura de microfono offline para voz.");
+      setVoiceCalibrationStatus("error");
+      return false;
+    }
+
+    let recognizer = calibrationRecognizerRef.current;
+    if (!recognizer) {
+      recognizer = new voiceModule.OfflineVoskRecognizer({
+        modelUrl: VOICE_MODEL_URL,
+        callbacks: {
+          onStateChange: (state) => setVoiceCalibrationStatus(state),
+          onPartialTranscript: (partial) => {
+            setVoiceCalibrationPartial(normalizeVoiceTranscript(partial));
+          },
+          onFinalTranscript: (result) => {
+            const heard = normalizeVoiceTranscript(result.text);
+            if (!heard || !calibrationAwaitingRef.current) return;
+            storeVoiceCalibrationCapture(calibrationStepIndexRef.current, heard);
+          },
+          onError: (message) => {
+            setVoiceCalibrationError(message);
+            setVoiceCalibrationStatus("error");
+            calibrationAwaitingRef.current = false;
+            setVoiceCalibrationAwaiting(false);
+          },
+        },
+      });
+      calibrationRecognizerRef.current = recognizer;
+    }
+
+    try {
+      await recognizer.arm();
+      return true;
+    } catch (cause: unknown) {
+      const message = String((cause as { message?: string })?.message || cause);
+      setVoiceCalibrationError(`No se pudo iniciar calibracion: ${message}`);
+      setVoiceCalibrationStatus("error");
+      return false;
+    }
+  }
+
+  async function startVoiceCalibrationWizard(): Promise<void> {
+    if (voiceCalibrationBusy) return;
+    setVoiceCalibrationBusy(true);
+    await stopVoiceCalibrationRecognizer(false);
+    setVoiceCalibrationRunning(true);
+    setVoiceCalibrationStepIndex(0);
+    calibrationStepIndexRef.current = 0;
+    setVoiceCalibrationCaptures([]);
+    setVoiceCalibrationPartial("");
+    setVoiceCalibrationInfo("");
+    setVoiceCalibrationError("");
+    calibrationAwaitingRef.current = false;
+    setVoiceCalibrationAwaiting(false);
+
+    const started = await ensureVoiceCalibrationRecognizerArmed();
+    if (started) {
+      setVoiceCalibrationInfo("Microfono listo. Pulsa 'Capturar paso' y dicta la frase esperada.");
+    } else {
+      setVoiceCalibrationRunning(false);
+    }
+    setVoiceCalibrationBusy(false);
+  }
+
+  function captureVoiceCalibrationStep(): void {
+    if (!voiceCalibrationRunning) {
+      setVoiceCalibrationInfo("Inicia el wizard antes de capturar.");
+      return;
+    }
+    if (voiceCalibrationStatus !== "armed" && voiceCalibrationStatus !== "listening") {
+      setVoiceCalibrationInfo("El motor aun no esta armado. Espera unos segundos.");
+      return;
+    }
+    calibrationAwaitingRef.current = true;
+    setVoiceCalibrationAwaiting(true);
+    setVoiceCalibrationInfo(
+      `Escuchando paso ${Math.min(voiceCalibrationStepIndex + 1, VOICE_CALIBRATION_STEPS.length)} de ${VOICE_CALIBRATION_STEPS.length}...`,
+    );
+  }
+
+  function retryVoiceCalibrationStep(): void {
+    const currentIndex = voiceCalibrationStepIndex;
+    setVoiceCalibrationCaptures((previous) => previous.filter((entry) => entry.step_index !== currentIndex));
+    calibrationAwaitingRef.current = false;
+    setVoiceCalibrationAwaiting(false);
+    setVoiceCalibrationPartial("");
+    setVoiceCalibrationInfo("Paso reiniciado. Pulsa 'Capturar paso' para repetir.");
+  }
+
+  async function stopVoiceCalibrationWizard(): Promise<void> {
+    setVoiceCalibrationRunning(false);
+    calibrationAwaitingRef.current = false;
+    setVoiceCalibrationAwaiting(false);
+    await stopVoiceCalibrationRecognizer(false);
+    setVoiceCalibrationInfo("Wizard detenido.");
+  }
+
+  async function persistVoiceTrainingFromCorrections(
+    suggested: VoicePhraseCorrection[],
+    source: "wizard_manual" | "wizard_auto",
+  ): Promise<void> {
+    if (suggested.length === 0) {
+      setVoiceCalibrationInfo(
+        source === "wizard_auto"
+          ? "Wizard completado sin sugerencias nuevas para guardar."
+          : "No hay sugerencias nuevas para aplicar.",
+      );
+      return;
+    }
+
+    const currentProfile = voiceTrainingProfile;
+    const currentDraft = voiceTrainingDraftRef.current;
+    const baseCorrections = multilineToPhraseCorrections(currentDraft.phrase_corrections);
+    const mergedCorrections = mergePhraseCorrections(baseCorrections, suggested);
+    const nextDraft: VoiceTrainingDraft = {
+      ...currentDraft,
+      phrase_corrections: phraseCorrectionsToMultiline(mergedCorrections),
+    };
+
+    setVoiceTrainingBusy(true);
+    setVoiceTrainingError("");
+    setVoiceTrainingMsg("");
+    try {
+      const nextProfilePayload = buildVoiceTrainingProfileFromDraft(nextDraft, currentProfile);
+      const savedProfile = await updateVoiceTrainingConfig(nextProfilePayload);
+      const nextProfile = saveVoiceTrainingProfile(savedProfile);
+      const nextDraftNormalized = trainingProfileToDraft(nextProfile);
+      setVoiceTrainingProfile(nextProfile);
+      setVoiceTrainingDraft(nextDraftNormalized);
+      voiceTrainingDraftRef.current = nextDraftNormalized;
+      if (source === "wizard_auto") {
+        setVoiceTrainingMsg("Wizard autoguardado. Correcciones de calibracion persistidas.");
+        setVoiceCalibrationInfo(`Autoguardado completado: ${suggested.length} sugerencias.`);
+      } else {
+        setVoiceTrainingMsg("Wizard aplicado. Correcciones guardadas en entrenamiento de voz.");
+        setVoiceCalibrationInfo(`Se agregaron/actualizaron ${suggested.length} sugerencias de calibracion.`);
+      }
+    } catch (cause: unknown) {
+      setVoiceTrainingError(String((cause as { message?: string })?.message || cause));
+    } finally {
+      setVoiceTrainingBusy(false);
+    }
+  }
+
+  async function applyVoiceCalibrationSuggestions(): Promise<void> {
+    await persistVoiceTrainingFromCorrections(voiceCalibrationSuggestedCorrections, "wizard_manual");
   }
 
   function updateTierList(list: GamificationTier[], index: number, patch: Partial<GamificationTier>): GamificationTier[] {
@@ -607,6 +1226,19 @@ export default function Settings() {
       setExportBusy(false);
     }
   }
+
+  const voiceCalibrationCurrentStep = VOICE_CALIBRATION_STEPS[Math.min(voiceCalibrationStepIndex, VOICE_CALIBRATION_STEPS.length - 1)];
+  const voiceCalibrationCurrentCapture = useMemo(
+    () => voiceCalibrationCaptures.find((entry) => entry.step_index === voiceCalibrationStepIndex) || null,
+    [voiceCalibrationCaptures, voiceCalibrationStepIndex],
+  );
+  const voiceCalibrationCapturedCount = useMemo(() => {
+    const uniqueSteps = new Set(voiceCalibrationCaptures.map((entry) => entry.step_id));
+    return uniqueSteps.size;
+  }, [voiceCalibrationCaptures]);
+  const voiceCalibrationSuggestedCorrections = useMemo(() => {
+    return collectCalibrationSuggestions(voiceCalibrationCaptures);
+  }, [voiceCalibrationCaptures]);
 
   const parsedSessionBatch = useMemo(() => {
     try {
@@ -936,6 +1568,196 @@ export default function Settings() {
 
       {isAdminMode ? (
         <>
+          <section className="surface">
+            <div className="sectionHead">
+              <h3>Admin: entrenar voz (comandos)</h3>
+              <p>
+                Define palabras/sinonimos que el parser debe reconocer para aplicar comandos de sets. Cada linea agrega una
+                palabra o frase corta.
+              </p>
+            </div>
+
+            <article className="surfaceButton" style={{ alignItems: "stretch", marginTop: 12 }}>
+              <label className="smallLabel">Wake aliases personalizados (escucha)</label>
+              <textarea
+                className="input compactTextarea"
+                value={voiceTrainingDraft.wake_aliases}
+                onChange={(e) => {
+                  setVoiceTrainingDraft((prev) => ({ ...prev, wake_aliases: e.target.value }));
+                  setVoiceTrainingMsg("");
+                  setVoiceTrainingError("");
+                }}
+                placeholder="Ejemplo: jarvis, nombre app, asistente..."
+                style={{ minHeight: 96 }}
+              />
+              <span className="small">
+                Se combinan con la palabra base de wake para habilitar activacion personalizada.
+              </span>
+            </article>
+
+            <article className="surfaceButton" style={{ alignItems: "stretch", marginTop: 12 }}>
+              <label className="smallLabel">Autocorreccion de frases (entrenamiento)</label>
+              <textarea
+                className="input compactTextarea"
+                value={voiceTrainingDraft.phrase_corrections}
+                onChange={(e) => {
+                  setVoiceTrainingDraft((prev) => ({ ...prev, phrase_corrections: e.target.value }));
+                  setVoiceTrainingMsg("");
+                  setVoiceTrainingError("");
+                }}
+                placeholder={"Formato: frase escuchada => frase objetivo\nEjemplo: pezo => peso\nEjemplo: r p e => rpe"}
+                style={{ minHeight: 120 }}
+              />
+              <span className="small">Una regla por linea. Se aplica antes de parsear el comando.</span>
+            </article>
+
+            <article className="surfaceButton" style={{ alignItems: "stretch", marginTop: 12 }}>
+              <div className="sectionHead">
+                <h4>Wizard calibracion de voz</h4>
+                <p>
+                  Guia asistida para detectar diferencias entre lo que dices y lo que el modelo transcribe. Genera
+                  autocorrecciones y las guarda en tu perfil.
+                </p>
+              </div>
+
+              <div className="chipRow" style={{ marginTop: 8 }}>
+                <span className="chip">{`Estado: ${calibrationStatusLabel(voiceCalibrationStatus)}`}</span>
+                <span className="chip">{`Paso: ${Math.min(voiceCalibrationStepIndex + 1, VOICE_CALIBRATION_STEPS.length)} / ${VOICE_CALIBRATION_STEPS.length}`}</span>
+                <span className="chip">{`Capturas: ${voiceCalibrationCapturedCount}`}</span>
+                <span className="chip">{`Sugerencias: ${voiceCalibrationSuggestedCorrections.length}`}</span>
+              </div>
+
+              <div className="small" style={{ marginTop: 8 }}>{`Frase objetivo (${voiceCalibrationCurrentStep.title}):`}</div>
+              <div className="message" style={{ marginTop: 6 }}>
+                <strong>{voiceCalibrationCurrentStep.expected}</strong>
+              </div>
+
+              <div className="small" style={{ marginTop: 8 }}>
+                {voiceCalibrationAwaiting
+                  ? "Escuchando este paso ahora. Habla una sola frase completa."
+                  : "Pulsa 'Capturar paso' y dicta la frase objetivo exactamente."}
+              </div>
+              {voiceCalibrationPartial ? <div className="small">{`Parcial: ${voiceCalibrationPartial}`}</div> : null}
+              {voiceCalibrationCurrentCapture ? (
+                <div className="small">
+                  {`Ultimo resultado del paso: ${voiceCalibrationCurrentCapture.heard} (${voiceCalibrationCurrentCapture.matched ? "match" : "diferente"})`}
+                </div>
+              ) : null}
+
+              <div className="quickActions" style={{ marginTop: 10 }}>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={() => void startVoiceCalibrationWizard()}
+                  disabled={voiceCalibrationBusy || voiceTrainingBusy}
+                >
+                  {voiceCalibrationRunning ? "Reiniciar wizard" : "Iniciar wizard"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={captureVoiceCalibrationStep}
+                  disabled={!voiceCalibrationRunning || voiceCalibrationBusy || voiceTrainingBusy || voiceCalibrationAwaiting}
+                >
+                  Capturar paso
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={retryVoiceCalibrationStep}
+                  disabled={!voiceCalibrationRunning || voiceCalibrationBusy || voiceTrainingBusy}
+                >
+                  Repetir paso
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => void stopVoiceCalibrationWizard()}
+                  disabled={!voiceCalibrationRunning || voiceCalibrationBusy || voiceTrainingBusy}
+                >
+                  Detener wizard
+                </button>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={() => void applyVoiceCalibrationSuggestions()}
+                  disabled={voiceCalibrationSuggestedCorrections.length === 0 || voiceTrainingBusy || voiceCalibrationBusy}
+                >
+                  Aplicar sugerencias
+                </button>
+              </div>
+
+              {voiceCalibrationSuggestedCorrections.length > 0 ? (
+                <details style={{ marginTop: 10 }}>
+                  <summary>Sugerencias detectadas</summary>
+                  <div className="small" style={{ marginTop: 8 }}>
+                    {voiceCalibrationSuggestedCorrections
+                      .slice(0, 20)
+                      .map((entry) => `${entry.from} => ${entry.to}`)
+                      .join(" | ")}
+                  </div>
+                </details>
+              ) : null}
+
+              {voiceCalibrationError ? <div className="message error" style={{ marginTop: 10 }}>{voiceCalibrationError}</div> : null}
+              {voiceCalibrationInfo ? <div className="message" style={{ marginTop: 10 }}>{voiceCalibrationInfo}</div> : null}
+            </article>
+
+            <div className="gridCards" style={{ marginTop: 12 }}>
+              {VOICE_TRAINABLE_INTENTS.map((intent) => (
+                <article key={intent} className="surfaceButton" style={{ alignItems: "stretch" }}>
+                  <label className="smallLabel">{VOICE_TRAINABLE_INTENT_LABELS[intent]}</label>
+                  <textarea
+                    className="input compactTextarea"
+                    value={voiceTrainingDraft[intent]}
+                    onChange={(e) => updateVoiceTrainingDraft(intent, e.target.value)}
+                    placeholder="Ejemplo: repeticiones, repes, subir peso..."
+                    style={{ minHeight: 120 }}
+                  />
+                </article>
+              ))}
+            </div>
+
+            <div className="quickActions" style={{ marginTop: 12 }}>
+              <button className="btn primary" type="button" onClick={() => void saveVoiceTrainingRules()} disabled={voiceTrainingBusy}>
+                {voiceTrainingBusy ? "Guardando..." : "Guardar entrenamiento voz"}
+              </button>
+              <button className="btn" type="button" onClick={() => void resetVoiceTrainingRules()} disabled={voiceTrainingBusy}>
+                Reiniciar
+              </button>
+              <button className="btn" type="button" onClick={exportVoiceTrainingRules} disabled={voiceTrainingBusy}>
+                Exportar JSON
+              </button>
+              <label
+                className="btn"
+                style={{ cursor: voiceTrainingBusy ? "not-allowed" : "pointer", opacity: voiceTrainingBusy ? 0.6 : 1 }}
+              >
+                Importar JSON
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  style={{ display: "none" }}
+                  disabled={voiceTrainingBusy}
+                  onChange={(e) => {
+                    void importVoiceTrainingFile(e.target.files?.[0] || null);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="chipRow" style={{ marginTop: 12 }}>
+              <span className="chip">{`Ultima actualizacion: ${
+                voiceTrainingProfile.updated_at_ms
+                  ? new Date(voiceTrainingProfile.updated_at_ms).toLocaleString()
+                  : "sin entrenamiento guardado"
+              }`}</span>
+            </div>
+
+            {voiceTrainingError ? <div className="message error" style={{ marginTop: 12 }}>{voiceTrainingError}</div> : null}
+            {voiceTrainingMsg ? <div className="message" style={{ marginTop: 12 }}>{voiceTrainingMsg}</div> : null}
+          </section>
+
           <section className="surface">
             <div className="sectionHead">
               <h3>Admin: logros y medallas automaticos</h3>
