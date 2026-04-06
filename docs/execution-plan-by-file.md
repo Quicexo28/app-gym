@@ -230,6 +230,7 @@ Escala usada:
 ## Estado
 - Documento creado para ejecución incremental.
 - Incluye fix y estabilización del login con Google como prioridad P0.
+- **P1 funcionalmente cubierto** en su núcleo (auth/errores/readiness, history KPI, run explainability, planning tracking, modularización inicial NewSession, tests críticos base).
 
 ## Avance aplicado (sesión actual)
 - Login Google rehecho con botón oficial GSI y diagnóstico robusto.

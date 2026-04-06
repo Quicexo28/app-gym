@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from "react";
 
 const DEFAULT_TIMEOUT_MS = 7000;
+const MAX_QUEUE_ITEMS = 20;
 
 export type UndoRegistration = {
   message: string;
@@ -43,6 +44,30 @@ function shiftQueue(items: UndoQueueItem[]): UndoQueueItem[] {
   return items.slice(1);
 }
 
+function appendWithCompression(items: UndoQueueItem[], nextItem: UndoQueueItem): UndoQueueItem[] {
+  const previous = items[items.length - 1];
+
+  // Si el último item es equivalente, reemplazamos para evitar ruido de cola.
+  if (
+    previous &&
+    previous.message === nextItem.message &&
+    previous.actionLabel === nextItem.actionLabel &&
+    previous.timeoutMs === nextItem.timeoutMs
+  ) {
+    const replaced = [...items];
+    replaced[replaced.length - 1] = nextItem;
+    return replaced;
+  }
+
+  const appended = [...items, nextItem];
+  if (appended.length <= MAX_QUEUE_ITEMS) return appended;
+
+  // Conserva el actual y recorta el backlog antiguo.
+  const current = appended[0];
+  const tail = appended.slice(-(MAX_QUEUE_ITEMS - 1));
+  return [current, ...tail];
+}
+
 export function UndoProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<UndoQueueItem[]>([]);
   const [pending, setPending] = useState(false);
@@ -63,7 +88,7 @@ export function UndoProvider({ children }: { children: ReactNode }) {
       timeoutMs: normalizeTimeout(registration.timeoutMs),
       onUndo: registration.onUndo,
     };
-    setQueue((prev) => [...prev, nextItem]);
+    setQueue((prev) => appendWithCompression(prev, nextItem));
   }, []);
 
   const dismissCurrent = useCallback(() => {
