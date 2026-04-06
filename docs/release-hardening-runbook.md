@@ -79,3 +79,9 @@ Un release se considera apto cuando:
 - gate automatizado en verde,
 - smoke manual sin bloqueos,
 - sin errores críticos nuevos en logs de negocio (`business_event` con `*_fail` anómalos).
+
+## 5) Warnings conocidos (no bloqueantes)
+
+- `optimizeDeps.esbuildOptions` deprecado con `rolldown-vite`:
+  - actualmente proviene de plugin/dependencia de Vite y no bloquea build.
+  - mantener monitoreo y actualizar cuando el plugin exponga configuración `rolldownOptions` sin incompatibilidades de tipos.
