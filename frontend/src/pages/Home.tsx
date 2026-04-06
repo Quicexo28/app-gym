@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { getSessions, listRuns } from "../api";
+import type { SessionRecord } from "../api";
 import { useAthleteAccess } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import { useViewMode } from "../state/viewMode";
@@ -15,6 +16,7 @@ export default function Home() {
   const [sessionCount, setSessionCount] = useState<number>(0);
   const [runCount, setRunCount] = useState<number>(0);
   const [lastSessionAt, setLastSessionAt] = useState<string | null>(null);
+  const [sessionsData, setSessionsData] = useState<SessionRecord[]>([]);
   const [opsLoading, setOpsLoading] = useState(false);
   const nav = useNavigate();
 
@@ -40,6 +42,72 @@ export default function Home() {
     if (!Number.isFinite(parsed)) return null;
     return Math.floor((todayMs - parsed) / (24 * 60 * 60 * 1000));
   }, [lastSessionAt, todayMs]);
+
+  const streakDays = useMemo(() => {
+    if (!athleteId || sessionsData.length === 0) return 0;
+    const dayKeys = Array.from(
+      new Set(
+        sessionsData
+          .map((session) => String(session.start_time || "").slice(0, 10))
+          .filter((value) => value.length === 10),
+      ),
+    ).sort((a, b) => b.localeCompare(a));
+
+    if (dayKeys.length === 0) return 0;
+
+    const todayKey = new Date(todayMs).toISOString().slice(0, 10);
+    const yesterdayKey = new Date(todayMs - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (dayKeys[0] !== todayKey && dayKeys[0] !== yesterdayKey) return 0;
+
+    let streak = 1;
+    for (let i = 1; i < dayKeys.length; i += 1) {
+      const prev = new Date(`${dayKeys[i - 1]}T00:00:00Z`).getTime();
+      const current = new Date(`${dayKeys[i]}T00:00:00Z`).getTime();
+      if (prev - current === 24 * 60 * 60 * 1000) {
+        streak += 1;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }, [athleteId, sessionsData, todayMs]);
+
+  const todaySessionSuggestion = useMemo(() => {
+    if (!athleteId) return "Selecciona un sujeto para definir la sesión de hoy.";
+    if (sessionCount === 0) return "Sesión inicial corta: técnica + registro base.";
+    if (typeof daysSinceLastSession !== "number") return "Sesión moderada de continuidad.";
+    if (daysSinceLastSession >= 4) return "Retoma con sesión ligera y foco en técnica.";
+    if (daysSinceLastSession >= 2) return "Sesión principal del bloque con volumen controlado.";
+    return "Día de ajuste: descarga activa o movilidad + core.";
+  }, [athleteId, daysSinceLastSession, sessionCount]);
+
+  const smartEmptyState = useMemo(() => {
+    if (!athleteId) {
+      return {
+        title: "Elige un sujeto para comenzar",
+        message: "Cuando selecciones un sujeto te mostraremos el plan del día y el progreso real.",
+        ctaLabel: isCoachScope ? "Seleccionar sujeto" : "Ir a perfil",
+        ctaPath: isCoachScope ? "/home" : "/profile",
+      };
+    }
+    if (sessionCount === 0) {
+      return {
+        title: "Vamos a crear tu primera sesión",
+        message: "Empieza con una sesión guiada. El dashboard se volverá inteligente apenas registres datos.",
+        ctaLabel: "Crear sesión",
+        ctaPath: "/session/new",
+      };
+    }
+    if (runCount === 0) {
+      return {
+        title: "Ya tienes sesiones, falta análisis",
+        message: "Corre un escenario para activar recomendaciones y seguimiento de calidad.",
+        ctaLabel: "Ir a historial",
+        ctaPath: "/history",
+      };
+    }
+    return null;
+  }, [athleteId, isCoachScope, runCount, sessionCount]);
 
   const homeAlerts = useMemo(() => {
     const alerts: Array<{ id: string; severity: "high" | "medium" | "low"; message: string; ctaLabel?: string; ctaPath?: string }> = [];
@@ -133,6 +201,7 @@ export default function Home() {
         const runs = results[1].status === "fulfilled" ? results[1].value : [];
 
         const orderedSessions = [...sessions].sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)));
+        setSessionsData(orderedSessions);
         setSessionCount(orderedSessions.length);
         setRunCount(runs.length);
         setLastSessionAt(orderedSessions[0]?.start_time ? String(orderedSessions[0].start_time) : null);
@@ -162,12 +231,29 @@ export default function Home() {
         </div>
         <div className="dashboardPulseRow">
           <div className="dashboardPulseValue">{dashboardMomentum}%</div>
-          <div className="dashboardPulseMeta">{`Embudo completado: ${funnelCompletionPct}%`}</div>
+          <div className="dashboardPulseMeta">
+            <div>{`Embudo completado: ${funnelCompletionPct}%`}</div>
+            <div>{`🔥 racha: ${streakDays} día${streakDays === 1 ? "" : "s"}`}</div>
+          </div>
         </div>
         <div className="progressRail" aria-label="Ritmo del dashboard">
           <span className="progressFill" style={{ width: `${dashboardMomentum}%` }} />
         </div>
       </section>
+
+      {smartEmptyState ? (
+        <section className="surface">
+          <div className="sectionHead">
+            <h3>{smartEmptyState.title}</h3>
+            <p>{smartEmptyState.message}</p>
+          </div>
+          <div className="quickActions" style={{ marginTop: 10 }}>
+            <button className="btn primary" onClick={() => nav(smartEmptyState.ctaPath)}>
+              {smartEmptyState.ctaLabel}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="surface homeHero">
         <div className="stack compactStack">
@@ -181,23 +267,44 @@ export default function Home() {
               <strong>{activeSubject?.label || "Sin asignar"}</strong>
             </article>
             <article className="statCard">
-              <div className="smallLabel">Sesiones</div>
-              <strong>{!athleteId ? "-" : opsLoading ? "..." : sessionCount}</strong>
+              <div className="smallLabel">Racha</div>
+              <strong>{`${streakDays} día${streakDays === 1 ? "" : "s"}`}</strong>
             </article>
             <article className="statCard">
-              <div className="smallLabel">Runs</div>
-              <strong>{!athleteId ? "-" : opsLoading ? "..." : runCount}</strong>
+              <div className="smallLabel">Última sesión</div>
+              <strong>{!athleteId ? "-" : lastSessionAt ? new Date(lastSessionAt).toLocaleDateString() : "Sin registro"}</strong>
             </article>
-            <article className="statCard">
-              <div className="smallLabel">Ultima sesion</div>
-              <strong>{!athleteId ? "-" : lastSessionAt ? new Date(lastSessionAt).toLocaleDateString() : "-"}</strong>
-            </article>
+            {sessionCount > 0 ? (
+              <>
+                <article className="statCard">
+                  <div className="smallLabel">Sesiones</div>
+                  <strong>{!athleteId ? "-" : opsLoading ? "..." : sessionCount}</strong>
+                </article>
+                <article className="statCard">
+                  <div className="smallLabel">Runs</div>
+                  <strong>{!athleteId ? "-" : opsLoading ? "..." : runCount}</strong>
+                </article>
+              </>
+            ) : null}
           </div>
         </div>
 
         <div className="stack compactStack">
           <div className="sectionHead">
-            <h3>Acciones</h3>
+            <h3>Sesión sugerida hoy</h3>
+            <p>{todaySessionSuggestion}</p>
+          </div>
+          <div className="quickActions">
+            <button className="btn primary" onClick={() => nav("/session/new")} disabled={!athleteId}>
+              Iniciar sesión sugerida
+            </button>
+            <button className="btn" onClick={() => nav("/planning")}>
+              Ver plan actual
+            </button>
+          </div>
+
+          <div className="sectionHead" style={{ marginTop: 6 }}>
+            <h3>Acciones rápidas</h3>
             <p>Atajos principales para operar sin saturar la vista.</p>
           </div>
           <div className="quickActions">
@@ -255,53 +362,57 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="surface">
-        <div className="sectionHead">
-          <h3>Embudo de uso</h3>
-          <p>{`Progreso operacional: ${funnelCompletionPct}%`}</p>
-        </div>
-        <div className="stack compactStack" style={{ marginTop: 10 }}>
-          {funnelStages.map((stage) => (
-            <article key={stage.id} className="listItem">
-              <div className="listMain">
-                <strong>{stage.label}</strong>
-                <span className="small">{stage.ok ? "Completado" : "Pendiente"}</span>
-              </div>
-              <div className="progressRail" aria-label={stage.label}>
-                <span className="progressFill" style={{ width: stage.ok ? "100%" : "26%" }} />
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="surface">
-        <div className="sectionHead">
-          <h3>Alertas operativas</h3>
-          <p>Prioriza estas acciones para mantener continuidad y calidad de señal.</p>
-        </div>
-        {homeAlerts.length === 0 ? (
-          <div className="small" style={{ marginTop: 10 }}>Sin alertas criticas por ahora.</div>
-        ) : (
+      {sessionCount > 0 ? (
+        <section className="surface">
+          <div className="sectionHead">
+            <h3>Embudo de uso</h3>
+            <p>{`Progreso operacional: ${funnelCompletionPct}%`}</p>
+          </div>
           <div className="stack compactStack" style={{ marginTop: 10 }}>
-            {homeAlerts.map((alert) => (
-              <article key={alert.id} className="listItem">
+            {funnelStages.map((stage) => (
+              <article key={stage.id} className="listItem">
                 <div className="listMain">
-                  <strong>{alert.message}</strong>
-                  <span className="small">{`Prioridad: ${alert.severity}`}</span>
+                  <strong>{stage.label}</strong>
+                  <span className="small">{stage.ok ? "Completado" : "Pendiente"}</span>
                 </div>
-                {alert.ctaLabel && alert.ctaPath ? (
-                  <div className="listMeta">
-                    <button className="btn" onClick={() => nav(alert.ctaPath!)}>
-                      {alert.ctaLabel}
-                    </button>
-                  </div>
-                ) : null}
+                <div className="progressRail" aria-label={stage.label}>
+                  <span className="progressFill" style={{ width: stage.ok ? "100%" : "26%" }} />
+                </div>
               </article>
             ))}
           </div>
-        )}
-      </section>
+        </section>
+      ) : null}
+
+      {!smartEmptyState ? (
+        <section className="surface">
+          <div className="sectionHead">
+            <h3>Alertas operativas</h3>
+            <p>Prioriza estas acciones para mantener continuidad y calidad de señal.</p>
+          </div>
+          {homeAlerts.length === 0 ? (
+            <div className="small" style={{ marginTop: 10 }}>Sin alertas críticas por ahora.</div>
+          ) : (
+            <div className="stack compactStack" style={{ marginTop: 10 }}>
+              {homeAlerts.map((alert) => (
+                <article key={alert.id} className="listItem">
+                  <div className="listMain">
+                    <strong>{alert.message}</strong>
+                    <span className="small">{`Prioridad: ${alert.severity}`}</span>
+                  </div>
+                  {alert.ctaLabel && alert.ctaPath ? (
+                    <div className="listMeta">
+                      <button className="btn" onClick={() => nav(alert.ctaPath!)}>
+                        {alert.ctaLabel}
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
 
       {isCoachScope ? (
         <section className="surface splitGrid">
