@@ -72,6 +72,14 @@ class DeleteAccountRequest(BaseModel):
     confirm: str = Field(min_length=1, max_length=64)
 
 
+def _error_detail(code: str, detail: str, context: dict | None = None) -> dict:
+    return {
+        "code": code,
+        "detail": detail,
+        "context": context or {},
+    }
+
+
 def _normalize_email(raw: str) -> str:
     try:
         validated = validate_email(raw, check_deliverability=False)
@@ -126,35 +134,72 @@ def _fetch_google_tokeninfo(id_token: str) -> dict[str, str]:
         with urlopen(url, timeout=8) as response:
             raw = response.read().decode("utf-8")
     except HTTPError as err:
-        raise HTTPException(status_code=401, detail="Invalid Google token.") from err
+        raise HTTPException(
+            status_code=401,
+            detail=_error_detail(
+                "google_token_invalid",
+                "Invalid Google token.",
+                {"provider": "google", "http_status": getattr(err, "code", None)},
+            ),
+        ) from err
     except URLError as err:
-        raise HTTPException(status_code=502, detail="Could not validate Google token.") from err
+        raise HTTPException(
+            status_code=502,
+            detail=_error_detail("google_token_validation_unreachable", "Could not validate Google token.", {"provider": "google"}),
+        ) from err
 
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as err:
-        raise HTTPException(status_code=502, detail="Could not validate Google token.") from err
+        raise HTTPException(
+            status_code=502,
+            detail=_error_detail("google_token_validation_bad_payload", "Could not validate Google token.", {"provider": "google"}),
+        ) from err
 
     if not isinstance(payload, dict):
-        raise HTTPException(status_code=502, detail="Could not validate Google token.")
+        raise HTTPException(
+            status_code=502,
+            detail=_error_detail("google_token_validation_bad_payload", "Could not validate Google token.", {"provider": "google"}),
+        )
     return {str(k): str(v) for k, v in payload.items()}
 
 
 def _validate_google_identity(id_token: str) -> tuple[str, str]:
     if not settings.google_client_id:
-        raise HTTPException(status_code=503, detail="Google login is not configured.")
+        raise HTTPException(
+            status_code=503,
+            detail=_error_detail("google_login_not_configured", "Google login is not configured.", {"provider": "google"}),
+        )
 
     payload = _fetch_google_tokeninfo(id_token)
     token_audience = payload.get("aud")
     if token_audience != settings.google_client_id:
-        raise HTTPException(status_code=401, detail="Invalid Google token audience.")
+        raise HTTPException(
+            status_code=401,
+            detail=_error_detail(
+                "google_token_audience_mismatch",
+                "Invalid Google token audience.",
+                {
+                    "provider": "google",
+                    "expected_client_id": settings.google_client_id,
+                    "received_aud": token_audience,
+                },
+            ),
+        )
 
     email = payload.get("email", "").strip()
     sub = payload.get("sub", "").strip()
     email_verified = payload.get("email_verified", "").lower() == "true"
 
     if not email or not sub or not email_verified:
-        raise HTTPException(status_code=401, detail="Invalid Google token payload.")
+        raise HTTPException(
+            status_code=401,
+            detail=_error_detail(
+                "google_token_payload_invalid",
+                "Invalid Google token payload.",
+                {"provider": "google", "has_email": bool(email), "has_sub": bool(sub), "email_verified": email_verified},
+            ),
+        )
 
     return _normalize_email(email), sub
 
@@ -212,10 +257,10 @@ def login(
         user = db.execute(select(User).where(User.phone_number == normalized_identifier)).scalar_one_or_none()
 
     if user is None or not user.is_active:
-        raise HTTPException(status_code=401, detail="Invalid credentials.")
+        raise HTTPException(status_code=401, detail=_error_detail("auth_invalid_credentials", "Invalid credentials."))
 
     if not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials.")
+        raise HTTPException(status_code=401, detail=_error_detail("auth_invalid_credentials", "Invalid credentials."))
 
     return _auth_response_for_user(user)
 
@@ -310,7 +355,7 @@ def google_login(
             should_commit = True
 
     if user is None or not user.is_active:
-        raise HTTPException(status_code=401, detail="Invalid credentials.")
+        raise HTTPException(status_code=401, detail=_error_detail("auth_invalid_credentials", "Invalid credentials."))
 
     if should_commit:
         db.commit()

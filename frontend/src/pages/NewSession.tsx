@@ -20,6 +20,7 @@ import {
   type SessionTimerState,
 } from "../lib/session/timers";
 import { useSessionClock } from "../lib/session/useSessionClock";
+import { useSessionDraftSync } from "../lib/session/useSessionDraftSync";
 import { parseVoiceCommand, parseVoiceCommandBatch, parseVoiceSetTuple, type ParsedVoiceCommandBatch, type ParsedVoiceSetTuple } from "../lib/voice/commandParser";
 import type { OfflineVoskRecognizer as OfflineVoskRecognizerClass } from "../lib/voice/offlineRecognizer";
 import { findCurrentSetTarget } from "../lib/voice/setTarget";
@@ -700,56 +701,27 @@ export default function NewSession() {
   }, [prefs.effortScale, routineExercises]);
   const hasPendingSetDelete = deletingSetKeys.length > 0;
 
-  useEffect(() => {
-    if (!athleteId) return;
-
-    if (step !== "capture_session") {
-      if (sessionAthleteId === athleteId && activeSessionDraft?.athleteId === athleteId) {
-        clearDraft();
-      }
-      return;
-    }
-
-    if (!sessionAthleteId || sessionAthleteId !== athleteId) return;
-
-    saveDraft({
-      athleteId: sessionAthleteId,
-      routineId,
-      routineName: selectedRoutineName || activeSessionDraft?.routineName || "",
-      step,
-      startLocal,
-      notes,
-      sleepScore,
-      stressScore,
-      sensationScore,
-      routineExercises,
-      sessionTimer,
-      restTimer,
-      voiceAudit,
-      voiceUsed,
-      updatedAtMs: Date.now(),
-    });
-  }, [
-    activeSessionDraft?.athleteId,
-    activeSessionDraft?.routineName,
+  useSessionDraftSync({
     athleteId,
-    clearDraft,
-    notes,
-    restTimer,
-    routineExercises,
-    routineId,
-    saveDraft,
-    sessionAthleteId,
-    selectedRoutineName,
-    sensationScore,
-    sessionTimer,
-    sleepScore,
-    startLocal,
     step,
+    sessionAthleteId,
+    routineId,
+    selectedRoutineName,
+    fallbackRoutineName: activeSessionDraft?.routineName || "",
+    startLocal,
+    notes,
+    sleepScore,
     stressScore,
+    sensationScore,
+    routineExercises,
+    sessionTimer,
+    restTimer,
     voiceAudit,
     voiceUsed,
-  ]);
+    activeSessionDraft,
+    saveDraft,
+    clearDraft,
+  });
 
   useEffect(
     () => () => {

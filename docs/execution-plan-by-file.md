@@ -243,4 +243,6 @@ Escala usada:
 - `RunDetail.tsx` + `ScenarioCard.tsx`: acción sugerida del día + explicabilidad más clara por escenario.
 - `Planning.tsx` (tracking): resumen operativo (total/activas/atraso/adherencia) + próximo bloque visible por asignación.
 - `NewSession.tsx` fase 2 (parcial): extracción del reloj/ticks a `frontend/src/lib/session/useSessionClock.ts`.
+- `NewSession.tsx` fase 3 (parcial): extracción de sincronización de draft/autosave a `frontend/src/lib/session/useSessionDraftSync.ts`.
 - `Home.tsx` fase 1 P2: estado operativo (sesiones/runs/última sesión) + alertas accionables de recuperación.
+- `auth.py`: errores críticos de autenticación (incluyendo Google) alineados a contrato `code/detail/context`.
