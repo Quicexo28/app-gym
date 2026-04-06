@@ -285,12 +285,29 @@ export default function Login() {
     setBusy(true);
     setError("");
     try {
+      const origin = window.location.origin;
+      const debugClientId =
+        googleClientId.length > 18
+          ? `${googleClientId.slice(0, 10)}...${googleClientId.slice(-8)}`
+          : googleClientId;
+
+      console.info("[GSI DEBUG]", {
+        origin,
+        clientId: googleClientId,
+      });
+
       await loadGoogleScript();
       const credential = await requestGoogleCredential(googleClientId);
       await loginWithGoogle(credential);
       nav("/home", { replace: true });
     } catch (e: unknown) {
-      setError(toFriendlyError(e));
+      const baseError = toFriendlyError(e);
+      const origin = window.location.origin;
+      const debugClientId =
+        googleClientId.length > 18
+          ? `${googleClientId.slice(0, 10)}...${googleClientId.slice(-8)}`
+          : googleClientId;
+      setError(`${baseError} [debug origin=${origin} client=${debugClientId}]`);
     } finally {
       setBusy(false);
     }
