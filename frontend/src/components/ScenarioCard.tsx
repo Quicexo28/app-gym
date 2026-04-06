@@ -26,6 +26,20 @@ export function ScenarioCard({ s }: { s: RunSummaryResponse["top3_scenarios"][nu
       </div>
 
       <div className="sectionHead" style={{ marginTop: 10 }}>
+        <h4>Por que aparece este escenario</h4>
+        <p>Contexto resumido para facilitar decision.</p>
+      </div>
+      {(s.explanation || []).length === 0 ? (
+        <div className="small">Sin explicacion adicional.</div>
+      ) : (
+        <ul className="compactList">
+          {(s.explanation || []).slice(0, 3).map((item, idx) => (
+            <li key={idx}>{item}</li>
+          ))}
+        </ul>
+      )}
+
+      <div className="sectionHead" style={{ marginTop: 10 }}>
         <h4>Palancas</h4>
         <p>Direccion esperada, no prescripcion exacta.</p>
       </div>

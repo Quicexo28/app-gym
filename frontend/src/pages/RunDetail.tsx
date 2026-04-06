@@ -9,6 +9,23 @@ function toPercent(value: number | null | undefined): string {
   return `${Math.round(value * 100)}%`;
 }
 
+function suggestedActionFromScenario(name: string | undefined): string {
+  switch ((name || "").toLowerCase()) {
+    case "recovery":
+      return "Reducir volumen/intensidad por 1-2 sesiones y priorizar recuperacion.";
+    case "progression":
+      return "Subir carga de forma conservadora manteniendo tecnica y control de fatiga.";
+    case "variation":
+      return "Introducir variaciones de estimulo (rango reps/ejercicio) sin aumentar ruido excesivo.";
+    case "stabilize":
+      return "Mantener variables estables para reducir volatilidad y mejorar lectura de respuesta.";
+    case "data_review":
+      return "Revisar calidad de datos antes de ajustar el plan (registro incompleto/inconsistente).";
+    default:
+      return "Mantener plan actual y recopilar una sesion adicional para confirmar tendencia.";
+  }
+}
+
 export default function RunDetail() {
   const params = useParams();
   const runId = decodeURIComponent(params.runId || "");
@@ -36,6 +53,8 @@ export default function RunDetail() {
 
   const latentEntries = useMemo(() => Object.entries(data?.last_latents || {}), [data]);
   const issueEntries = useMemo(() => Object.entries(data?.issues_by_code || {}), [data]);
+  const topScenario = data?.top3_scenarios?.[0];
+  const issuesTotal = useMemo(() => issueEntries.reduce((acc, [, count]) => acc + Number(count || 0), 0), [issueEntries]);
 
   return (
     <div className="container stack">
@@ -62,6 +81,19 @@ export default function RunDetail() {
               <span className="chip">Metric: {data.metric_key}</span>
               <span className="chip">Confianza ultima: {toPercent(data.confidence_last)}</span>
               <span className="chip">{new Date(data.generated_at_utc).toLocaleString()}</span>
+            </div>
+          </section>
+
+          <section className="surface">
+            <div className="sectionHead">
+              <h3>Accion sugerida hoy</h3>
+              <p>Propuesta operativa basada en el escenario top.</p>
+            </div>
+            <div className="stack compactStack" style={{ marginTop: 10 }}>
+              <strong>{suggestedActionFromScenario(topScenario?.name)}</strong>
+              <span className="small">{`Escenario top: ${topScenario?.title || "-"}`}</span>
+              <span className="small">{`Probabilidad: ${toPercent(topScenario?.probability)} | Confianza: ${toPercent(topScenario?.confidence)}`}</span>
+              <span className="small">{`Issues de calidad detectados: ${issuesTotal}`}</span>
             </div>
           </section>
 

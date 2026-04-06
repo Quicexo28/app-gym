@@ -961,6 +961,26 @@ export default function Planning() {
       </section>
     );
   }
+
+  const trackingSummary = useMemo(() => {
+    const total = assignments.length;
+    const active = assignments.filter((item) => item.status === "active").length;
+    const overdue = assignments.filter((item) =>
+      (item.next_blocks || []).some((block) => !!block.target_date && Date.parse(String(block.target_date)) < Date.now()),
+    ).length;
+
+    const adherenceValues = assignments
+      .map((item) => Number(item.adherence))
+      .filter((value) => Number.isFinite(value));
+
+    const avgAdherence =
+      adherenceValues.length > 0
+        ? Number((adherenceValues.reduce((acc, value) => acc + value, 0) / adherenceValues.length).toFixed(3))
+        : null;
+
+    return { total, active, overdue, avgAdherence };
+  }, [assignments]);
+
   return (
     <div className="container stack">
       <header className="titleBlock">
@@ -1053,6 +1073,25 @@ export default function Planning() {
             <h3>Seguimiento</h3>
           </div>
 
+          <div className="statsGrid" style={{ marginTop: 10 }}>
+            <article className="statCard">
+              <div className="smallLabel">Asignaciones</div>
+              <strong>{trackingSummary.total}</strong>
+            </article>
+            <article className="statCard">
+              <div className="smallLabel">Activas</div>
+              <strong>{trackingSummary.active}</strong>
+            </article>
+            <article className="statCard">
+              <div className="smallLabel">Con atraso</div>
+              <strong>{trackingSummary.overdue}</strong>
+            </article>
+            <article className="statCard">
+              <div className="smallLabel">Adherencia promedio</div>
+              <strong>{trackingSummary.avgAdherence === null ? "-" : `${Math.round(trackingSummary.avgAdherence * 100)}%`}</strong>
+            </article>
+          </div>
+
           {loadingAssignments ? <div className="emptyState">Cargando asignaciones...</div> : null}
           {!loadingAssignments ? (
             <div className="gridCards">
@@ -1061,6 +1100,13 @@ export default function Planning() {
                   <strong>{item.template_name || item.template_id}</strong>
                   <span className="small">{`${levelLabel(item.level)} | ${statusLabel(item.status)}`}</span>
                   <span className="small">{`Adherencia: ${Math.round((item.adherence || 0) * 100)}%`}</span>
+                  {(item.next_blocks || []).length > 0 ? (
+                    <span className="small">
+                      {`Proximo: ${(item.next_blocks || [])[0]?.title || "-"}${(item.next_blocks || [])[0]?.target_date ? ` (${(item.next_blocks || [])[0]?.target_date})` : ""}`}
+                    </span>
+                  ) : (
+                    <span className="small">Sin proximos bloques</span>
+                  )}
                   <div className="quickActions">
                     <button className="btn" onClick={() => setSelectedAssignmentId(item.id)}>
                       Detalle

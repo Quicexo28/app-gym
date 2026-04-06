@@ -240,3 +240,5 @@ Escala usada:
 - Cliente frontend (`api.ts`) actualizado para leer `code/context` en errores.
 - `NewSession.tsx` fase 1: extracción de lógica de temporizadores a `frontend/src/lib/session/timers.ts`.
 - `History.tsx` fase 1: filtros de periodo (7/30/90 días) + KPIs de volumen y RPE promedio por ventana.
+- `RunDetail.tsx` + `ScenarioCard.tsx`: acción sugerida del día + explicabilidad más clara por escenario.
+- `Planning.tsx` (tracking): resumen operativo (total/activas/atraso/adherencia) + próximo bloque visible por asignación.

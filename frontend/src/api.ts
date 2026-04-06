@@ -149,6 +149,7 @@ export type RunScenario = {
   probability: number;
   confidence: number;
   title: string;
+  explanation?: string[];
   tradeoffs: string[];
   levers: JsonObject;
 };
