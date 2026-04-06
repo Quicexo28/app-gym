@@ -32,6 +32,7 @@ export default function History() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [runs, setRuns] = useState<RunListItem[]>([]);
   const [busy, setBusy] = useState(false);
+  const [periodDays, setPeriodDays] = useState<7 | 30 | 90>(30);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -53,6 +54,29 @@ export default function History() {
     () => [...sessions].sort((a, b) => String(b.start_time).localeCompare(String(a.start_time))),
     [sessions],
   );
+
+  const filteredSessions = useMemo(() => {
+    const nowMs = Date.now();
+    const windowMs = periodDays * 24 * 60 * 60 * 1000;
+    return sessionsSorted.filter((session) => {
+      const startMs = Date.parse(String(session.start_time || ""));
+      if (!Number.isFinite(startMs)) return false;
+      return nowMs - startMs <= windowMs;
+    });
+  }, [sessionsSorted, periodDays]);
+
+  const periodVolumeKg = useMemo(
+    () => filteredSessions.reduce((acc, session) => acc + volumeLoadKg(session), 0),
+    [filteredSessions],
+  );
+
+  const periodAvgRpe = useMemo(() => {
+    const values = filteredSessions
+      .map((item) => Number(item.rpe))
+      .filter((value) => Number.isFinite(value) && value >= 0);
+    if (values.length === 0) return null;
+    return Number((values.reduce((acc, value) => acc + value, 0) / values.length).toFixed(2));
+  }, [filteredSessions]);
 
   async function runNow() {
     if (!athleteId) return;
@@ -86,16 +110,20 @@ export default function History() {
             <strong>{activeSubject?.label || "Sin asignar"}</strong>
           </article>
           <article className="statCard">
-            <div className="smallLabel">Sesiones</div>
-            <strong>{sessionsSorted.length}</strong>
+            <div className="smallLabel">Sesiones ({periodDays}d)</div>
+            <strong>{filteredSessions.length}</strong>
           </article>
           <article className="statCard">
-            <div className="smallLabel">Runs</div>
+            <div className="smallLabel">Volumen ({periodDays}d)</div>
+            <strong>{formatWeight(periodVolumeKg, prefs.weightUnit)}</strong>
+          </article>
+          <article className="statCard">
+            <div className="smallLabel">{`RPE promedio (${periodDays}d)`}</div>
+            <strong>{periodAvgRpe ?? "-"}</strong>
+          </article>
+          <article className="statCard">
+            <div className="smallLabel">Runs totales</div>
             <strong>{runs.length}</strong>
-          </article>
-          <article className="statCard">
-            <div className="smallLabel">Unidad carga</div>
-            <strong>{prefs.weightUnit}</strong>
           </article>
         </div>
 
@@ -108,6 +136,19 @@ export default function History() {
           </button>
         </div>
 
+        <div className="chipRow" style={{ marginTop: 10 }}>
+          {[7, 30, 90].map((days) => (
+            <button
+              key={days}
+              type="button"
+              className={`chipButton ${periodDays === days ? "activeChipButton" : ""}`}
+              onClick={() => setPeriodDays(days as 7 | 30 | 90)}
+            >
+              {`${days} dias`}
+            </button>
+          ))}
+        </div>
+
         {canSwitch && athleteReady && subjects.filter((subject) => subject.kind === "assigned").length === 0 ? (
           <div className="message error" style={{ marginTop: 12 }}>
             No tienes usuarios asignados. Sigues teniendo acceso completo a tus propios entrenos.
@@ -118,14 +159,14 @@ export default function History() {
       <section className="surface">
         <div className="sectionHead">
           <h3>Sesiones recientes</h3>
-          <p>Ultimas 30 sesiones, ordenadas por fecha.</p>
+          <p>{`Sesiones de los ultimos ${periodDays} dias, ordenadas por fecha.`}</p>
         </div>
 
-        {sessionsSorted.length === 0 ? (
-          <div className="emptyState">Sin sesiones todavia.</div>
+        {filteredSessions.length === 0 ? (
+          <div className="emptyState">Sin sesiones en este periodo.</div>
         ) : (
           <div className="stack compactStack" style={{ marginTop: 10 }}>
-            {sessionsSorted.slice(0, 30).map((s, idx) => {
+            {filteredSessions.slice(0, 30).map((s, idx) => {
               const volKg = volumeLoadKg(s);
               const exercises = (s.exercises || [])
                 .map((e) => formatExerciseNameForList(e.name))

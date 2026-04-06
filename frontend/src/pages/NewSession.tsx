@@ -1,12 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { ingestSessions } from "../api";
+import { getVoiceTrainingConfig, ingestSessions } from "../api";
+import HoloVoiceAssistantOverlay from "../components/HoloVoiceAssistantOverlay";
 import { loadRoutines } from "../lib/storage";
 import type { RoutineExerciseTemplate, RoutineTemplate } from "../lib/storage";
+import {
+  IDLE_SESSION_TIMER,
+  TICK_MS,
+  completeSessionTimerState,
+  computeSessionElapsedMs,
+  createRunningSessionTimer,
+  detectNotificationCapability,
+  formatTimer,
+  pauseSessionTimerState,
+  resumeSessionTimerState,
+  type NotificationCapability,
+  type RestTimerState,
+  type SessionTimerState,
+} from "../lib/session/timers";
+import { parseVoiceCommand, parseVoiceCommandBatch, parseVoiceSetTuple, type ParsedVoiceCommandBatch, type ParsedVoiceSetTuple } from "../lib/voice/commandParser";
 import type { OfflineVoskRecognizer as OfflineVoskRecognizerClass } from "../lib/voice/offlineRecognizer";
 import { findCurrentSetTarget } from "../lib/voice/setTarget";
-import type { OfflineRecognizerFinalTranscript, OfflineRecognizerState } from "../lib/voice/types";
+import {
+  applyVoicePhraseCorrections,
+  loadVoiceTrainingProfile,
+  saveVoiceTrainingProfile,
+  type VoiceTrainingProfile,
+} from "../lib/voice/training";
+import type { OfflineRecognizerFinalTranscript, OfflineRecognizerState, ParsedVoiceCommand } from "../lib/voice/types";
+import { extractWakePhraseFromCandidates } from "../lib/voice/wakePhrase";
 import { toKg } from "../lib/units";
 import type { ActiveSessionVoiceCommandAudit } from "../state/activeSession";
 import { useActiveSession } from "../state/activeSession";
@@ -18,30 +41,27 @@ type SetRow = { reps: string; load: string; completed: boolean; effort: string }
 type RoutineExerciseDraft = { name: string; target_reps_min: number; target_reps_max: number; rest_seconds: number; sets: SetRow[] };
 type SessionStep = "pick_routine" | "capture_session";
 
-type SessionTimerState = {
-  started_at_ms: number | null;
-  running_since_ms: number | null;
-  accumulated_ms: number;
-  completed_at_ms: number | null;
-};
-
-type RestTimerState = {
-  exercise_index: number;
-  set_index: number;
-  exercise_name: string;
-  duration_seconds: number;
-  started_at_ms: number;
-  ends_at_ms: number;
-  notified: boolean;
-};
-
-type NotificationCapability = NotificationPermission | "unsupported";
 
 type SessionDraftCommand =
   | { type: "set_reps"; exercise_index: number; set_index: number; value: string }
   | { type: "set_load"; exercise_index: number; set_index: number; value: string }
   | { type: "set_set_completed"; exercise_index: number; set_index: number; value: boolean }
   | { type: "set_set_effort"; exercise_index: number; set_index: number; value: string };
+
+type VoiceTranscriptSource = "microphone";
+
+type VoiceApplyOutcome = {
+  applied: boolean;
+  reason: string;
+  intent: ActiveSessionVoiceCommandAudit["intent"];
+  exercise_index: number | null;
+  set_index: number | null;
+  exercise_name: string | null;
+  value_text: string | null;
+  response_text: string | null;
+};
+
+type VoiceOrbMode = "docked_idle" | "focus_listening" | "error" | "muted";
 
 type PendingSetDelete = {
   id: string;
@@ -75,13 +95,6 @@ const STRESS_LABEL_POINTS = [
   { score: 6.5, label: "medio-alto" },
   { score: 9, label: "alto" },
 ] as const;
-const IDLE_SESSION_TIMER: SessionTimerState = {
-  started_at_ms: null,
-  running_since_ms: null,
-  accumulated_ms: 0,
-  completed_at_ms: null,
-};
-const TICK_MS = 1_000;
 const UNCHECK_SET_ANIMATION_MS = 700;
 const DELETE_SET_ANIMATION_MS = 1_500;
 const DELETE_SET_UNDO_TIMEOUT_MS = 7_000;
@@ -92,8 +105,18 @@ const VOICE_ENGINE = "vosk-browser@0.0.8";
 const VOICE_MODEL_ID = "vosk-model-small-es-0.42";
 const VOICE_MODEL_URL = `/models/${VOICE_MODEL_ID}.zip`;
 const VOICE_LANGUAGE = "es-ES";
-const VOICE_WAKE_PHRASE = "test";
+const VOICE_WAKE_PHRASE = "prueba";
 const VOICE_ASSIST_DESKTOP_KEY = "coach_ai_voice_assist_desktop_v1";
+const MAX_WAKE_PHRASE_HINTS = 5;
+const VOICE_WAKE_COMMAND_WINDOW_MS = 12_000;
+const VOICE_ORB_COMMAND_FOCUS_MS = 900;
+const VOICE_ORB_WAKE_BUFFER_MS = 1_200;
+const VOICE_ASSISTANT_RESPONSE_MS = 2_400;
+const VOICE_WAKE_PARTIAL_FOCUS_COOLDOWN_MS = 1_100;
+const VOICE_ORB_DEPLOY_MIN_GAP_MS = 420;
+const VOICE_WAKE_SOUND_COOLDOWN_MS = 1_200;
+
+type VoiceSfxCue = "listen_start" | "listen_stop";
 
 function readVoiceAssistDesktopPreference(): boolean {
   if (typeof window === "undefined") return true;
@@ -103,12 +126,25 @@ function readVoiceAssistDesktopPreference(): boolean {
   return true;
 }
 
-function voiceStatusLabel(status: OfflineRecognizerState): string {
-  if (status === "inactive") return "Inactiva";
-  if (status === "loading") return "Cargando modelo";
-  if (status === "listening") return "Escuchando";
-  if (status === "error") return "Error";
-  return "Armada";
+function normalizeWakePhrase(raw: string): string {
+  return normalizeTranscriptText(raw).toLowerCase();
+}
+
+function buildWakePhraseCandidates(wakeAliases: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const rawWakePhrase of [VOICE_WAKE_PHRASE, ...wakeAliases]) {
+    const wakePhrase = normalizeWakePhrase(rawWakePhrase);
+    if (!wakePhrase || seen.has(wakePhrase)) continue;
+    seen.add(wakePhrase);
+    out.push(wakePhrase);
+  }
+  if (out.length === 0) return [VOICE_WAKE_PHRASE];
+  return out;
+}
+
+function wakePhraseHintList(wakePhrases: string[]): string {
+  return wakePhrases.slice(0, MAX_WAKE_PHRASE_HINTS).join(", ");
 }
 
 function normalizeTranscriptText(raw: string): string {
@@ -122,6 +158,51 @@ function normalizeTranscriptText(raw: string): string {
 function clampVoiceConfidence(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, Number(value.toFixed(3))));
+}
+
+function getVoiceSfxAudioContextCtor(): typeof AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const browserWindow = window as unknown as {
+    AudioContext?: typeof AudioContext;
+    webkitAudioContext?: typeof AudioContext;
+  };
+  return browserWindow.AudioContext ?? browserWindow.webkitAudioContext ?? null;
+}
+
+function scheduleVoiceSfxTone(
+  context: AudioContext,
+  options: {
+    startAtS: number;
+    durationMs: number;
+    frequencyStartHz: number;
+    frequencyEndHz?: number;
+    gain: number;
+    waveType?: OscillatorType;
+  },
+): number {
+  const startAtS = options.startAtS;
+  const durationS = Math.max(0.02, options.durationMs / 1000);
+  const endAtS = startAtS + durationS;
+
+  const oscillator = context.createOscillator();
+  oscillator.type = options.waveType ?? "sine";
+  oscillator.frequency.setValueAtTime(Math.max(40, options.frequencyStartHz), startAtS);
+  if (typeof options.frequencyEndHz === "number" && Number.isFinite(options.frequencyEndHz)) {
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(40, options.frequencyEndHz), endAtS);
+  }
+
+  const gainNode = context.createGain();
+  gainNode.gain.setValueAtTime(0.0001, startAtS);
+  gainNode.gain.exponentialRampToValueAtTime(Math.max(0.0002, options.gain), startAtS + Math.min(0.02, durationS * 0.45));
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, endAtS);
+
+  oscillator.connect(gainNode);
+  gainNode.connect(context.destination);
+
+  oscillator.start(startAtS);
+  oscillator.stop(endAtS + 0.02);
+
+  return endAtS;
 }
 
 function describeMicrophoneError(cause: unknown): string {
@@ -151,6 +232,11 @@ function appendVoiceTranscript(previous: string, chunk: string): string {
   return `${previous} ${normalizedChunk}`.trim();
 }
 
+function formatVoiceNumericText(value: number, maxDecimals = 2): string {
+  const rounded = Number(value.toFixed(maxDecimals));
+  return String(rounded);
+}
+
 function toISOZ(datetimeLocal: string): string {
   const d = new Date(datetimeLocal);
   return d.toISOString();
@@ -160,19 +246,6 @@ function deviceDatetimeLocal(): string {
   const now = new Date();
   const timezoneOffsetMs = now.getTimezoneOffset() * 60_000;
   return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
-}
-
-function formatTimer(totalSeconds: number): string {
-  const safe = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(safe / 3600);
-  const minutes = Math.floor((safe % 3600) / 60);
-  const seconds = safe % 60;
-
-  if (hours > 0) {
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function formatRepsRange(min: number, max: number): string {
@@ -193,17 +266,43 @@ function setRowAnimationKey(exerciseIndex: number, setIndex: number): string {
   return `${exerciseIndex}:${setIndex}`;
 }
 
-function detectNotificationCapability(): NotificationCapability {
-  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
-  return Notification.permission;
-}
-
 function defaultSetForExercise(): SetRow {
   return {
     reps: "",
     load: "",
     completed: false,
     effort: "",
+  };
+}
+
+function pickNearbySetValue(exercise: RoutineExerciseDraft, setIndex: number, key: "load" | "reps" | "effort"): string {
+  for (let index = setIndex - 1; index >= 0; index -= 1) {
+    const value = exercise.sets[index]?.[key]?.trim() || "";
+    if (value) return value;
+  }
+  for (let index = setIndex + 1; index < exercise.sets.length; index += 1) {
+    const value = exercise.sets[index]?.[key]?.trim() || "";
+    if (value) return value;
+  }
+  return "";
+}
+
+function fillSetSuggestionsOnComplete(
+  set: SetRow,
+  exercise: RoutineExerciseDraft,
+  setIndex: number,
+  effortScale: "rpe" | "rir",
+): SetRow {
+  const suggestedReps = String(Math.max(1, Math.round(exercise.target_reps_min || 1)));
+  const suggestedLoad = pickNearbySetValue(exercise, setIndex, "load");
+  const suggestedEffort = effortScale === "rir" ? "2" : "8";
+  const nearbyEffort = pickNearbySetValue(exercise, setIndex, "effort");
+
+  return {
+    ...set,
+    reps: set.reps.trim() || suggestedReps,
+    load: set.load.trim() || suggestedLoad,
+    effort: set.effort.trim() || nearbyEffort || suggestedEffort,
   };
 }
 
@@ -239,52 +338,6 @@ function routineToDraft(routine: RoutineTemplate): RoutineExerciseDraft[] {
     rest_seconds: exercise.rest_seconds,
     sets: Array.from({ length: exercise.target_sets }, () => defaultSetForExercise()),
   }));
-}
-
-function createRunningSessionTimer(nowMs: number): SessionTimerState {
-  return {
-    started_at_ms: nowMs,
-    running_since_ms: nowMs,
-    accumulated_ms: 0,
-    completed_at_ms: null,
-  };
-}
-
-function computeSessionElapsedMs(timer: SessionTimerState, nowMs: number): number {
-  const chunkMs = timer.running_since_ms === null ? 0 : Math.max(0, nowMs - timer.running_since_ms);
-  return Math.max(0, timer.accumulated_ms + chunkMs);
-}
-
-function pauseSessionTimerState(timer: SessionTimerState, nowMs: number): SessionTimerState {
-  if (timer.running_since_ms === null || timer.completed_at_ms !== null) return timer;
-  return {
-    ...timer,
-    running_since_ms: null,
-    accumulated_ms: computeSessionElapsedMs(timer, nowMs),
-  };
-}
-
-function resumeSessionTimerState(timer: SessionTimerState, nowMs: number): SessionTimerState {
-  if (timer.completed_at_ms !== null) return timer;
-  if (timer.running_since_ms !== null) return timer;
-  if (timer.started_at_ms === null) {
-    return createRunningSessionTimer(nowMs);
-  }
-  return {
-    ...timer,
-    running_since_ms: nowMs,
-  };
-}
-
-function completeSessionTimerState(timer: SessionTimerState, nowMs: number): SessionTimerState {
-  if (timer.completed_at_ms !== null) return timer;
-  const elapsedMs = computeSessionElapsedMs(timer, nowMs);
-  return {
-    started_at_ms: timer.started_at_ms ?? nowMs,
-    running_since_ms: null,
-    accumulated_ms: elapsedMs,
-    completed_at_ms: nowMs,
-  };
 }
 
 function parseSetEffortValue(
@@ -412,7 +465,14 @@ export default function NewSession() {
   const [voiceStatus, setVoiceStatus] = useState<OfflineRecognizerState>("inactive");
   const [voiceError, setVoiceError] = useState<string>("");
   const [voicePartial, setVoicePartial] = useState<string>("");
-  const [clipboardBusy, setClipboardBusy] = useState(false);
+  const [voiceTrainingProfile, setVoiceTrainingProfile] = useState<VoiceTrainingProfile>(() => loadVoiceTrainingProfile());
+  const [voiceOrbMode, setVoiceOrbMode] = useState<VoiceOrbMode>(() =>
+    readVoiceAssistDesktopPreference() ? "docked_idle" : "muted",
+  );
+  const [voiceOrbFocusedUntilMs, setVoiceOrbFocusedUntilMs] = useState<number | null>(null);
+  const [, setVoiceOrbWakeAnimationTick] = useState(0);
+  const [voiceAssistantResponse, setVoiceAssistantResponse] = useState<string>("");
+  const [voiceAssistantResponseUntilMs, setVoiceAssistantResponseUntilMs] = useState<number | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
@@ -425,8 +485,24 @@ export default function NewSession() {
   const pendingSetDeletesRef = useRef<Map<string, PendingSetDelete>>(new Map());
   const nextSetDeleteIdRef = useRef(1);
   const activeSessionDraftRef = useRef(activeSessionDraft);
+  const routineExercisesRef = useRef(routineExercises);
+  const restTimerRef = useRef(restTimer);
+  const prefsRef = useRef(prefs);
+  const processVoiceTranscriptRef = useRef<(rawTranscript: string, confidence: number, source: VoiceTranscriptSource) => void>(
+    () => undefined,
+  );
   const voiceRecognizerRef = useRef<OfflineVoskRecognizerClass | null>(null);
+  const voiceTrainingProfileRef = useRef<VoiceTrainingProfile>(voiceTrainingProfile);
   const voiceStatusPulseTimeoutRef = useRef<number | null>(null);
+  const voiceSfxAudioContextRef = useRef<AudioContext | null>(null);
+  const voiceWakeSoundLastAtMsRef = useRef(0);
+  const voiceAutoStartInFlightRef = useRef(false);
+  const pendingWakeRef = useRef<{ phrase: string; expiresAtMs: number } | null>(null);
+  const voicePartialWakeFocusRef = useRef<{ lastFocusAtMs: number; lastWakeText: string }>({
+    lastFocusAtMs: 0,
+    lastWakeText: "",
+  });
+  const voiceOrbLastDeployAtMsRef = useRef(0);
   const clearAnimationTimeouts = useCallback(() => {
     for (const timeoutId of uncheckTimeoutsRef.current) {
       window.clearTimeout(timeoutId);
@@ -457,6 +533,43 @@ export default function NewSession() {
   }, [activeSessionDraft]);
 
   useEffect(() => {
+    routineExercisesRef.current = routineExercises;
+  }, [routineExercises]);
+
+  useEffect(() => {
+    restTimerRef.current = restTimer;
+  }, [restTimer]);
+
+  useEffect(() => {
+    prefsRef.current = prefs;
+  }, [prefs]);
+
+  useEffect(() => {
+    voiceTrainingProfileRef.current = voiceTrainingProfile;
+  }, [voiceTrainingProfile]);
+
+  useEffect(() => {
+    if (!athleteId) {
+      setVoiceTrainingProfile(loadVoiceTrainingProfile());
+      return;
+    }
+    let cancelled = false;
+    getVoiceTrainingConfig()
+      .then((profile) => {
+        if (cancelled) return;
+        setVoiceTrainingProfile(profile);
+        saveVoiceTrainingProfile(profile);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setVoiceTrainingProfile(loadVoiceTrainingProfile());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [athleteId]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(VOICE_ASSIST_DESKTOP_KEY, voiceAssistDesktopEnabled ? "1" : "0");
   }, [voiceAssistDesktopEnabled]);
@@ -484,7 +597,12 @@ export default function NewSession() {
       setVoiceUsed(false);
       setVoiceError("");
       setVoicePartial("");
+      setVoiceAssistantResponse("");
+      setVoiceAssistantResponseUntilMs(null);
+      pendingWakeRef.current = null;
       setVoiceStatus("inactive");
+      setVoiceOrbFocusedUntilMs(null);
+      setVoiceOrbMode(readVoiceAssistDesktopPreference() ? "docked_idle" : "muted");
       return;
     }
 
@@ -508,7 +626,12 @@ export default function NewSession() {
       setVoiceUsed(stored.voiceUsed);
       setVoiceError("");
       setVoicePartial("");
+      setVoiceAssistantResponse("");
+      setVoiceAssistantResponseUntilMs(null);
+      pendingWakeRef.current = null;
       setVoiceStatus("inactive");
+      setVoiceOrbFocusedUntilMs(null);
+      setVoiceOrbMode(readVoiceAssistDesktopPreference() ? "docked_idle" : "muted");
       setError("");
       return;
     }
@@ -533,7 +656,12 @@ export default function NewSession() {
     setVoiceUsed(false);
     setVoiceError("");
     setVoicePartial("");
+    setVoiceAssistantResponse("");
+    setVoiceAssistantResponseUntilMs(null);
+    pendingWakeRef.current = null;
     setVoiceStatus("inactive");
+    setVoiceOrbFocusedUntilMs(null);
+    setVoiceOrbMode(readVoiceAssistDesktopPreference() ? "docked_idle" : "muted");
   }, [athleteId, resetSetAnimations]);
 
   const sortedRoutines = useMemo(() => [...routines].sort((a, b) => a.name.localeCompare(b.name)), [routines]);
@@ -552,7 +680,6 @@ export default function NewSession() {
     () => routineExercises.length > 0 && routineExercises.every((exercise) => exercise.sets.length > 0 && exercise.sets.every((set) => set.completed)),
     [routineExercises],
   );
-  const voiceCurrentTarget = useMemo(() => findCurrentSetTarget(routineExercises), [routineExercises]);
   const restProgressPct = useMemo(() => {
     if (!restTimer || restTimer.duration_seconds <= 0) return 0;
     const elapsedMs = Math.max(0, nowMs - restTimer.started_at_ms);
@@ -710,63 +837,835 @@ export default function NewSession() {
     });
   }, []);
 
-  const transcribeClipboardText = useCallback(async () => {
-    setVoiceError("");
-    if (!voiceAssistDesktopEnabled) {
-      setVoiceError("La asistencia por voz esta desactivada.");
-      return;
-    }
-    if (!("clipboard" in navigator) || typeof navigator.clipboard.readText !== "function") {
-      setVoiceError("Este navegador no permite leer el portapapeles.");
-      return;
+  function registerVoiceUndoForSet(
+    exerciseIndex: number,
+    setIndex: number,
+    exerciseName: string,
+    previousSetSnapshot: SetRow,
+    previousRestTimer: RestTimerState | null,
+  ): void {
+    registerUndo({
+      message: `Voz: revertir cambio en ${formatExerciseNameForCard(exerciseName)} set ${setIndex + 1}.`,
+      onUndo: async () => {
+        setRoutineExercises((prev) =>
+          prev.map((entry, exIndex) => {
+            if (exIndex !== exerciseIndex) return entry;
+            if (setIndex < 0 || setIndex >= entry.sets.length) return entry;
+            return {
+              ...entry,
+              sets: entry.sets.map((set, currentSetIndex) => (currentSetIndex === setIndex ? { ...previousSetSnapshot } : set)),
+            };
+          }),
+        );
+        setRestTimer(previousRestTimer ? { ...previousRestTimer } : null);
+        setError("");
+      },
+    });
+  }
+
+  function applyVoiceCommandWithUndo(parsedCommand: ParsedVoiceCommand): VoiceApplyOutcome {
+    const exercises = routineExercisesRef.current;
+    const target = findCurrentSetTarget(exercises);
+    if (!target) {
+      return {
+        applied: false,
+        reason: "No hay sets pendientes para aplicar comando por voz.",
+        intent: parsedCommand.intent,
+        exercise_index: null,
+        set_index: null,
+        exercise_name: null,
+        value_text: parsedCommand.valueText,
+        response_text: null,
+      };
     }
 
-    setClipboardBusy(true);
-    try {
-      const clipboardText = await navigator.clipboard.readText();
-      const normalized = normalizeTranscriptText(clipboardText);
-      if (!normalized) {
-        setVoiceError("El portapapeles no contiene texto para transcribir.");
+    const exercise = exercises[target.exerciseIndex];
+    const targetSet = exercise?.sets[target.setIndex];
+    if (!exercise || !targetSet) {
+      return {
+        applied: false,
+        reason: "No pude resolver el set actual para aplicar comando.",
+        intent: parsedCommand.intent,
+        exercise_index: target.exerciseIndex,
+        set_index: target.setIndex,
+        exercise_name: target.exerciseName,
+        value_text: parsedCommand.valueText,
+        response_text: null,
+      };
+    }
+
+    let command: SessionDraftCommand;
+    let valueText: string | null = parsedCommand.valueText;
+    let responseText: string | null = null;
+
+    if (parsedCommand.intent === "set_set_completed") {
+      if (targetSet.completed) {
+        return {
+          applied: false,
+          reason: "El set actual ya estaba marcado como completado.",
+            intent: parsedCommand.intent,
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: "true",
+            response_text: null,
+        };
+      }
+      command = {
+        type: "set_set_completed",
+        exercise_index: target.exerciseIndex,
+        set_index: target.setIndex,
+        value: true,
+      };
+      valueText = "true";
+      responseText = "Serie registrada.";
+    } else if (parsedCommand.intent === "set_reps") {
+      if (typeof parsedCommand.value !== "number" || !Number.isFinite(parsedCommand.value)) {
+        return {
+          applied: false,
+          reason: "No pude leer un valor valido para repeticiones.",
+            intent: parsedCommand.intent,
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: null,
+            response_text: null,
+        };
+      }
+      const repsValue = Math.round(parsedCommand.value);
+      if (repsValue <= 0) {
+        return {
+          applied: false,
+          reason: "Las repeticiones deben ser mayores a cero.",
+            intent: parsedCommand.intent,
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: String(repsValue),
+            response_text: null,
+        };
+      }
+      valueText = String(repsValue);
+      command = {
+        type: "set_reps",
+        exercise_index: target.exerciseIndex,
+        set_index: target.setIndex,
+        value: valueText,
+      };
+      responseText = `Repeticiones asignadas en ${valueText}.`;
+    } else if (parsedCommand.intent === "set_load") {
+      if (typeof parsedCommand.value !== "number" || !Number.isFinite(parsedCommand.value) || parsedCommand.value < 0) {
+        return {
+          applied: false,
+          reason: "No pude leer una carga valida para el set actual.",
+            intent: parsedCommand.intent,
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: null,
+            response_text: null,
+        };
+      }
+      valueText = formatVoiceNumericText(parsedCommand.value, 2);
+      command = {
+        type: "set_load",
+        exercise_index: target.exerciseIndex,
+        set_index: target.setIndex,
+        value: valueText,
+      };
+      responseText = `Peso ajustado en ${valueText} ${prefsRef.current.weightUnit}.`;
+    } else {
+      if (typeof parsedCommand.value !== "number" || !Number.isFinite(parsedCommand.value)) {
+        return {
+          applied: false,
+          reason: `No pude leer un valor valido para ${prefsRef.current.effortScale.toUpperCase()}.`,
+            intent: parsedCommand.intent,
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: null,
+            response_text: null,
+        };
+      }
+      const maxEffort = prefsRef.current.effortScale === "rir" ? 6 : 10;
+      if (parsedCommand.value < 0 || parsedCommand.value > maxEffort) {
+        return {
+          applied: false,
+          reason: `${prefsRef.current.effortScale.toUpperCase()} fuera de rango (0-${maxEffort}).`,
+            intent: parsedCommand.intent,
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: formatVoiceNumericText(parsedCommand.value, 2),
+            response_text: null,
+        };
+      }
+      valueText = formatVoiceNumericText(parsedCommand.value, 2);
+      command = {
+        type: "set_set_effort",
+        exercise_index: target.exerciseIndex,
+        set_index: target.setIndex,
+        value: valueText,
+      };
+      responseText = `${prefsRef.current.effortScale.toUpperCase()} asignado en ${valueText}.`;
+    }
+
+    const previousSetSnapshot = { ...targetSet };
+    const previousRestTimer = restTimerRef.current ? { ...restTimerRef.current } : null;
+    applySessionDraftCommand(command);
+    setError("");
+
+    registerVoiceUndoForSet(
+      target.exerciseIndex,
+      target.setIndex,
+      target.exerciseName,
+      previousSetSnapshot,
+      previousRestTimer,
+    );
+
+    return {
+      applied: true,
+      reason: `Comando aplicado al set actual (${formatExerciseNameForCard(target.exerciseName)} set ${target.setIndex + 1}).`,
+      intent: parsedCommand.intent,
+      exercise_index: target.exerciseIndex,
+      set_index: target.setIndex,
+      exercise_name: target.exerciseName,
+      value_text: valueText,
+      response_text: responseText,
+    };
+  }
+
+  function applyVoiceTupleWithUndo(tuple: ParsedVoiceSetTuple): VoiceApplyOutcome {
+    const exercises = routineExercisesRef.current;
+    const target = findCurrentSetTarget(exercises);
+    if (!target) {
+      return {
+        applied: false,
+        reason: "No hay sets pendientes para aplicar comando compacto.",
+        intent: "set_bundle",
+        exercise_index: null,
+        set_index: null,
+        exercise_name: null,
+        value_text: tuple.valueText,
+        response_text: null,
+      };
+    }
+
+    const exercise = exercises[target.exerciseIndex];
+    const targetSet = exercise?.sets[target.setIndex];
+    if (!exercise || !targetSet) {
+      return {
+        applied: false,
+        reason: "No pude resolver el set actual para el comando compacto.",
+        intent: "set_bundle",
+        exercise_index: target.exerciseIndex,
+        set_index: target.setIndex,
+        exercise_name: target.exerciseName,
+        value_text: tuple.valueText,
+        response_text: null,
+      };
+    }
+
+    if (tuple.load < 0 || tuple.reps <= 0) {
+      return {
+        applied: false,
+        reason: "Comando compacto invalido: carga>=0 y reps>0.",
+        intent: "set_bundle",
+        exercise_index: target.exerciseIndex,
+        set_index: target.setIndex,
+        exercise_name: target.exerciseName,
+        value_text: tuple.valueText,
+        response_text: null,
+      };
+    }
+
+    const maxEffort = prefsRef.current.effortScale === "rir" ? 6 : 10;
+    if (tuple.effort < 0 || tuple.effort > maxEffort) {
+      return {
+        applied: false,
+        reason: `Comando compacto invalido: ${prefsRef.current.effortScale.toUpperCase()} fuera de rango (0-${maxEffort}).`,
+        intent: "set_bundle",
+        exercise_index: target.exerciseIndex,
+        set_index: target.setIndex,
+        exercise_name: target.exerciseName,
+        value_text: tuple.valueText,
+        response_text: null,
+      };
+    }
+
+    const loadText = formatVoiceNumericText(tuple.load, 2);
+    const repsText = String(Math.round(tuple.reps));
+    const effortText = formatVoiceNumericText(tuple.effort, 2);
+    const shouldComplete = tuple.complete;
+    const previousSetSnapshot = { ...targetSet };
+    const previousRestTimer = restTimerRef.current ? { ...restTimerRef.current } : null;
+
+    setRoutineExercises((prev) =>
+      prev.map((entry, exIndex) => {
+        if (exIndex !== target.exerciseIndex) return entry;
+        if (target.setIndex < 0 || target.setIndex >= entry.sets.length) return entry;
+        return {
+          ...entry,
+          sets: entry.sets.map((set, currentSetIndex) =>
+            currentSetIndex === target.setIndex
+              ? {
+                  ...set,
+                  load: loadText,
+                  reps: repsText,
+                  effort: effortText,
+                  completed: shouldComplete ? true : set.completed,
+                }
+              : set,
+          ),
+        };
+      }),
+    );
+    if (shouldComplete && !targetSet.completed) {
+      startRestForSet(target.exerciseIndex, target.setIndex);
+    }
+    setError("");
+
+    registerVoiceUndoForSet(
+      target.exerciseIndex,
+      target.setIndex,
+      target.exerciseName,
+      previousSetSnapshot,
+      previousRestTimer,
+    );
+
+    return {
+      applied: true,
+      reason: `Comando compacto aplicado (${loadText} ${prefsRef.current.weightUnit}, ${repsText} reps, ${prefsRef.current.effortScale.toUpperCase()} ${effortText}${shouldComplete ? ", completar set" : ""}).`,
+      intent: "set_bundle",
+      exercise_index: target.exerciseIndex,
+      set_index: target.setIndex,
+      exercise_name: target.exerciseName,
+      value_text: `${loadText} ${prefsRef.current.weightUnit} | ${repsText} reps | ${prefsRef.current.effortScale.toUpperCase()} ${effortText}${
+        shouldComplete ? " | completar" : ""
+      }`,
+      response_text: `Peso ajustado en ${loadText} ${prefsRef.current.weightUnit}. Repeticiones asignadas en ${repsText}. ${prefsRef.current.effortScale.toUpperCase()} asignado en ${effortText}.${shouldComplete ? " Serie registrada." : ""}`,
+    };
+  }
+
+  function applyVoiceBatchWithUndo(batch: ParsedVoiceCommandBatch): VoiceApplyOutcome {
+    const exercises = routineExercisesRef.current;
+    const target = findCurrentSetTarget(exercises);
+    if (!target) {
+      return {
+        applied: false,
+        reason: "No hay sets pendientes para aplicar comando multiple.",
+        intent: "set_bundle",
+        exercise_index: null,
+        set_index: null,
+        exercise_name: null,
+        value_text: batch.valueText,
+        response_text: null,
+      };
+    }
+
+    const exercise = exercises[target.exerciseIndex];
+    const targetSet = exercise?.sets[target.setIndex];
+    if (!exercise || !targetSet) {
+      return {
+        applied: false,
+        reason: "No pude resolver el set actual para comando multiple.",
+        intent: "set_bundle",
+        exercise_index: target.exerciseIndex,
+        set_index: target.setIndex,
+        exercise_name: target.exerciseName,
+        value_text: batch.valueText,
+        response_text: null,
+      };
+    }
+
+    const nextSet: SetRow = { ...targetSet };
+    let changed = false;
+    const responseParts: string[] = [];
+
+    for (const command of batch.commands) {
+      if (command.intent === "set_set_completed") {
+        if (!nextSet.completed) {
+          nextSet.completed = true;
+          changed = true;
+          responseParts.push("Serie registrada.");
+        }
+        continue;
+      }
+
+      if (command.intent === "set_load") {
+        if (typeof command.value !== "number" || !Number.isFinite(command.value) || command.value < 0) {
+          return {
+            applied: false,
+            reason: "Valor invalido de carga en comando multiple.",
+            intent: "set_bundle",
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: batch.valueText,
+            response_text: null,
+          };
+        }
+        const loadText = formatVoiceNumericText(command.value, 2);
+        if (nextSet.load !== loadText) {
+          nextSet.load = loadText;
+          changed = true;
+          responseParts.push(`Peso ajustado en ${loadText} ${prefsRef.current.weightUnit}.`);
+        }
+        continue;
+      }
+
+      if (command.intent === "set_reps") {
+        if (typeof command.value !== "number" || !Number.isFinite(command.value)) {
+          return {
+            applied: false,
+            reason: "Valor invalido de repeticiones en comando multiple.",
+            intent: "set_bundle",
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: batch.valueText,
+            response_text: null,
+          };
+        }
+        const repsValue = Math.round(command.value);
+        if (repsValue <= 0) {
+          return {
+            applied: false,
+            reason: "Las repeticiones deben ser mayores a cero.",
+            intent: "set_bundle",
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: batch.valueText,
+            response_text: null,
+          };
+        }
+        const repsText = String(repsValue);
+        if (nextSet.reps !== repsText) {
+          nextSet.reps = repsText;
+          changed = true;
+          responseParts.push(`Repeticiones asignadas en ${repsText}.`);
+        }
+        continue;
+      }
+
+      if (command.intent === "set_set_effort") {
+        if (typeof command.value !== "number" || !Number.isFinite(command.value)) {
+          return {
+            applied: false,
+            reason: `Valor invalido de ${prefsRef.current.effortScale.toUpperCase()} en comando multiple.`,
+            intent: "set_bundle",
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: batch.valueText,
+            response_text: null,
+          };
+        }
+        const maxEffort = prefsRef.current.effortScale === "rir" ? 6 : 10;
+        if (command.value < 0 || command.value > maxEffort) {
+          return {
+            applied: false,
+            reason: `${prefsRef.current.effortScale.toUpperCase()} fuera de rango (0-${maxEffort}).`,
+            intent: "set_bundle",
+            exercise_index: target.exerciseIndex,
+            set_index: target.setIndex,
+            exercise_name: target.exerciseName,
+            value_text: batch.valueText,
+            response_text: null,
+          };
+        }
+        const effortText = formatVoiceNumericText(command.value, 2);
+        if (nextSet.effort !== effortText) {
+          nextSet.effort = effortText;
+          changed = true;
+          responseParts.push(`${prefsRef.current.effortScale.toUpperCase()} asignado en ${effortText}.`);
+        }
+      }
+    }
+
+    if (!changed) {
+      return {
+        applied: false,
+        reason: "El comando multiple no genero cambios en el set actual.",
+        intent: "set_bundle",
+        exercise_index: target.exerciseIndex,
+        set_index: target.setIndex,
+        exercise_name: target.exerciseName,
+        value_text: batch.valueText,
+        response_text: null,
+      };
+    }
+
+    const previousSetSnapshot = { ...targetSet };
+    const previousRestTimer = restTimerRef.current ? { ...restTimerRef.current } : null;
+    setRoutineExercises((prev) =>
+      prev.map((entry, exIndex) => {
+        if (exIndex !== target.exerciseIndex) return entry;
+        if (target.setIndex < 0 || target.setIndex >= entry.sets.length) return entry;
+        return {
+          ...entry,
+          sets: entry.sets.map((set, currentSetIndex) => (currentSetIndex === target.setIndex ? { ...nextSet } : set)),
+        };
+      }),
+    );
+    if (!targetSet.completed && nextSet.completed) {
+      startRestForSet(target.exerciseIndex, target.setIndex);
+    }
+    setError("");
+
+    registerVoiceUndoForSet(
+      target.exerciseIndex,
+      target.setIndex,
+      target.exerciseName,
+      previousSetSnapshot,
+      previousRestTimer,
+    );
+
+    return {
+      applied: true,
+      reason: `Comando multiple aplicado al set actual (${formatExerciseNameForCard(target.exerciseName)} set ${target.setIndex + 1}).`,
+      intent: "set_bundle",
+      exercise_index: target.exerciseIndex,
+      set_index: target.setIndex,
+      exercise_name: target.exerciseName,
+      value_text: batch.valueText,
+      response_text: responseParts.length > 0 ? responseParts.join(" ") : "Set actualizado.",
+    };
+  }
+
+  const focusVoiceOrb = useCallback((durationMs: number) => {
+    const expiresAtMs = Date.now() + Math.max(200, durationMs);
+    setVoiceOrbFocusedUntilMs(expiresAtMs);
+    setVoiceOrbMode("focus_listening");
+  }, []);
+
+  const syncVoiceOrbDeployWithWake = useCallback(
+    (durationMs: number): boolean => {
+      const now = Date.now();
+      let deployed = false;
+      if (now - voiceOrbLastDeployAtMsRef.current >= VOICE_ORB_DEPLOY_MIN_GAP_MS) {
+        voiceOrbLastDeployAtMsRef.current = now;
+        setVoiceOrbWakeAnimationTick((prev) => prev + 1);
+        deployed = true;
+      }
+      focusVoiceOrb(durationMs);
+      return deployed;
+    },
+    [focusVoiceOrb],
+  );
+
+  const syncVoiceOrbFromPartialWake = useCallback(
+    (partialTranscript: string): boolean => {
+      if (!partialTranscript || !voiceAssistDesktopEnabled) return false;
+      const normalizedPartial = normalizeTranscriptText(partialTranscript);
+      if (!normalizedPartial) return false;
+
+      const trainingProfile = voiceTrainingProfileRef.current;
+      const wakeCandidates = buildWakePhraseCandidates(trainingProfile.wake_aliases);
+      const wake = extractWakePhraseFromCandidates(normalizedPartial, wakeCandidates);
+      if (!wake.detected) return false;
+
+      const now = Date.now();
+      const previous = voicePartialWakeFocusRef.current;
+      const sameWakeText = previous.lastWakeText === wake.normalizedText;
+      if (sameWakeText && now - previous.lastFocusAtMs < VOICE_WAKE_COMMAND_WINDOW_MS) return false;
+      if (!sameWakeText && now - previous.lastFocusAtMs < VOICE_WAKE_PARTIAL_FOCUS_COOLDOWN_MS) return false;
+
+      voicePartialWakeFocusRef.current = {
+        lastFocusAtMs: now,
+        lastWakeText: wake.normalizedText,
+      };
+      return syncVoiceOrbDeployWithWake(VOICE_WAKE_COMMAND_WINDOW_MS + VOICE_ORB_WAKE_BUFFER_MS);
+    },
+    [syncVoiceOrbDeployWithWake, voiceAssistDesktopEnabled],
+  );
+
+  const emitVoiceAssistantResponse = useCallback((message: string, durationMs = VOICE_ASSISTANT_RESPONSE_MS) => {
+    if (!message.trim()) return;
+    setVoiceAssistantResponse(message.trim());
+    setVoiceAssistantResponseUntilMs(Date.now() + Math.max(800, durationMs));
+  }, []);
+
+  const playVoiceSfxCue = useCallback((cue: VoiceSfxCue) => {
+    const AudioContextCtor = getVoiceSfxAudioContextCtor();
+    if (!AudioContextCtor) return;
+
+    let context = voiceSfxAudioContextRef.current;
+    if (!context || context.state === "closed") {
+      context = new AudioContextCtor();
+      voiceSfxAudioContextRef.current = context;
+    }
+
+    const playPattern = () => {
+      const nowS = context.currentTime + 0.01;
+      if (cue === "listen_start") {
+        const nextS = scheduleVoiceSfxTone(context, {
+          startAtS: nowS,
+          durationMs: 58,
+          frequencyStartHz: 760,
+          frequencyEndHz: 980,
+          gain: 0.03,
+          waveType: "triangle",
+        });
+        scheduleVoiceSfxTone(context, {
+          startAtS: nextS + 0.02,
+          durationMs: 72,
+          frequencyStartHz: 940,
+          frequencyEndHz: 1220,
+          gain: 0.04,
+          waveType: "sine",
+        });
         return;
       }
 
-      setVoiceUsed(true);
-      setVoiceTranscript((previous) => appendVoiceTranscript(previous, normalized));
-      setVoicePartial("");
+      const nextS = scheduleVoiceSfxTone(context, {
+        startAtS: nowS,
+        durationMs: 66,
+        frequencyStartHz: 980,
+        frequencyEndHz: 760,
+        gain: 0.03,
+        waveType: "triangle",
+      });
+      scheduleVoiceSfxTone(context, {
+        startAtS: nextS + 0.012,
+        durationMs: 86,
+        frequencyStartHz: 740,
+        frequencyEndHz: 520,
+        gain: 0.032,
+        waveType: "sine",
+      });
+    };
+
+    if (context.state === "suspended") {
+      void context.resume().then(playPattern).catch(() => undefined);
+      return;
+    }
+    playPattern();
+  }, []);
+
+  const playWakeSfxCue = useCallback(() => {
+    if (!voiceAssistDesktopEnabled || !ENABLE_OFFLINE_VOICE_CAPTURE) return;
+    const now = Date.now();
+    if (now - voiceWakeSoundLastAtMsRef.current < VOICE_WAKE_SOUND_COOLDOWN_MS) return;
+    voiceWakeSoundLastAtMsRef.current = now;
+    playVoiceSfxCue("listen_start");
+  }, [playVoiceSfxCue, voiceAssistDesktopEnabled]);
+
+  function processVoiceTranscript(rawTranscript: string, confidence: number, source: VoiceTranscriptSource): void {
+    const normalized = normalizeTranscriptText(rawTranscript);
+    if (!normalized) return;
+
+    const now = Date.now();
+    const trainingProfile = voiceTrainingProfileRef.current;
+    const correctedTranscript = applyVoicePhraseCorrections(normalized, trainingProfile.phrase_corrections);
+    const wakeCandidates = buildWakePhraseCandidates(trainingProfile.wake_aliases);
+    const wake = extractWakePhraseFromCandidates(correctedTranscript, wakeCandidates);
+    const activePendingWake = pendingWakeRef.current && pendingWakeRef.current.expiresAtMs >= now ? pendingWakeRef.current : null;
+
+    setVoiceUsed(true);
+    setVoiceTranscript(correctedTranscript);
+    setVoicePartial("");
+
+    let commandText = "";
+    let transcriptForAudit = correctedTranscript;
+    let wakePhraseForAudit = wake.detectedWakePhrase || activePendingWake?.phrase || VOICE_WAKE_PHRASE;
+
+    if (wake.detected) {
+      if (!wake.normalizedCommandText) {
+        const expiresAtMs = now + VOICE_WAKE_COMMAND_WINDOW_MS;
+        pendingWakeRef.current = {
+          phrase: wake.detectedWakePhrase || VOICE_WAKE_PHRASE,
+          expiresAtMs,
+        };
+        voicePartialWakeFocusRef.current = {
+          lastFocusAtMs: now,
+          lastWakeText: wake.normalizedText,
+        };
+        const wakeActivated = syncVoiceOrbDeployWithWake(VOICE_WAKE_COMMAND_WINDOW_MS + VOICE_ORB_WAKE_BUFFER_MS);
+        if (wakeActivated) {
+          playWakeSfxCue();
+        }
+        emitVoiceAssistantResponse("Te escucho.");
+        appendVoiceAuditEntry({
+          timestamp_ms: now,
+          transcript_normalized: wake.normalizedText,
+          intent: "none",
+          exercise_index: null,
+          set_index: null,
+          exercise_name: null,
+          value_text: null,
+          confidence: clampVoiceConfidence(confidence),
+          applied: false,
+          reason: `Wake detectada ("${wake.detectedWakePhrase || VOICE_WAKE_PHRASE}"). Esperando comando por ${Math.round(
+            VOICE_WAKE_COMMAND_WINDOW_MS / 1000,
+          )}s.`,
+        });
+        return;
+      }
+      voicePartialWakeFocusRef.current = {
+        lastFocusAtMs: now,
+        lastWakeText: wake.normalizedText,
+      };
+      const wakeActivated = syncVoiceOrbDeployWithWake(VOICE_ORB_COMMAND_FOCUS_MS + 280);
+      if (wakeActivated) {
+        playWakeSfxCue();
+      }
+      commandText = wake.normalizedCommandText;
+      transcriptForAudit = wake.normalizedText;
+      pendingWakeRef.current = null;
+    } else if (activePendingWake) {
+      commandText = correctedTranscript;
+      wakePhraseForAudit = activePendingWake.phrase;
+      pendingWakeRef.current = null;
+    } else {
+      pendingWakeRef.current = null;
       appendVoiceAuditEntry({
-        timestamp_ms: Date.now(),
-        transcript_normalized: normalized,
+        timestamp_ms: now,
+        transcript_normalized: wake.normalizedText,
         intent: "none",
         exercise_index: null,
         set_index: null,
         exercise_name: null,
         value_text: null,
-        confidence: 1,
+        confidence: clampVoiceConfidence(confidence),
         applied: false,
-        reason: "Transcripcion manual desde portapapeles.",
+        reason: `Ignorado (${source}): falta wake phrase (${wakePhraseHintList(wakeCandidates)}).`,
       });
-    } catch (cause: unknown) {
-      const message = String((cause as { message?: string })?.message || cause);
-      setVoiceError(`No pude leer el portapapeles: ${message}`);
-      setVoiceStatus("error");
-    } finally {
-      setClipboardBusy(false);
+      return;
     }
-  }, [appendVoiceAuditEntry, voiceAssistDesktopEnabled]);
+
+    const tupleParsed = parseVoiceSetTuple(commandText);
+    if (tupleParsed.status === "matched") {
+      const outcome = applyVoiceTupleWithUndo(tupleParsed.tuple);
+      const combinedConfidence = clampVoiceConfidence(confidence * tupleParsed.tuple.parserConfidence);
+      appendVoiceAuditEntry({
+        timestamp_ms: now,
+        transcript_normalized: transcriptForAudit,
+        intent: outcome.intent,
+        exercise_index: outcome.exercise_index,
+        set_index: outcome.set_index,
+        exercise_name: outcome.exercise_name,
+        value_text: outcome.value_text,
+        confidence: combinedConfidence,
+        applied: outcome.applied,
+        reason: `${outcome.reason} (wake: ${wakePhraseForAudit})`,
+      });
+      emitVoiceAssistantResponse(outcome.response_text || "Comando aplicado.");
+      focusVoiceOrb(VOICE_ORB_COMMAND_FOCUS_MS);
+      return;
+    }
+
+    const batchParsed = parseVoiceCommandBatch(commandText, {
+      extraKeywords: trainingProfile.custom_keywords,
+      allowImplicitLoad: true,
+    });
+    if (batchParsed.status === "matched") {
+      const outcome = applyVoiceBatchWithUndo(batchParsed.batch);
+      const combinedConfidence = clampVoiceConfidence(confidence * batchParsed.batch.parserConfidence);
+      appendVoiceAuditEntry({
+        timestamp_ms: now,
+        transcript_normalized: transcriptForAudit,
+        intent: outcome.intent,
+        exercise_index: outcome.exercise_index,
+        set_index: outcome.set_index,
+        exercise_name: outcome.exercise_name,
+        value_text: outcome.value_text,
+        confidence: combinedConfidence,
+        applied: outcome.applied,
+        reason: `${outcome.reason} (wake: ${wakePhraseForAudit})`,
+      });
+      emitVoiceAssistantResponse(outcome.response_text || "Comando aplicado.");
+      focusVoiceOrb(VOICE_ORB_COMMAND_FOCUS_MS);
+      return;
+    }
+
+    const parsed = parseVoiceCommand(commandText, {
+      extraKeywords: trainingProfile.custom_keywords,
+      allowImplicitLoad: true,
+    });
+
+    if (parsed.status === "no_match") {
+      appendVoiceAuditEntry({
+        timestamp_ms: now,
+        transcript_normalized: transcriptForAudit,
+        intent: "none",
+        exercise_index: null,
+        set_index: null,
+        exercise_name: null,
+        value_text: null,
+        confidence: clampVoiceConfidence(confidence),
+        applied: false,
+        reason: `${parsed.reason} (wake: ${wakePhraseForAudit})`,
+      });
+      emitVoiceAssistantResponse("No entendi el comando.");
+      focusVoiceOrb(VOICE_ORB_COMMAND_FOCUS_MS);
+      return;
+    }
+
+    const outcome = applyVoiceCommandWithUndo(parsed.command);
+    const combinedConfidence = clampVoiceConfidence(confidence * parsed.command.parserConfidence);
+    appendVoiceAuditEntry({
+      timestamp_ms: now,
+      transcript_normalized: transcriptForAudit,
+      intent: outcome.intent,
+      exercise_index: outcome.exercise_index,
+      set_index: outcome.set_index,
+      exercise_name: outcome.exercise_name,
+      value_text: outcome.value_text,
+      confidence: combinedConfidence,
+      applied: outcome.applied,
+      reason: `${outcome.reason} (wake: ${wakePhraseForAudit})`,
+    });
+    emitVoiceAssistantResponse(outcome.response_text || (outcome.applied ? "Comando aplicado." : "No pude aplicar el comando."));
+    focusVoiceOrb(VOICE_ORB_COMMAND_FOCUS_MS);
+  }
+
+  processVoiceTranscriptRef.current = processVoiceTranscript;
+
+  useEffect(() => {
+    if (voiceOrbFocusedUntilMs === null) return;
+    const delayMs = Math.max(0, voiceOrbFocusedUntilMs - Date.now());
+    const timeoutId = window.setTimeout(() => {
+      setVoiceOrbFocusedUntilMs(null);
+      setVoiceOrbMode((current) => (current === "focus_listening" ? "docked_idle" : current));
+    }, delayMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [voiceOrbFocusedUntilMs]);
+
+  useEffect(() => {
+    if (voiceAssistantResponseUntilMs === null) return;
+    const delayMs = Math.max(0, voiceAssistantResponseUntilMs - Date.now());
+    const timeoutId = window.setTimeout(() => {
+      setVoiceAssistantResponse("");
+      setVoiceAssistantResponseUntilMs(null);
+    }, delayMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [voiceAssistantResponseUntilMs]);
 
   const startVoiceCapture = useCallback(async () => {
     setVoiceError("");
+    pendingWakeRef.current = null;
+    voicePartialWakeFocusRef.current = { lastFocusAtMs: 0, lastWakeText: "" };
+    voiceOrbLastDeployAtMsRef.current = 0;
+    voiceWakeSoundLastAtMsRef.current = 0;
+    if (voiceStatus === "loading" || voiceStatus === "armed" || voiceStatus === "listening") {
+      return;
+    }
     if (!voiceAssistDesktopEnabled) {
       setVoiceError("La asistencia por voz esta desactivada.");
+      setVoiceOrbMode("muted");
       return;
     }
     if (!ENABLE_OFFLINE_VOICE_CAPTURE) {
       setVoiceError("La feature VITE_ENABLE_OFFLINE_VOICE_CAPTURE esta en false.");
+      setVoiceOrbMode("error");
       return;
     }
     if (!("mediaDevices" in navigator) || typeof navigator.mediaDevices?.getUserMedia !== "function") {
       setVoiceError("Este navegador no permite acceso al microfono.");
       setVoiceStatus("error");
+      setVoiceOrbMode("error");
       return;
     }
 
@@ -783,6 +1682,7 @@ export default function NewSession() {
     } catch (cause: unknown) {
       setVoiceError(`No se pudo obtener permiso de microfono: ${describeMicrophoneError(cause)}`);
       setVoiceStatus("error");
+      setVoiceOrbMode("error");
       return;
     }
 
@@ -793,12 +1693,14 @@ export default function NewSession() {
       const message = String((cause as { message?: string })?.message || cause);
       setVoiceError(`No pude cargar el motor de voz: ${message}`);
       setVoiceStatus("error");
+      setVoiceOrbMode("error");
       return;
     }
 
     if (!voiceModule.browserSupportsOfflineRecognizer()) {
       setVoiceError("Este navegador no soporta captura de microfono offline para voz.");
       setVoiceStatus("error");
+      setVoiceOrbMode("error");
       return;
     }
 
@@ -811,29 +1713,18 @@ export default function NewSession() {
           onPartialTranscript: (partial) => {
             const normalized = normalizeTranscriptText(partial);
             setVoicePartial(normalized);
+            const wakeActivated = syncVoiceOrbFromPartialWake(normalized);
+            if (wakeActivated) {
+              playWakeSfxCue();
+            }
           },
           onFinalTranscript: (result: OfflineRecognizerFinalTranscript) => {
-            const normalized = normalizeTranscriptText(result.text);
-            if (!normalized) return;
-            setVoiceUsed(true);
-            setVoiceTranscript((previous) => appendVoiceTranscript(previous, normalized));
-            setVoicePartial("");
-            appendVoiceAuditEntry({
-              timestamp_ms: Date.now(),
-              transcript_normalized: normalized,
-              intent: "none",
-              exercise_index: null,
-              set_index: null,
-              exercise_name: null,
-              value_text: null,
-              confidence: clampVoiceConfidence(result.confidence),
-              applied: false,
-              reason: "Transcripcion por microfono (sin aplicar comando).",
-            });
+            processVoiceTranscriptRef.current(result.text, clampVoiceConfidence(result.confidence), "microphone");
           },
           onError: (message) => {
             setVoiceError(message);
             setVoiceStatus("error");
+            setVoiceOrbMode("error");
           },
         },
       });
@@ -842,53 +1733,104 @@ export default function NewSession() {
 
     try {
       await recognizer.arm();
+      setVoiceOrbMode((current) => (current === "focus_listening" ? current : "docked_idle"));
     } catch (cause: unknown) {
       const message = String((cause as { message?: string })?.message || cause);
       setVoiceError(`No se pudo iniciar la escucha: ${message}`);
       setVoiceStatus("error");
+      setVoiceOrbMode("error");
     }
-  }, [appendVoiceAuditEntry, voiceAssistDesktopEnabled]);
+  }, [playWakeSfxCue, syncVoiceOrbFromPartialWake, voiceAssistDesktopEnabled, voiceStatus]);
 
   const deactivateVoiceCapture = useCallback(async () => {
     if (voiceStatusPulseTimeoutRef.current !== null) {
       window.clearTimeout(voiceStatusPulseTimeoutRef.current);
       voiceStatusPulseTimeoutRef.current = null;
     }
+    voicePartialWakeFocusRef.current = { lastFocusAtMs: 0, lastWakeText: "" };
+    voiceOrbLastDeployAtMsRef.current = 0;
+    voiceWakeSoundLastAtMsRef.current = 0;
     const recognizer = voiceRecognizerRef.current;
     if (!recognizer) {
       setVoiceStatus("inactive");
       setVoicePartial("");
+      pendingWakeRef.current = null;
+      setVoiceOrbFocusedUntilMs(null);
+      setVoiceOrbMode(voiceAssistDesktopEnabled ? "docked_idle" : "muted");
       return;
     }
 
     try {
       await recognizer.disarm();
       setVoiceError("");
+      pendingWakeRef.current = null;
+      setVoiceOrbFocusedUntilMs(null);
+      setVoiceOrbMode(voiceAssistDesktopEnabled ? "docked_idle" : "muted");
     } catch (cause: unknown) {
       const message = String((cause as { message?: string })?.message || cause);
       setVoiceError(message);
       setVoiceStatus("error");
+      setVoiceOrbMode("error");
     }
-  }, []);
+  }, [voiceAssistDesktopEnabled]);
 
   const toggleVoiceAssistDesktop = useCallback(() => {
     if (voiceAssistDesktopEnabled) {
       void deactivateVoiceCapture();
       setVoiceError("");
+      pendingWakeRef.current = null;
+      setVoiceOrbFocusedUntilMs(null);
+      setVoiceOrbMode("muted");
+      setVoiceAssistantResponse("Asistente silenciado.");
+      setVoiceAssistantResponseUntilMs(Date.now() + VOICE_ASSISTANT_RESPONSE_MS);
+    } else {
+      setVoiceOrbMode("docked_idle");
+      setVoiceAssistantResponse("Asistente reactivado.");
+      setVoiceAssistantResponseUntilMs(Date.now() + VOICE_ASSISTANT_RESPONSE_MS);
     }
     setVoiceAssistDesktopEnabled((prev) => !prev);
   }, [deactivateVoiceCapture, voiceAssistDesktopEnabled]);
 
   useEffect(() => {
     if (step === "capture_session") return;
+    voiceAutoStartInFlightRef.current = false;
+    pendingWakeRef.current = null;
     void deactivateVoiceCapture();
   }, [deactivateVoiceCapture, step]);
+
+  useEffect(() => {
+    if (step !== "capture_session") return;
+    if (!ENABLE_OFFLINE_VOICE_CAPTURE) {
+      voiceAutoStartInFlightRef.current = false;
+      pendingWakeRef.current = null;
+      void deactivateVoiceCapture();
+      return;
+    }
+    if (!voiceAssistDesktopEnabled) {
+      voiceAutoStartInFlightRef.current = false;
+      pendingWakeRef.current = null;
+      void deactivateVoiceCapture();
+      return;
+    }
+    if (voiceStatus !== "inactive") return;
+    if (voiceAutoStartInFlightRef.current) return;
+
+    voiceAutoStartInFlightRef.current = true;
+    void startVoiceCapture().finally(() => {
+      voiceAutoStartInFlightRef.current = false;
+    });
+  }, [deactivateVoiceCapture, startVoiceCapture, step, voiceAssistDesktopEnabled, voiceStatus]);
 
   useEffect(
     () => () => {
       if (voiceStatusPulseTimeoutRef.current !== null) {
         window.clearTimeout(voiceStatusPulseTimeoutRef.current);
         voiceStatusPulseTimeoutRef.current = null;
+      }
+      const sfxAudioContext = voiceSfxAudioContextRef.current;
+      voiceSfxAudioContextRef.current = null;
+      if (sfxAudioContext) {
+        void sfxAudioContext.close().catch(() => undefined);
       }
       const recognizer = voiceRecognizerRef.current;
       voiceRecognizerRef.current = null;
@@ -945,10 +1887,16 @@ export default function NewSession() {
     setSessionTimer(createRunningSessionTimer(now));
     setRestTimer(null);
     setVoiceAudit([]);
+    setVoiceTranscript("");
     setVoiceUsed(false);
     setVoiceError("");
     setVoicePartial("");
+    setVoiceAssistantResponse("");
+    setVoiceAssistantResponseUntilMs(null);
+    pendingWakeRef.current = null;
     setVoiceStatus("inactive");
+    setVoiceOrbFocusedUntilMs(null);
+    setVoiceOrbMode(voiceAssistDesktopEnabled ? "docked_idle" : "muted");
   }
 
   function goBackToRoutineStep() {
@@ -959,7 +1907,12 @@ export default function NewSession() {
     setRestTimer(null);
     setVoiceError("");
     setVoicePartial("");
+    setVoiceAssistantResponse("");
+    setVoiceAssistantResponseUntilMs(null);
+    pendingWakeRef.current = null;
     setVoiceStatus("inactive");
+    setVoiceOrbFocusedUntilMs(null);
+    setVoiceOrbMode(voiceAssistDesktopEnabled ? "docked_idle" : "muted");
     setError("");
   }
 
@@ -983,10 +1936,16 @@ export default function NewSession() {
     setSessionTimer(IDLE_SESSION_TIMER);
     setRestTimer(null);
     setVoiceAudit([]);
+    setVoiceTranscript("");
     setVoiceUsed(false);
     setVoiceError("");
     setVoicePartial("");
+    setVoiceAssistantResponse("");
+    setVoiceAssistantResponseUntilMs(null);
+    pendingWakeRef.current = null;
     setVoiceStatus("inactive");
+    setVoiceOrbFocusedUntilMs(null);
+    setVoiceOrbMode(voiceAssistDesktopEnabled ? "docked_idle" : "muted");
     setNowMs(Date.now());
     setError("");
     nav("/home");
@@ -1198,7 +2157,13 @@ export default function NewSession() {
           if (setIdx !== command.set_index) return set;
           if (command.type === "set_reps") return { ...set, reps: command.value };
           if (command.type === "set_load") return { ...set, load: command.value };
-          if (command.type === "set_set_completed") return { ...set, completed: command.value };
+          if (command.type === "set_set_completed") {
+            if (!command.value) return { ...set, completed: false };
+            return {
+              ...fillSetSuggestionsOnComplete(set, entry, command.set_index, prefs.effortScale),
+              completed: true,
+            };
+          }
           return { ...set, effort: command.value };
         });
         return { ...entry, sets };
@@ -1342,6 +2307,7 @@ export default function NewSession() {
     const voiceAuditCommands = voiceAudit.slice(-MAX_VOICE_AUDIT_ENTRIES);
     const appliedVoiceCommands = voiceAuditCommands.filter((entry) => entry.applied).length;
     const rejectedVoiceCommands = voiceAuditCommands.length - appliedVoiceCommands;
+    const wakePhrases = buildWakePhraseCandidates(voiceTrainingProfile.wake_aliases);
 
     const payload = [
       {
@@ -1391,7 +2357,11 @@ export default function NewSession() {
               engine: VOICE_ENGINE,
               model_id: VOICE_MODEL_ID,
               language: VOICE_LANGUAGE,
-              wake_phrase: VOICE_WAKE_PHRASE,
+              wake_phrase: wakePhrases[0] || VOICE_WAKE_PHRASE,
+              wake_aliases: wakePhrases.slice(1),
+              wake_command_window_ms: VOICE_WAKE_COMMAND_WINDOW_MS,
+              ui_overlay: "jarvis_orb_v1",
+              ui_mode: "dock_to_focus_on_wake",
               offline_only: true,
             },
             supported_commands: [
@@ -1399,6 +2369,7 @@ export default function NewSession() {
               "set_load",
               "set_set_completed",
               "set_set_effort",
+              "set_bundle",
             ],
           },
           voice_capture: {
@@ -1407,6 +2378,7 @@ export default function NewSession() {
               total_commands: voiceAuditCommands.length,
               applied_commands: appliedVoiceCommands,
               rejected_commands: rejectedVoiceCommands,
+              phrase_corrections: voiceTrainingProfile.phrase_corrections.length,
             },
             commands: voiceAuditCommands,
           },
@@ -1524,15 +2496,13 @@ export default function NewSession() {
 
   const timerStatus = sessionTimerRunning ? "En curso" : sessionTimerCompleted ? "Completada" : sessionTimerStarted ? "Pausada" : "Sin iniciar";
   const timerActionLabel = sessionTimerStarted ? "Reanudar" : "Iniciar";
-  const voiceCaptureActive = voiceStatus === "armed" || voiceStatus === "listening";
+  const voiceWakePhrases = buildWakePhraseCandidates(voiceTrainingProfile.wake_aliases);
+  const voiceWakeDisplay = wakePhraseHintList(voiceWakePhrases);
   const voiceTranscriptDisplay = (() => {
     const partial = normalizeTranscriptText(voicePartial);
     if (!partial) return voiceTranscript;
     return appendVoiceTranscript(voiceTranscript, partial);
   })();
-  const voiceAuditPreview = [...voiceAudit].slice(Math.max(0, voiceAudit.length - 8)).reverse();
-  const voiceAppliedCount = voiceAudit.reduce((acc, entry) => (entry.applied ? acc + 1 : acc), 0);
-  const voiceRejectedCount = voiceAudit.length - voiceAppliedCount;
   const notificationLabel =
     notificationCapability === "unsupported"
       ? "No disponible en este dispositivo"
@@ -1916,70 +2886,22 @@ export default function NewSession() {
           <button className="btn" onClick={() => nav("/history")} disabled={busy}>
             Cancelar
           </button>
+          <button className="btn" type="button" onClick={toggleVoiceAssistDesktop} disabled={!ENABLE_OFFLINE_VOICE_CAPTURE}>
+            {voiceAssistDesktopEnabled ? "Silenciar voz" : "Reactivar voz"}
+          </button>
         </div>
       </section>
 
-      <aside className="voiceStatusDock desktopDockOnly" aria-live="polite">
-        <div className="voiceStatusHead">
-          <strong>Asistencia por voz</strong>
-          <button className="btn" type="button" onClick={toggleVoiceAssistDesktop}>
-            {voiceAssistDesktopEnabled ? "Desactivar" : "Activar"}
-          </button>
-        </div>
-        <div className="chipRow">
-          <span className={`chip ${voiceStatus === "error" ? "voiceChipError" : ""}`}>{`Estado: ${voiceStatusLabel(voiceStatus)}`}</span>
-          <span className="chip">{`Escuchando: ${voiceCaptureActive ? "si" : "no"}`}</span>
-          <span className={`chip ${ENABLE_OFFLINE_VOICE_CAPTURE ? "" : "voiceChipError"}`}>{`Flag: ${ENABLE_OFFLINE_VOICE_CAPTURE ? "on" : "off"}`}</span>
-        </div>
-        <div className="small">{`Wake: ${VOICE_WAKE_PHRASE}`}</div>
-        <div className="small">
-          {voiceCurrentTarget
-            ? `Set actual: ${formatExerciseNameForCard(voiceCurrentTarget.exerciseName)} - Set ${voiceCurrentTarget.setIndex + 1}`
-            : "Set actual: sin pendientes"}
-        </div>
-        <div className="voiceDockActions">
-          <button className="btn primary" type="button" onClick={() => void startVoiceCapture()} disabled={!voiceAssistDesktopEnabled || voiceCaptureActive || clipboardBusy}>
-            Iniciar escucha
-          </button>
-          <button className="btn" type="button" onClick={() => void deactivateVoiceCapture()} disabled={!voiceCaptureActive && voiceStatus !== "error"}>
-            Detener escucha
-          </button>
-          <button className="btn primary" type="button" onClick={() => void transcribeClipboardText()} disabled={!voiceAssistDesktopEnabled || clipboardBusy}>
-            {clipboardBusy ? "Transcribiendo..." : "Transcribir portapapeles"}
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => {
-              setVoiceTranscript("");
-              setVoicePartial("");
-              setVoiceError("");
-            }}
-            disabled={!voiceTranscript && !voicePartial && !voiceError}
-          >
-            Limpiar
-          </button>
-        </div>
-        <div className="voiceDockTranscript">{voiceTranscriptDisplay || "Sin transcripcion aun."}</div>
-        <div className="small">{`Eventos: ${voiceAudit.length} (aplicados ${voiceAppliedCount} / rechazados ${voiceRejectedCount})`}</div>
-        {voiceError ? <div className="message error">{voiceError}</div> : null}
-        <div className="voiceLog">
-          {voiceAuditPreview.length === 0 ? (
-            <div className="small">Sin eventos de voz en esta sesion.</div>
-          ) : (
-            voiceAuditPreview.map((entry, index) => (
-              <article key={`${entry.timestamp_ms}_${index}`} className={`voiceLogItem ${entry.applied ? "applied" : "rejected"}`.trim()}>
-                <div className="hstack" style={{ justifyContent: "space-between" }}>
-                  <strong>{entry.applied ? "Aplicado" : "Rechazado"}</strong>
-                  <span className="small">{new Date(entry.timestamp_ms).toLocaleTimeString()}</span>
-                </div>
-                <div className="small">{entry.transcript_normalized || "(sin texto)"}</div>
-                <div className="small">{entry.reason}</div>
-              </article>
-            ))
-          )}
-        </div>
-      </aside>
+      {ENABLE_OFFLINE_VOICE_CAPTURE ? (
+        <HoloVoiceAssistantOverlay
+          mode={voiceOrbMode}
+          status={voiceStatus}
+          wakeLabel={voiceWakeDisplay}
+          transcript={voiceTranscriptDisplay}
+          response={voiceAssistantResponse}
+          error={voiceError}
+        />
+      ) : null}
 
       {restTimer ? (
         <section className="restFloatBar" aria-live="polite">

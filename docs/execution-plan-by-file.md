@@ -238,3 +238,5 @@ Escala usada:
 - `GET /ready` agregado (check DB + revisión de migración presente).
 - Contrato de error backend unificado (`code`, `detail`, `context`) con handlers globales.
 - Cliente frontend (`api.ts`) actualizado para leer `code/context` en errores.
+- `NewSession.tsx` fase 1: extracción de lógica de temporizadores a `frontend/src/lib/session/timers.ts`.
+- `History.tsx` fase 1: filtros de periodo (7/30/90 días) + KPIs de volumen y RPE promedio por ventana.
