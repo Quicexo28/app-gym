@@ -8,6 +8,22 @@ Este runbook define un gate minimo de salida para reducir regresiones antes de r
 .\run_release_gate.ps1
 ```
 
+## 1.1) Gate automatizado en CI (GitHub Actions)
+
+Workflow: `.github/workflows/release-gate.yml`
+
+Dispara en:
+- `pull_request`
+- `push` a `main`
+- `workflow_dispatch`
+
+Valida en CI:
+- Postgres service + `alembic upgrade head`
+- tests críticos backend
+- `npm run lint`
+- `npm run build`
+- boot de API + checks `/health` y `/ready` (`ready=true`)
+
 El script ejecuta:
 1. `docker compose up -d db api`
 2. Espera `GET /ready` con `ready=true`

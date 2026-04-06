@@ -258,3 +258,4 @@ Escala usada:
 - P3 voz adaptativa: ya disponible en Settings con wake aliases, phrase corrections, import/export y wizard de calibración/autoguardado.
 - P3 plantillas por objetivo: disponible en Planning (`OBJECTIVE_PRESETS`) para foco de micro/meso/macro.
 - Fase 4 hardening: `run_release_gate.ps1` + runbook `docs/release-hardening-runbook.md` (gate de `/ready` + tests críticos + lint/build).
+- CI pipeline de gate automatizado: `.github/workflows/release-gate.yml` (PR/main/manual).
