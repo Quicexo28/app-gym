@@ -242,3 +242,5 @@ Escala usada:
 - `History.tsx` fase 1: filtros de periodo (7/30/90 días) + KPIs de volumen y RPE promedio por ventana.
 - `RunDetail.tsx` + `ScenarioCard.tsx`: acción sugerida del día + explicabilidad más clara por escenario.
 - `Planning.tsx` (tracking): resumen operativo (total/activas/atraso/adherencia) + próximo bloque visible por asignación.
+- `NewSession.tsx` fase 2 (parcial): extracción del reloj/ticks a `frontend/src/lib/session/useSessionClock.ts`.
+- `Home.tsx` fase 1 P2: estado operativo (sesiones/runs/última sesión) + alertas accionables de recuperación.

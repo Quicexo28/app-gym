@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { apiPing } from "../api";
+import { apiPing, getSessions, listRuns } from "../api";
 import { useAthleteAccess } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import { useViewMode } from "../state/viewMode";
@@ -12,6 +12,11 @@ export default function Home() {
   const { prefs, resolvedTheme } = usePreferences();
   const { viewMode } = useViewMode();
   const [ping, setPing] = useState<string>("Conectando API...");
+  const [todayMs] = useState<number>(() => Date.now());
+  const [sessionCount, setSessionCount] = useState<number>(0);
+  const [runCount, setRunCount] = useState<number>(0);
+  const [lastSessionAt, setLastSessionAt] = useState<string | null>(null);
+  const [opsLoading, setOpsLoading] = useState(false);
   const nav = useNavigate();
 
   const isCoachScope = viewMode === "coach" || viewMode === "admin";
@@ -30,11 +35,64 @@ export default function Home() {
     [prefs.theme, resolvedTheme],
   );
 
+  const daysSinceLastSession = useMemo(() => {
+    if (!lastSessionAt) return null;
+    const parsed = Date.parse(lastSessionAt);
+    if (!Number.isFinite(parsed)) return null;
+    return Math.floor((todayMs - parsed) / (24 * 60 * 60 * 1000));
+  }, [lastSessionAt, todayMs]);
+
+  const homeAlerts = useMemo(() => {
+    const alerts: string[] = [];
+    if (!athleteId) {
+      alerts.push("Selecciona un sujeto para habilitar registro y analisis.");
+      return alerts;
+    }
+    if (sessionCount === 0) alerts.push("Aun no hay sesiones registradas. Crea la primera sesion para activar analisis.");
+    if (sessionCount > 0 && runCount === 0) alerts.push("Tienes sesiones sin escenarios. Corre un run para obtener recomendaciones.");
+    if (typeof daysSinceLastSession === "number" && daysSinceLastSession >= 4) {
+      alerts.push(`Han pasado ${daysSinceLastSession} dias desde la ultima sesion.`);
+    }
+    return alerts;
+  }, [athleteId, daysSinceLastSession, runCount, sessionCount]);
+
   useEffect(() => {
     apiPing()
       .then((r) => setPing(r.pong ? "API conectada" : "API sin respuesta valida"))
       .catch((e) => setPing(`API error: ${String(e.message || e)}`));
   }, []);
+
+  useEffect(() => {
+    if (!athleteId) {
+      return;
+    }
+
+    let cancelled = false;
+    const loadingTimerId = window.setTimeout(() => {
+      if (!cancelled) setOpsLoading(true);
+    }, 0);
+
+    Promise.allSettled([getSessions(athleteId), listRuns(athleteId, 20)])
+      .then((results) => {
+        if (cancelled) return;
+        const sessions = results[0].status === "fulfilled" ? results[0].value : [];
+        const runs = results[1].status === "fulfilled" ? results[1].value : [];
+
+        const orderedSessions = [...sessions].sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)));
+        setSessionCount(orderedSessions.length);
+        setRunCount(runs.length);
+        setLastSessionAt(orderedSessions[0]?.start_time ? String(orderedSessions[0].start_time) : null);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setOpsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(loadingTimerId);
+    };
+  }, [athleteId]);
 
   return (
     <div className="container stack">
@@ -56,12 +114,16 @@ export default function Home() {
               <strong>{activeSubject?.label || "Sin asignar"}</strong>
             </article>
             <article className="statCard">
-              <div className="smallLabel">Escala</div>
-              <strong>{prefs.effortScale.toUpperCase()}</strong>
+              <div className="smallLabel">Sesiones</div>
+              <strong>{!athleteId ? "-" : opsLoading ? "..." : sessionCount}</strong>
             </article>
             <article className="statCard">
-              <div className="smallLabel">Carga</div>
-              <strong>{prefs.weightUnit}</strong>
+              <div className="smallLabel">Runs</div>
+              <strong>{!athleteId ? "-" : opsLoading ? "..." : runCount}</strong>
+            </article>
+            <article className="statCard">
+              <div className="smallLabel">Ultima sesion</div>
+              <strong>{!athleteId ? "-" : lastSessionAt ? new Date(lastSessionAt).toLocaleDateString() : "-"}</strong>
             </article>
           </div>
         </div>
@@ -124,6 +186,22 @@ export default function Home() {
             ) : null}
           </div>
         </div>
+      </section>
+
+      <section className="surface">
+        <div className="sectionHead">
+          <h3>Alertas operativas</h3>
+          <p>Prioriza estas acciones para mantener continuidad y calidad de señal.</p>
+        </div>
+        {homeAlerts.length === 0 ? (
+          <div className="small" style={{ marginTop: 10 }}>Sin alertas criticas por ahora.</div>
+        ) : (
+          <ul className="compactList cleanList" style={{ marginTop: 10 }}>
+            {homeAlerts.map((alert) => (
+              <li key={alert}>{alert}</li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {isCoachScope ? (

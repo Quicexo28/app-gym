@@ -19,6 +19,7 @@ import {
   type RestTimerState,
   type SessionTimerState,
 } from "../lib/session/timers";
+import { useSessionClock } from "../lib/session/useSessionClock";
 import { parseVoiceCommand, parseVoiceCommandBatch, parseVoiceSetTuple, type ParsedVoiceCommandBatch, type ParsedVoiceSetTuple } from "../lib/voice/commandParser";
 import type { OfflineVoskRecognizer as OfflineVoskRecognizerClass } from "../lib/voice/offlineRecognizer";
 import { findCurrentSetTarget } from "../lib/voice/setTarget";
@@ -456,7 +457,7 @@ export default function NewSession() {
 
   const [sessionTimer, setSessionTimer] = useState<SessionTimerState>(() => draftForAthlete?.sessionTimer ?? IDLE_SESSION_TIMER);
   const [restTimer, setRestTimer] = useState<RestTimerState | null>(() => draftForAthlete?.restTimer ?? null);
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [nowMs, setNowMs] = useSessionClock(TICK_MS);
   const [notificationCapability, setNotificationCapability] = useState<NotificationCapability>(() => detectNotificationCapability());
   const [voiceAudit, setVoiceAudit] = useState<ActiveSessionVoiceCommandAudit[]>(() => draftForAthlete?.voiceAudit ?? []);
   const [voiceTranscript, setVoiceTranscript] = useState<string>("");
@@ -750,30 +751,12 @@ export default function NewSession() {
     voiceUsed,
   ]);
 
-  useEffect(() => {
-    const intervalId = window.setInterval(() => setNowMs(Date.now()), TICK_MS);
-    return () => window.clearInterval(intervalId);
-  }, []);
-
   useEffect(
     () => () => {
       clearAnimationTimeouts();
     },
     [clearAnimationTimeouts],
   );
-
-  useEffect(() => {
-    const syncNow = () => setNowMs(Date.now());
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") syncNow();
-    };
-    window.addEventListener("focus", syncNow);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.removeEventListener("focus", syncNow);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
 
   useEffect(() => {
     setNotificationCapability(detectNotificationCapability());
@@ -793,7 +776,7 @@ export default function NewSession() {
         restTimeoutRef.current = null;
       }
     };
-  }, [restTimer]);
+  }, [restTimer, setNowMs]);
 
   useEffect(() => {
     if (!restTimer || restRemainingSec > 0 || restTimer.notified) return;
