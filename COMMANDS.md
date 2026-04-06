@@ -41,6 +41,23 @@ docker compose logs -f frontend
 - Valida `/ready`, tests críticos de backend, lint y build frontend.
 - Runbook: `docs/release-hardening-runbook.md`.
 
+### Smoke E2E
+
+```powershell
+.\run_smoke_e2e.ps1
+.\run_smoke_e2e.ps1 -NoSeedSession
+```
+
+- Ejecuta smoke automatizado: health/ready, auth guest, ingest session, run, run summary y planning templates.
+
+### Business events report
+
+```powershell
+.\scripts\business-events-report.ps1
+```
+
+- Resume conteos por tipo de `business_event` en logs del API.
+
 Servicios:
 - Frontend: `http://localhost:5173`
 - API: `http://localhost:8000`

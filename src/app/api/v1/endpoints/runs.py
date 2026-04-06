@@ -52,6 +52,8 @@ def run_pipeline_for_athlete(
     cfg_dict = asdict(cfg)
     fp = fingerprint_config(cfg_dict)
 
+    encoded_issues = jsonable_encoder(res.issues)
+
     row = Run(
         athlete_id=athlete_id,
         engine_version=ENGINE_VERSION,
@@ -63,7 +65,7 @@ def run_pipeline_for_athlete(
         trend=jsonable_encoder(res.trend),
         latents=jsonable_encoder(res.latents),
         suggestions=jsonable_encoder(res.suggestions),
-        issues=jsonable_encoder([i.model_dump() for i in res.issues]),
+        issues=jsonable_encoder(encoded_issues),
     )
     db.add(row)
     db.commit()
