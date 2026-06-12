@@ -9,11 +9,22 @@ from passlib.context import CryptContext
 from passlib.exc import UnknownHashError
 
 from app.auth.types import Plan, Role
+from app.core.config import Settings
 
 # Use a pure-passlib hasher to avoid bcrypt backend incompatibilities in local/dev.
 PWD_CONTEXT = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "dev-insecure-change-me")
+
+def _resolve_jwt_secret() -> str:
+    secret = os.environ.get("JWT_SECRET", "").strip()
+    if secret:
+        return secret
+    if Settings().env.strip().lower() == "prod":
+        raise RuntimeError("JWT_SECRET must be set when ENV=prod; refusing to start with the insecure dev default.")
+    return "dev-insecure-change-me"
+
+
+JWT_SECRET = _resolve_jwt_secret()
 JWT_ALG = os.environ.get("JWT_ALG", "HS256")
 ACCESS_TOKEN_MIN = int(os.environ.get("ACCESS_TOKEN_MIN", "43200"))
 

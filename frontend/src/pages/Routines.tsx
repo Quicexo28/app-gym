@@ -551,6 +551,8 @@ export default function Routines() {
     athleteIdRef.current = athleteId;
   }, [athleteId]);
 
+  // Reset intencional de todo el estado del editor cuando cambia el atleta activo.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!athleteId) {
       setItems([]);
@@ -574,6 +576,7 @@ export default function Routines() {
     setError("");
     setFeedback("");
   }, [athleteId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function isLeafEntry(entry: ExerciseCatalogEntry): boolean {
     return !nonLeafPathKeys.has(pathKey(entry.path));

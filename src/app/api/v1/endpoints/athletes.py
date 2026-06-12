@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
@@ -82,18 +83,36 @@ def athlete_hub(
     db: DbSession,
 ) -> AthleteHubResponse:
     accessible = accessible_athletes(user, db)
+    subject_ids = [subject.id for subject in accessible.subjects]
+
+    session_stats: dict[str, tuple[int, datetime | None]] = {}
+    run_stats: dict[str, tuple[int, datetime | None]] = {}
+    if subject_ids:
+        for athlete_id, total, last_at in db.execute(
+            select(
+                TrainingSession.athlete_id,
+                func.count(TrainingSession.id),
+                func.max(TrainingSession.start_time),
+            )
+            .where(TrainingSession.athlete_id.in_(subject_ids))
+            .group_by(TrainingSession.athlete_id)
+        ):
+            session_stats[athlete_id] = (total, last_at)
+        for athlete_id, total, last_at in db.execute(
+            select(
+                Run.athlete_id,
+                func.count(Run.run_id),
+                func.max(Run.generated_at_utc),
+            )
+            .where(Run.athlete_id.in_(subject_ids))
+            .group_by(Run.athlete_id)
+        ):
+            run_stats[athlete_id] = (total, last_at)
+
     out: list[HubSubject] = []
     for subject in accessible.subjects:
-        sessions_total, last_session_at = db.execute(
-            select(func.count(TrainingSession.id), func.max(TrainingSession.start_time)).where(
-                TrainingSession.athlete_id == subject.id
-            )
-        ).one()
-        runs_total, last_run_at = db.execute(
-            select(func.count(Run.run_id), func.max(Run.generated_at_utc)).where(
-                Run.athlete_id == subject.id
-            )
-        ).one()
+        sessions_total, last_session_at = session_stats.get(subject.id, (0, None))
+        runs_total, last_run_at = run_stats.get(subject.id, (0, None))
         out.append(
             HubSubject(
                 id=subject.id,

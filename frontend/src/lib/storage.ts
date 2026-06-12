@@ -9,7 +9,12 @@ export function loadJSON<T>(key: string, fallback: T): T {
 }
 
 export function saveJSON(key: string, value: unknown): void {
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (cause) {
+    // Cuota llena o storage deshabilitado: no romper la UI por un fallo de persistencia.
+    console.warn(`No se pudo guardar "${key}" en localStorage.`, cause);
+  }
 }
 
 export type ExerciseCatalogItem = {

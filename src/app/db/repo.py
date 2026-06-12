@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -16,14 +18,20 @@ def ensure_athlete(db: Session, athlete_id: str) -> None:
         db.commit()
 
 
-def upsert_session(db: Session, s: DomainSession) -> dict:
+def upsert_session(db: Session, s: DomainSession, *, commit: bool = True) -> dict:
     """Insert session if not exists (uq athlete_id + start_time).
+
+    With commit=False the row stays pending in the open transaction so a batch
+    can be committed atomically by the caller; duplicates are detected via a
+    savepoint, which keeps the rest of the batch intact.
     Returns: {inserted: bool, issues: [...], session_key: ...}
     """
     issues = validate_session(s)
     m = compute_session_metrics(s)
 
-    ensure_athlete(db, s.athlete_id)
+    if db.get(Athlete, s.athlete_id) is None:
+        db.add(Athlete(athlete_id=s.athlete_id))
+        db.flush()
 
     row = TrainingSession(
         athlete_id=s.athlete_id,
@@ -39,21 +47,21 @@ def upsert_session(db: Session, s: DomainSession) -> dict:
         sets_total=m.sets_total,
         reps_total=m.reps_total,
     )
-    db.add(row)
+    inserted = True
     try:
-        db.commit()
-        return {
-            "inserted": True,
-            "issues": [i.model_dump() for i in issues],
-            "session_key": (s.athlete_id, s.start_time.isoformat()),
-        }
+        with db.begin_nested():
+            db.add(row)
     except IntegrityError:
-        db.rollback()
-        return {
-            "inserted": False,
-            "issues": [i.model_dump() for i in issues],
-            "session_key": (s.athlete_id, s.start_time.isoformat()),
-        }
+        inserted = False
+
+    if commit:
+        db.commit()
+    return {
+        "inserted": inserted,
+        # Issue es un dataclass, no un modelo pydantic.
+        "issues": [asdict(i) for i in issues],
+        "session_key": (s.athlete_id, s.start_time.isoformat()),
+    }
 
 
 def list_sessions_for_athlete(db: Session, athlete_id: str) -> list[DomainSession]:

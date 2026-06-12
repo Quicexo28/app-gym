@@ -21,6 +21,7 @@ from app.auth.deps import get_current_user
 from app.auth.security import create_access_token, hash_password, verify_password
 from app.auth.types import Plan, Role
 from app.core.config import Settings
+from app.core.rate_limit import SlidingWindowRateLimiter, rate_limit_dependency
 from app.db.engine import get_db
 from app.db.models import Athlete, CoachAthleteAssignment, ExerciseCatalog, Run, TrainingSession
 from app.db.models_auth import User, UserSettings
@@ -28,6 +29,11 @@ from app.db.models_auth import User, UserSettings
 router = APIRouter(prefix="/auth", tags=["auth"])
 DbSession = Session
 settings = Settings()
+
+_LOGIN_LIMITER = SlidingWindowRateLimiter(max_requests=10, window_seconds=60)
+_REGISTER_LIMITER = SlidingWindowRateLimiter(max_requests=5, window_seconds=60)
+login_rate_limit = rate_limit_dependency(_LOGIN_LIMITER, "login")
+register_rate_limit = rate_limit_dependency(_REGISTER_LIMITER, "register")
 
 PHONE_MIN_DIGITS = 8
 PHONE_MAX_DIGITS = 15
@@ -159,7 +165,7 @@ def _validate_google_identity(id_token: str) -> tuple[str, str]:
     return _normalize_email(email), sub
 
 
-@router.post("/register", response_model=AuthResponse)
+@router.post("/register", response_model=AuthResponse, dependencies=[Depends(register_rate_limit)])
 def register(
     payload: RegisterRequest,
     db: Annotated[DbSession, Depends(get_db)],
@@ -200,7 +206,7 @@ def register(
     return _auth_response_for_user(user)
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post("/login", response_model=AuthResponse, dependencies=[Depends(login_rate_limit)])
 def login(
     payload: LoginRequest,
     db: Annotated[DbSession, Depends(get_db)],
@@ -220,7 +226,7 @@ def login(
     return _auth_response_for_user(user)
 
 
-@router.post("/guest", response_model=AuthResponse)
+@router.post("/guest", response_model=AuthResponse, dependencies=[Depends(login_rate_limit)])
 def guest_login(
     db: Annotated[DbSession, Depends(get_db)],
 ) -> AuthResponse:
@@ -251,11 +257,11 @@ def guest_login(
         try:
             db.commit()
             db.refresh(user)
-        except IntegrityError:
+        except IntegrityError as err:
             db.rollback()
             user = db.execute(select(User).where(User.email == DEBUG_GUEST_EMAIL)).scalar_one_or_none()
             if user is None:
-                raise HTTPException(status_code=500, detail="Could not create guest user.")
+                raise HTTPException(status_code=500, detail="Could not create guest user.") from err
         except SQLAlchemyError as err:
             db.rollback()
             raise HTTPException(
@@ -269,7 +275,7 @@ def guest_login(
     return _auth_response_for_user(user)
 
 
-@router.post("/google", response_model=AuthResponse)
+@router.post("/google", response_model=AuthResponse, dependencies=[Depends(login_rate_limit)])
 def google_login(
     payload: GoogleLoginRequest,
     db: Annotated[DbSession, Depends(get_db)],

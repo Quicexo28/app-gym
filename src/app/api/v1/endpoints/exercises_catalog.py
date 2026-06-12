@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
@@ -225,11 +225,17 @@ def _update_exercise(
 def list_catalog(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=5000)] = 2000,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ExerciseResponse]:
     rows = db.execute(
-        select(ExerciseCatalog).where(
+        select(ExerciseCatalog)
+        .where(
             or_(ExerciseCatalog.owner_user_id.is_(None), ExerciseCatalog.owner_user_id == user.id)
         )
+        .order_by(ExerciseCatalog.created_at_utc.asc(), ExerciseCatalog.id.asc())
+        .limit(limit)
+        .offset(offset)
     ).scalars().all()
 
     merged_rows = _merged_catalog(rows)

@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 
 import {
+  ApiError,
   authGuest,
   authGoogle,
   authLogin,
@@ -10,6 +11,7 @@ import {
   backendPlanToLabel,
   getMe,
   setApiToken,
+  setOnUnauthorized,
   type AuthResponse,
   type AuthUser,
   type PlanLabel,
@@ -93,9 +95,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const user = await getMe();
         if (cancelled) return;
         syncSession({ token: existing.token, user });
-      } catch {
+      } catch (cause: unknown) {
         if (cancelled) return;
-        syncSession(null);
+        // Solo descartar la sesión si el backend rechazó el token; un fallo de
+        // red (backend caído, sin conexión) no debe cerrar la sesión guardada.
+        if (cause instanceof ApiError && (cause.status === 401 || cause.status === 403)) {
+          syncSession(null);
+        }
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -105,6 +111,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, [syncSession]);
+
+  useEffect(() => {
+    setOnUnauthorized(() => syncSession(null));
+    return () => setOnUnauthorized(null);
   }, [syncSession]);
 
   const login = useCallback(
