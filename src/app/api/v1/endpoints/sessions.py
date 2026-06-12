@@ -31,13 +31,15 @@ def ingest_sessions(
     duplicates = 0
     results = []
 
+    # Single transaction: if any session fails, nothing from the batch persists.
     for s in sessions:
-        r = upsert_session(db, s)
+        r = upsert_session(db, s, commit=False)
         results.append(r)
         if r["inserted"]:
             inserted += 1
         else:
             duplicates += 1
+    db.commit()
 
     planning_reconcile = reconcile_active_assignments_for_athletes(db, athlete_ids=athlete_ids)
     return {

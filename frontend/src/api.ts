@@ -531,6 +531,7 @@ export type GamificationConfigResponse = {
 
 let authToken: string | null = null;
 let apiViewMode: ViewMode | null = null;
+let onUnauthorized: (() => void) | null = null;
 const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "").replace(/\/+$/, "");
 
 function toApiUrl(path: string): string {
@@ -550,6 +551,10 @@ export function setApiToken(token: string | null): void {
 
 export function setApiViewMode(mode: ViewMode | null): void {
   apiViewMode = mode;
+}
+
+export function setOnUnauthorized(handler: (() => void) | null): void {
+  onUnauthorized = handler;
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -593,6 +598,10 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
 
     if (!detail) {
       detail = `${res.status} ${res.statusText}`;
+    }
+    // Token expirado/invalidado en una llamada autenticada: cerrar sesión globalmente.
+    if (res.status === 401 && authToken && onUnauthorized) {
+      onUnauthorized();
     }
     throw new ApiError(res.status, detail);
   }

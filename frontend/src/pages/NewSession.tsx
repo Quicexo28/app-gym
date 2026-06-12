@@ -426,6 +426,7 @@ export default function NewSession() {
   const nextSetDeleteIdRef = useRef(1);
   const activeSessionDraftRef = useRef(activeSessionDraft);
   const voiceRecognizerRef = useRef<OfflineVoskRecognizerClass | null>(null);
+  const voiceStartingRef = useRef(false);
   const voiceStatusPulseTimeoutRef = useRef<number | null>(null);
   const clearAnimationTimeouts = useCallback(() => {
     for (const timeoutId of uncheckTimeoutsRef.current) {
@@ -754,7 +755,7 @@ export default function NewSession() {
     }
   }, [appendVoiceAuditEntry, voiceAssistDesktopEnabled]);
 
-  const startVoiceCapture = useCallback(async () => {
+  const startVoiceCaptureInner = useCallback(async () => {
     setVoiceError("");
     if (!voiceAssistDesktopEnabled) {
       setVoiceError("La asistencia por voz esta desactivada.");
@@ -848,6 +849,17 @@ export default function NewSession() {
       setVoiceStatus("error");
     }
   }, [appendVoiceAuditEntry, voiceAssistDesktopEnabled]);
+
+  // Evita que un doble clic cree dos recognizers mientras los await del arranque siguen en curso.
+  const startVoiceCapture = useCallback(async () => {
+    if (voiceStartingRef.current) return;
+    voiceStartingRef.current = true;
+    try {
+      await startVoiceCaptureInner();
+    } finally {
+      voiceStartingRef.current = false;
+    }
+  }, [startVoiceCaptureInner]);
 
   const deactivateVoiceCapture = useCallback(async () => {
     if (voiceStatusPulseTimeoutRef.current !== null) {
