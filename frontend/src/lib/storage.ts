@@ -482,6 +482,7 @@ function readRoutinesStore(): RoutinesStoreV2 {
 
 function writeRoutinesStore(store: RoutinesStoreV2): void {
   saveJSON(KEY_ROUTINES, normalizeRoutinesStore(store));
+  markRoutinesDirty();
   scheduleRoutinesPush();
 }
 
@@ -489,8 +490,36 @@ function writeRoutinesStore(store: RoutinesStoreV2): void {
 
 export const ROUTINES_HYDRATED_EVENT = "coach-ai:routines-hydrated";
 
+// Marca "hay cambios locales sin pushear". Sobrevive reloads: si el push
+// falla (offline), la próxima hidratación sube lo local en vez de pisarlo.
+const KEY_ROUTINES_DIRTY = "coach_ai_routines_dirty_v1";
+
 let routineSyncEnabled = false;
 let routinePushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function markRoutinesDirty(): void {
+  try {
+    localStorage.setItem(KEY_ROUTINES_DIRTY, "1");
+  } catch {
+    // sin persistencia del flag: el peor caso vuelve a last-write-wins
+  }
+}
+
+function clearRoutinesDirty(): void {
+  try {
+    localStorage.removeItem(KEY_ROUTINES_DIRTY);
+  } catch {
+    // ignorar
+  }
+}
+
+function routinesAreDirty(): boolean {
+  try {
+    return localStorage.getItem(KEY_ROUTINES_DIRTY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 function currentScopesForBackend(): Record<string, unknown[]> {
   const raw = loadJSON<unknown>(KEY_ROUTINES, []);
@@ -498,12 +527,17 @@ function currentScopesForBackend(): Record<string, unknown[]> {
   return normalized.scopes as unknown as Record<string, unknown[]>;
 }
 
+async function pushRoutinesNow(): Promise<void> {
+  await putRoutineStore(currentScopesForBackend());
+  clearRoutinesDirty();
+}
+
 function scheduleRoutinesPush(): void {
   if (!routineSyncEnabled) return;
   if (routinePushTimer !== null) clearTimeout(routinePushTimer);
   routinePushTimer = setTimeout(() => {
     routinePushTimer = null;
-    putRoutineStore(currentScopesForBackend()).catch((err) => {
+    pushRoutinesNow().catch((err) => {
       console.warn("No se pudo sincronizar rutinas con el backend", err);
     });
   }, 1200);
@@ -515,23 +549,31 @@ function storeHasRoutines(scopes: Record<string, unknown>): boolean {
 
 /**
  * Trae el store remoto y reconcilia con localStorage.
- * Remoto no vacío gana (última escritura); si solo hay datos locales, se suben.
+ * Prioridad: cambios locales sin pushear (dirty) > remoto no vacío > local no vacío.
  * El push write-through queda habilitado solo tras hidratar con éxito, para no
  * pisar datos remotos nuevos con una copia local vieja tras un fallo de red.
  */
 export async function hydrateRoutinesFromBackend(): Promise<void> {
   try {
+    const localScopes = currentScopesForBackend();
+
+    if (routinesAreDirty() && storeHasRoutines(localScopes)) {
+      await pushRoutinesNow();
+      routineSyncEnabled = true;
+      return;
+    }
+
     const remote = await getRoutineStore();
     const remoteScopes =
       remote && typeof remote.scopes === "object" && remote.scopes !== null ? remote.scopes : {};
-    const localScopes = currentScopesForBackend();
 
     if (storeHasRoutines(remoteScopes)) {
       const normalized = normalizeRoutinesStore({ schema: ROUTINES_SCHEMA, scopes: remoteScopes });
       saveJSON(KEY_ROUTINES, normalized);
+      clearRoutinesDirty();
       window.dispatchEvent(new CustomEvent(ROUTINES_HYDRATED_EVENT));
     } else if (storeHasRoutines(localScopes)) {
-      await putRoutineStore(localScopes);
+      await pushRoutinesNow();
     }
     routineSyncEnabled = true;
   } catch (err) {

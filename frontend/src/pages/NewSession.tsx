@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { useNavigate } from "react-router-dom";
 
 import { ingestSessions } from "../api";
+import { enqueueSessionUpload, isNetworkError } from "../lib/sessionOutbox";
 import { loadRoutines } from "../lib/storage";
 import type { RoutineExerciseTemplate, RoutineTemplate } from "../lib/storage";
 import type { OfflineVoskRecognizer as OfflineVoskRecognizerClass } from "../lib/voice/offlineRecognizer";
@@ -1426,6 +1427,14 @@ export default function NewSession() {
       clearDraft();
       nav("/history");
     } catch (cause: unknown) {
+      if (isNetworkError(cause)) {
+        // Sin conexión: la sesión queda en cola local y se sube al reconectar.
+        enqueueSessionUpload(payload);
+        await deactivateVoiceCapture();
+        clearDraft();
+        nav("/history");
+        return;
+      }
       setError(String((cause as { message?: string })?.message || cause));
     } finally {
       setBusy(false);
