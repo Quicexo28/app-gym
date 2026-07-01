@@ -1,11 +1,11 @@
-# Publicación en Google Play — Coach AI
+# Publicación en Google Play — Alzo
 
 Estado: el proyecto Android está completo y compila. Lo único que falta para publicar
 son los pasos externos (consolas de Google) que requieren cuentas y credenciales.
 
 ## Qué ya está hecho (en el repo)
 
-- Proyecto nativo Capacitor 8 en `android/` (appId `com.santiagoquiceno.coachai`).
+- Proyecto nativo Capacitor 8 en `android/` (appId `com.santiagoquiceno.alzo`).
 - Iconos y splash nativos generados desde `assets/` con `@capacitor/assets`.
 - Login con Google compatible con app nativa (`@capgo/capacitor-social-login`,
   Credential Manager). En web sigue funcionando Google Identity Services.
@@ -52,7 +52,7 @@ La app móvil necesita el API accesible por internet:
 En el mismo proyecto donde vive el OAuth client web actual:
 
 1. Crear credencial **OAuth client ID → Android**:
-   - Package name: `com.santiagoquiceno.coachai`
+   - Package name: `com.santiagoquiceno.alzo`
    - SHA-1: registrar **ambas** huellas de la tabla (release y debug; se pueden crear
      dos clients Android o añadir la segunda luego).
 2. En `frontend/.env.mobile`, `VITE_GOOGLE_CLIENT_ID` = el client ID **Web** (el mismo

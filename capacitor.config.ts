@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "com.santiagoquiceno.coachai",
-  appName: "Coach AI",
+  appId: "com.santiagoquiceno.alzo",
+  appName: "Alzo",
   webDir: "frontend/dist",
   android: {
     allowMixedContent: false,

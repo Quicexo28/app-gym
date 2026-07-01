@@ -303,7 +303,7 @@ export default function Login() {
     <div className="loginWrap">
       <section className="surface loginCard">
         <div className="titleBlock">
-          <h1>Coach AI Engineer</h1>
+          <h1>Alzo</h1>
           <p>Inicia sesion para gestionar atletas, sesiones y escenarios.</p>
         </div>
 
