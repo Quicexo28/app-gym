@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Coach AI</string>
+    <string name="title_activity_main">Coach AI</string>
+    <string name="package_name">com.santiagoquiceno.coachai</string>
+    <string name="custom_url_scheme">com.santiagoquiceno.coachai</string>
+</resources>
