@@ -13,9 +13,13 @@ from app.auth.deps import require_role
 from app.auth.types import Plan, Role
 from app.db.engine import get_db
 from app.db.models import CoachAthleteAssignment
-from app.db.repo import ensure_athlete
 from app.db.models_auth import User
-from app.profile import default_gamification_config, get_gamification_config, upsert_gamification_config
+from app.db.repo import ensure_athlete
+from app.profile import (
+    default_gamification_config,
+    get_gamification_config,
+    upsert_gamification_config,
+)
 
 router = APIRouter(prefix="/admin/dev", tags=["admin"])
 DbSession = Session

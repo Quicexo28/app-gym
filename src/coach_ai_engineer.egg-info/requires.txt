@@ -6,6 +6,9 @@ numpy>=1.26
 sqlalchemy>=2.0
 alembic>=1.13
 psycopg[binary]>=3.2
+python-jose[cryptography]>=3.3
+passlib[bcrypt]>=1.7
+email-validator>=2.2
 
 [dev]
 pytest>=8.0

@@ -16,6 +16,7 @@ import {
   listRoutinePropagationTargets,
   loadRoutines,
   propagateRoutineUpdate,
+  ROUTINES_HYDRATED_EVENT,
   saveRoutines,
   uid,
 } from "../lib/storage";
@@ -405,7 +406,7 @@ export default function Routines() {
   const { viewMode } = useViewMode();
   const { loading, syncError, entries: catalogEntries } = useExerciseCatalog();
   const { registerUndo } = useUndo();
-  const [items, setItems] = useState<RoutineTemplate[]>([]);
+  const [items, setItems] = useState<RoutineTemplate[]>(() => (athleteId ? loadRoutines(athleteId) : []));
   const [name, setName] = useState("");
   const [draftExercises, setDraftExercises] = useState<DraftRoutineExercise[]>([]);
   const [error, setError] = useState("");
@@ -551,19 +552,11 @@ export default function Routines() {
     athleteIdRef.current = athleteId;
   }, [athleteId]);
 
-  useEffect(() => {
-    if (!athleteId) {
-      setItems([]);
-      setName("");
-      setDraftExercises([]);
-      setEditingRoutineId(null);
-      setInfoRoutineId(null);
-      setDraggedExerciseIdentity(null);
-      setDropSlotIndex(null);
-      setDragArmedExerciseIdentity(null);
-      return;
-    }
-    setItems(loadRoutines(athleteId));
+  // Reset sincronizado durante render al cambiar de sujeto (evita efecto + setState).
+  const [renderedAthleteId, setRenderedAthleteId] = useState(athleteId);
+  if (renderedAthleteId !== athleteId) {
+    setRenderedAthleteId(athleteId);
+    setItems(athleteId ? loadRoutines(athleteId) : []);
     setName("");
     setDraftExercises([]);
     setEditingRoutineId(null);
@@ -571,9 +564,20 @@ export default function Routines() {
     setDraggedExerciseIdentity(null);
     setDropSlotIndex(null);
     setDragArmedExerciseIdentity(null);
-    setError("");
-    setFeedback("");
-  }, [athleteId]);
+    if (athleteId) {
+      setError("");
+      setFeedback("");
+    }
+  }
+
+  useEffect(() => {
+    const onHydrated = () => {
+      const current = athleteIdRef.current;
+      if (current) setItems(loadRoutines(current));
+    };
+    window.addEventListener(ROUTINES_HYDRATED_EVENT, onHydrated);
+    return () => window.removeEventListener(ROUTINES_HYDRATED_EVENT, onHydrated);
+  }, []);
 
   function isLeafEntry(entry: ExerciseCatalogEntry): boolean {
     return !nonLeafPathKeys.has(pathKey(entry.path));

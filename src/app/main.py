@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
+from app.auth.security import assert_secret_is_safe
 from app.core.config import Settings
 from app.core.logging import configure_logging
 
@@ -9,6 +10,7 @@ from app.core.logging import configure_logging
 def create_app() -> FastAPI:
     settings = Settings()
     configure_logging(settings.log_level)
+    assert_secret_is_safe(settings.env)
 
     app = FastAPI(
         title=settings.app_name,

@@ -19,7 +19,6 @@ from app.db.models import (
     TrainingSession,
 )
 
-
 BASIC_LIFT_KEYS = ("back_squat", "bench_press", "deadlift")
 STREAK_GAP_TOLERANCE_DAYS_DEFAULT = 7
 STREAK_GAP_TOLERANCE_DAYS_MAX = 14
@@ -566,11 +565,11 @@ def _build_showcase_snapshot(
     next_streak_tier = _next_tier(float(current_streak_days), streak_tiers)
     if next_streak_tier is not None:
         next_targets.append(
-            (
+            
                 f"Racha activa {current_streak_days} entrenos "
                 f"(gap <= {int(streak_gap_tolerance_days)} dias) "
                 f"-> objetivo {int(next_streak_tier.threshold)} dias"
-            )
+            
         )
 
     completed_days_tier = _highest_unlocked_tier(float(completed_days_total), planning_days_tiers)
@@ -654,10 +653,10 @@ def _build_showcase_snapshot(
                 continue
             current_label = f"{current_ratio:g}x BW" if current_ratio is not None else "sin PR"
             next_targets.append(
-                (
+                
                     f"{LIFT_LABELS[lift_key]} fuerza relativa: {current_label} "
                     f"-> objetivo {next_tier.threshold:g}x BW"
-                )
+                
             )
 
     if _is_trilogy_unlocked(lift_prs_kg=lift_prs_kg, lift_tiers=lift_tiers):

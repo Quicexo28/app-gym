@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,7 +22,7 @@ def list_runs(
     athlete_id: str,
     user: Annotated[User, Depends(get_current_user)],
     db: DbSession,
-    limit: int = 20,
+    limit: int = Query(default=20, ge=1, le=100),
 ) -> list[dict]:
     require_athlete_access(db, user, athlete_id)
 

@@ -11,6 +11,7 @@ from app.api.v1.endpoints.me import router as me_router
 from app.api.v1.endpoints.meta import router as meta_router
 from app.api.v1.endpoints.planning import router as planning_router
 from app.api.v1.endpoints.profile import router as profile_router
+from app.api.v1.endpoints.routines_store import router as routines_store_router
 from app.api.v1.endpoints.runs import router as runs_router
 from app.api.v1.endpoints.runs_list import router as runs_list_router
 from app.api.v1.endpoints.sessions import router as sessions_router
@@ -30,6 +31,7 @@ api_router.include_router(profile_router)
 api_router.include_router(settings_router)
 api_router.include_router(exercises_catalog_router)
 api_router.include_router(planning_router)
+api_router.include_router(routines_store_router)
 
 api_router.include_router(sessions_router)
 api_router.include_router(runs_router)

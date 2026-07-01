@@ -44,14 +44,14 @@ def upsert_session(db: Session, s: DomainSession) -> dict:
         db.commit()
         return {
             "inserted": True,
-            "issues": [i.model_dump() for i in issues],
+            "issues": [i.to_dict() for i in issues],
             "session_key": (s.athlete_id, s.start_time.isoformat()),
         }
     except IntegrityError:
         db.rollback()
         return {
             "inserted": False,
-            "issues": [i.model_dump() for i in issues],
+            "issues": [i.to_dict() for i in issues],
             "session_key": (s.athlete_id, s.start_time.isoformat()),
         }
 

@@ -136,11 +136,11 @@ class GamificationConfig(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     scope: Mapped[str] = mapped_column(String(32), index=True, nullable=False, default="global")
     config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    updated_by_user_id: Mapped[uuid.UUID] = mapped_column(
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="SET NULL"),
         index=True,
-        nullable=False,
+        nullable=True,
     )
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -180,8 +180,8 @@ class TrainingSession(Base):
     # cached derived metrics (optional but useful)
     volume_load_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     srpe_load: Mapped[float | None] = mapped_column(Float, nullable=True)
-    sets_total: Mapped[int | None] = mapped_column(Float, nullable=True)
-    reps_total: Mapped[int | None] = mapped_column(Float, nullable=True)
+    sets_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reps_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False
@@ -250,6 +250,29 @@ class ExerciseCatalog(Base):
     aliases: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     created_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False
+    )
+
+
+class RoutineStore(Base):
+    """Copia servidor del store de rutinas del frontend (scopes -> rutinas).
+
+    Una fila por usuario; el payload replica el formato localStorage v2 para
+    que el cliente pueda hidratar/restaurar sin transformaciones.
+    """
+
+    __tablename__ = "routine_stores"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    store: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
     updated_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False
     )
@@ -445,7 +468,7 @@ class CycleAssignmentBlock(Base):
     )
     completed_session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("sessions.id"),
+        ForeignKey("sessions.id", ondelete="SET NULL"),
         nullable=True,
     )
     completed_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
