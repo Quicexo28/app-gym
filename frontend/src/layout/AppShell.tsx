@@ -1,8 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import ActiveSessionBar from "../components/ActiveSessionBar";
 import UndoBar from "../components/UndoBar";
+import {
+  OUTBOX_CHANGED_EVENT,
+  flushSessionOutbox,
+  installSessionOutboxAutoFlush,
+  outboxCount,
+} from "../lib/sessionOutbox";
 import { hydrateRoutinesFromBackend } from "../lib/storage";
 import { useAthleteAccess } from "../state/athlete";
 import { useAuth } from "../state/auth";
@@ -72,8 +78,16 @@ export default function AppShell() {
   const { logout } = useAuth();
   const { viewMode, allowedModes, canSwitchMode, setViewMode } = useViewMode();
 
+  const [pendingUploads, setPendingUploads] = useState(() => outboxCount());
+
   useEffect(() => {
     void hydrateRoutinesFromBackend();
+    installSessionOutboxAutoFlush();
+    void flushSessionOutbox();
+
+    const update = () => setPendingUploads(outboxCount());
+    window.addEventListener(OUTBOX_CHANGED_EVENT, update);
+    return () => window.removeEventListener(OUTBOX_CHANGED_EVENT, update);
   }, []);
 
   const navItems = buildNavItems(viewMode);
@@ -92,6 +106,14 @@ export default function AppShell() {
           </div>
 
           <div className="hstack compact topbarActions">
+            {pendingUploads > 0 ? (
+              <span
+                className="chip"
+                title="Sesiones guardadas sin conexión; se subirán automáticamente al reconectar."
+              >
+                {pendingUploads} por subir
+              </span>
+            ) : null}
             {canSwitchMode ? (
               <div className="toolbarGroup">
                 <label className="smallLabel" htmlFor="view-mode-input">

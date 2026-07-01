@@ -1578,6 +1578,41 @@ textarea.input:focus,
   gap: 14px;
 }
 
+.loginDivider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted, #8a8f98);
+  font-size: 12px;
+  margin: 2px 0;
+}
+
+.loginDivider::before,
+.loginDivider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border, #2a2e35);
+}
+
+.googleSignIn {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+
+.googleSignInButton {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.googleSignIn[aria-busy="true"] .googleSignInButton {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
 .topbarActions .smallLabel {
   margin: 0;
 }
