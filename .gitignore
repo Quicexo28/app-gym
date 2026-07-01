@@ -24,6 +24,7 @@ dist-ssr
 *.sw?
 .env
 .env.prod
+.env.mobile
 .env.prod.local
 frontend/public/models/*.zip
 

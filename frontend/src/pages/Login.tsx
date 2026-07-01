@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 
 import { ApiError } from "../api";
 import { useAuth } from "../state/auth";
+
+const isNativeApp = Capacitor.isNativePlatform();
 
 type GoogleCredentialResponse = {
   credential?: string;
@@ -150,8 +153,52 @@ export default function Login() {
     googleClientId ? "idle" : "unavailable",
   );
 
+  // Nativo (Capacitor): Google Sign-In por Credential Manager; GIS web no funciona en webview.
   useEffect(() => {
-    if (!googleClientId || isAuthenticated) return;
+    if (!isNativeApp || !googleClientId || isAuthenticated) return;
+
+    let cancelled = false;
+    import("@capgo/capacitor-social-login")
+      .then(({ SocialLogin }) => SocialLogin.initialize({ google: { webClientId: googleClientId } }))
+      .then(() => {
+        if (!cancelled) setGoogleStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setGoogleStatus("unavailable");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleClientId, isAuthenticated]);
+
+  async function submitGoogleNative() {
+    setBusy(true);
+    setError("");
+    try {
+      const { SocialLogin } = await import("@capgo/capacitor-social-login");
+      const response = await SocialLogin.login({
+        provider: "google",
+        options: { scopes: ["email", "profile"] },
+      });
+      const idToken = "idToken" in response.result ? response.result.idToken?.trim() : "";
+      if (!idToken) {
+        setError("No se pudo obtener la credencial de Google.");
+        return;
+      }
+      await loginWithGoogle(idToken);
+      nav("/home", { replace: true });
+    } catch (e: unknown) {
+      // el usuario cancelo el dialogo nativo: no mostrar error
+      if (e instanceof Error && /cancel/i.test(e.message)) return;
+      setError(toFriendlyError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (isNativeApp || !googleClientId || isAuthenticated) return;
 
     let cancelled = false;
     loadGoogleScript()
@@ -366,7 +413,15 @@ export default function Login() {
           </div>
 
           <div className="googleSignIn" aria-busy={busy}>
-            <div ref={googleButtonRef} className="googleSignInButton" />
+            {isNativeApp ? (
+              googleStatus === "ready" ? (
+                <button type="button" className="btn" onClick={submitGoogleNative} disabled={busy}>
+                  Continuar con Google
+                </button>
+              ) : null
+            ) : (
+              <div ref={googleButtonRef} className="googleSignInButton" />
+            )}
             {googleStatus === "idle" ? <div className="smallLabel">Cargando Google...</div> : null}
             {googleStatus === "unavailable" ? (
               <div className="smallLabel">
