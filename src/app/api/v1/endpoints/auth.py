@@ -12,7 +12,7 @@ from urllib.request import urlopen
 from email_validator import EmailNotValidError, validate_email
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -22,7 +22,18 @@ from app.auth.security import create_access_token, hash_password, verify_passwor
 from app.auth.types import Plan, Role
 from app.core.config import Settings
 from app.db.engine import get_db
-from app.db.models import Athlete, CoachAthleteAssignment, ExerciseCatalog, Run, TrainingSession
+from app.db.models import (
+    Athlete,
+    BodyMeasurement,
+    CoachAthleteAssignment,
+    CycleAssignment,
+    CycleTemplate,
+    ExerciseCatalog,
+    GamificationConfig,
+    RoutineStore,
+    Run,
+    TrainingSession,
+)
 from app.db.models_auth import User, UserSettings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -194,7 +205,11 @@ def register(
             modules_enabled=_default_modules_for_plan(user.plan),
         )
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as err:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Email or phone already registered.") from err
     db.refresh(user)
 
     return _auth_response_for_user(user)
@@ -255,7 +270,7 @@ def guest_login(
             db.rollback()
             user = db.execute(select(User).where(User.email == DEBUG_GUEST_EMAIL)).scalar_one_or_none()
             if user is None:
-                raise HTTPException(status_code=500, detail="Could not create guest user.")
+                raise HTTPException(status_code=500, detail="Could not create guest user.") from None
         except SQLAlchemyError as err:
             db.rollback()
             raise HTTPException(
@@ -330,12 +345,48 @@ def delete_my_account(
 
     personal_athlete_id = personal_athlete_id_for_user(user)
 
+    owned_template_ids = select(CycleTemplate.id).where(CycleTemplate.owner_user_id == user.id)
+
+    # Planning primero: assignments (blocks caen por ON DELETE CASCADE) y luego templates.
+    db.execute(
+        delete(CycleAssignment).where(
+            or_(
+                CycleAssignment.athlete_id == personal_athlete_id,
+                CycleAssignment.assigned_by_user_id == user.id,
+                CycleAssignment.template_id.in_(owned_template_ids),
+            )
+        )
+    )
+    db.execute(delete(CycleTemplate).where(CycleTemplate.owner_user_id == user.id))
+
+    db.execute(
+        delete(BodyMeasurement).where(
+            or_(
+                BodyMeasurement.athlete_id == personal_athlete_id,
+                BodyMeasurement.measured_by_user_id == user.id,
+            )
+        )
+    )
+    db.execute(
+        update(GamificationConfig)
+        .where(GamificationConfig.updated_by_user_id == user.id)
+        .values(updated_by_user_id=None)
+    )
+
     db.execute(delete(Run).where(Run.athlete_id == personal_athlete_id))
     db.execute(delete(TrainingSession).where(TrainingSession.athlete_id == personal_athlete_id))
+    db.execute(
+        delete(CoachAthleteAssignment).where(
+            or_(
+                CoachAthleteAssignment.coach_user_id == user.id,
+                CoachAthleteAssignment.athlete_id == personal_athlete_id,
+            )
+        )
+    )
     db.execute(delete(Athlete).where(Athlete.athlete_id == personal_athlete_id))
 
-    db.execute(delete(CoachAthleteAssignment).where(CoachAthleteAssignment.coach_user_id == user.id))
     db.execute(delete(ExerciseCatalog).where(ExerciseCatalog.owner_user_id == user.id))
+    db.execute(delete(RoutineStore).where(RoutineStore.user_id == user.id))
     db.execute(delete(UserSettings).where(UserSettings.user_id == user.id))
     db.execute(delete(User).where(User.id == user.id))
     db.commit()

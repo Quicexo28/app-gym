@@ -1,3 +1,5 @@
+import { getRoutineStore, putRoutineStore } from "../api";
+
 export function loadJSON<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -8,8 +10,15 @@ export function loadJSON<T>(key: string, fallback: T): T {
   }
 }
 
-export function saveJSON(key: string, value: unknown): void {
-  localStorage.setItem(key, JSON.stringify(value));
+export function saveJSON(key: string, value: unknown): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (err) {
+    // QuotaExceededError u otro fallo de persistencia: no tumbar la app.
+    console.error(`No se pudo guardar "${key}" en localStorage`, err);
+    return false;
+  }
 }
 
 export type ExerciseCatalogItem = {
@@ -473,6 +482,103 @@ function readRoutinesStore(): RoutinesStoreV2 {
 
 function writeRoutinesStore(store: RoutinesStoreV2): void {
   saveJSON(KEY_ROUTINES, normalizeRoutinesStore(store));
+  markRoutinesDirty();
+  scheduleRoutinesPush();
+}
+
+// --- Sync de rutinas con backend (write-through, last-write-wins) ---
+
+export const ROUTINES_HYDRATED_EVENT = "coach-ai:routines-hydrated";
+
+// Marca "hay cambios locales sin pushear". Sobrevive reloads: si el push
+// falla (offline), la próxima hidratación sube lo local en vez de pisarlo.
+const KEY_ROUTINES_DIRTY = "coach_ai_routines_dirty_v1";
+
+let routineSyncEnabled = false;
+let routinePushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function markRoutinesDirty(): void {
+  try {
+    localStorage.setItem(KEY_ROUTINES_DIRTY, "1");
+  } catch {
+    // sin persistencia del flag: el peor caso vuelve a last-write-wins
+  }
+}
+
+function clearRoutinesDirty(): void {
+  try {
+    localStorage.removeItem(KEY_ROUTINES_DIRTY);
+  } catch {
+    // ignorar
+  }
+}
+
+function routinesAreDirty(): boolean {
+  try {
+    return localStorage.getItem(KEY_ROUTINES_DIRTY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function currentScopesForBackend(): Record<string, unknown[]> {
+  const raw = loadJSON<unknown>(KEY_ROUTINES, []);
+  const normalized = normalizeRoutinesStore(raw);
+  return normalized.scopes as unknown as Record<string, unknown[]>;
+}
+
+async function pushRoutinesNow(): Promise<void> {
+  await putRoutineStore(currentScopesForBackend());
+  clearRoutinesDirty();
+}
+
+function scheduleRoutinesPush(): void {
+  if (!routineSyncEnabled) return;
+  if (routinePushTimer !== null) clearTimeout(routinePushTimer);
+  routinePushTimer = setTimeout(() => {
+    routinePushTimer = null;
+    pushRoutinesNow().catch((err) => {
+      console.warn("No se pudo sincronizar rutinas con el backend", err);
+    });
+  }, 1200);
+}
+
+function storeHasRoutines(scopes: Record<string, unknown>): boolean {
+  return Object.values(scopes).some((list) => Array.isArray(list) && list.length > 0);
+}
+
+/**
+ * Trae el store remoto y reconcilia con localStorage.
+ * Prioridad: cambios locales sin pushear (dirty) > remoto no vacío > local no vacío.
+ * El push write-through queda habilitado solo tras hidratar con éxito, para no
+ * pisar datos remotos nuevos con una copia local vieja tras un fallo de red.
+ */
+export async function hydrateRoutinesFromBackend(): Promise<void> {
+  try {
+    const localScopes = currentScopesForBackend();
+
+    if (routinesAreDirty() && storeHasRoutines(localScopes)) {
+      await pushRoutinesNow();
+      routineSyncEnabled = true;
+      return;
+    }
+
+    const remote = await getRoutineStore();
+    const remoteScopes =
+      remote && typeof remote.scopes === "object" && remote.scopes !== null ? remote.scopes : {};
+
+    if (storeHasRoutines(remoteScopes)) {
+      const normalized = normalizeRoutinesStore({ schema: ROUTINES_SCHEMA, scopes: remoteScopes });
+      saveJSON(KEY_ROUTINES, normalized);
+      clearRoutinesDirty();
+      window.dispatchEvent(new CustomEvent(ROUTINES_HYDRATED_EVENT));
+    } else if (storeHasRoutines(localScopes)) {
+      await pushRoutinesNow();
+    }
+    routineSyncEnabled = true;
+  } catch (err) {
+    console.warn("No se pudo hidratar rutinas desde el backend; modo local", err);
+  }
 }
 
 function routineMatchesByIdentity(source: RoutineTemplate, candidate: RoutineTemplate): boolean {

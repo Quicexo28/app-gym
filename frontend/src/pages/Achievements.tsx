@@ -63,8 +63,7 @@ export default function Achievements() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setLoading(true);
-    setError("");
+    // loading=true y error="" ya son el estado inicial; el efecto corre una sola vez.
     getMyProfile()
       .then((res) => setData(res))
       .catch((cause: unknown) => setError(String((cause as { message?: string })?.message || cause)))

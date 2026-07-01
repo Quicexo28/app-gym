@@ -13,9 +13,25 @@ from app.auth.types import Plan, Role
 # Use a pure-passlib hasher to avoid bcrypt backend incompatibilities in local/dev.
 PWD_CONTEXT = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "dev-insecure-change-me")
+INSECURE_DEFAULT_SECRET = "dev-insecure-change-me"
+
+JWT_SECRET = os.environ.get("JWT_SECRET", INSECURE_DEFAULT_SECRET)
 JWT_ALG = os.environ.get("JWT_ALG", "HS256")
-ACCESS_TOKEN_MIN = int(os.environ.get("ACCESS_TOKEN_MIN", "43200"))
+ACCESS_TOKEN_MIN = int(os.environ.get("ACCESS_TOKEN_MIN", "1440"))
+
+
+def assert_secret_is_safe(env: str) -> None:
+    """Falla al arrancar si el secreto JWT es el default fuera de dev.
+
+    Sin esto, cualquier despliegue que olvide JWT_SECRET acepta tokens forjados.
+    """
+    if env.strip().lower() in {"dev", "development", "test"}:
+        return
+    if JWT_SECRET == INSECURE_DEFAULT_SECRET or len(JWT_SECRET) < 16:
+        raise RuntimeError(
+            "JWT_SECRET inseguro: define una clave fuerte (>=16 chars) via variable de entorno "
+            "antes de arrancar fuera de dev."
+        )
 
 
 def hash_password(password: str) -> str:

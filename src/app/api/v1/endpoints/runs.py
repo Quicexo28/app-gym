@@ -12,8 +12,8 @@ from app.auth.athlete_access import require_athlete_access
 from app.auth.deps import get_current_user
 from app.db.engine import get_db
 from app.db.models import Run
-from app.db.repo import list_sessions_for_athlete
 from app.db.models_auth import User
+from app.db.repo import list_sessions_for_athlete
 from coach_ai.e2e import EndToEndConfig, run_end_to_end
 from coach_ai.e2e.versioning import ENGINE_VERSION, fingerprint_config
 
@@ -61,7 +61,7 @@ def run_pipeline_for_athlete(
         trend=jsonable_encoder(res.trend),
         latents=jsonable_encoder(res.latents),
         suggestions=jsonable_encoder(res.suggestions),
-        issues=jsonable_encoder([i.model_dump() for i in res.issues]),
+        issues=jsonable_encoder([i.to_dict() for i in res.issues]),
     )
     db.add(row)
     db.commit()

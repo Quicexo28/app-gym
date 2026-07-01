@@ -631,6 +631,23 @@ export function authGuest(): Promise<AuthResponse> {
   });
 }
 
+export type RoutineStorePayload = {
+  schema: string;
+  scopes: Record<string, unknown[]>;
+  updated_at_utc?: string | null;
+};
+
+export function getRoutineStore(): Promise<RoutineStorePayload> {
+  return http("/api/v1/routines/store");
+}
+
+export function putRoutineStore(scopes: Record<string, unknown[]>): Promise<RoutineStorePayload> {
+  return http("/api/v1/routines/store", {
+    method: "PUT",
+    body: JSON.stringify({ schema: "coach_ai_routines_v2", scopes }),
+  });
+}
+
 export function getExerciseCatalog(): Promise<ExerciseCatalogApiItem[]> {
   return http("/api/v1/exercises/catalog");
 }
