@@ -15,6 +15,9 @@ Requires-Dist: numpy>=1.26
 Requires-Dist: sqlalchemy>=2.0
 Requires-Dist: alembic>=1.13
 Requires-Dist: psycopg[binary]>=3.2
+Requires-Dist: python-jose[cryptography]>=3.3
+Requires-Dist: passlib[bcrypt]>=1.7
+Requires-Dist: email-validator>=2.2
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0; extra == "dev"
 Requires-Dist: pytest-cov>=5.0; extra == "dev"

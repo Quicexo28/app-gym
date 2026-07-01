@@ -255,7 +255,12 @@ function writeStoredDraft(next: ActiveSessionDraft | null): void {
     localStorage.removeItem(KEY);
     return;
   }
-  localStorage.setItem(KEY, JSON.stringify(next));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  } catch (err) {
+    // QuotaExceededError: la sesion sigue en memoria; no tumbar la captura.
+    console.error("No se pudo persistir la sesion activa en localStorage", err);
+  }
 }
 
 function findFirstPendingSet(exercises: ActiveSessionExerciseDraft[]): { exerciseIndex: number; setIndex: number } | null {

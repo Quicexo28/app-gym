@@ -26,3 +26,13 @@ dist-ssr
 .env.prod
 .env.prod.local
 frontend/public/models/*.zip
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage

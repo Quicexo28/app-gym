@@ -25,7 +25,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://coach:coach@db:5432/coach_ai
-      JWT_SECRET: dev-insecure-change-me
+      JWT_SECRET: ${JWT_SECRET:-dev-insecure-change-me}
+      ENV: dev
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       PYTHONUNBUFFERED: "1"
     volumes:

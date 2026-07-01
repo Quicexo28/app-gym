@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 
 import {
+  ApiError,
   authGuest,
   authGoogle,
   authLogin,
@@ -93,9 +94,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const user = await getMe();
         if (cancelled) return;
         syncSession({ token: existing.token, user });
-      } catch {
+      } catch (err) {
         if (cancelled) return;
-        syncSession(null);
+        // Solo cerrar sesion si el token fue rechazado; en fallo de red se conserva.
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          syncSession(null);
+        }
       } finally {
         if (!cancelled) setReady(true);
       }

@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import ActiveSessionBar from "../components/ActiveSessionBar";
 import UndoBar from "../components/UndoBar";
+import { hydrateRoutinesFromBackend } from "../lib/storage";
 import { useAthleteAccess } from "../state/athlete";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
@@ -69,6 +71,10 @@ export default function AppShell() {
   const { prefs, resolvedTheme, toggleTheme } = usePreferences();
   const { logout } = useAuth();
   const { viewMode, allowedModes, canSwitchMode, setViewMode } = useViewMode();
+
+  useEffect(() => {
+    void hydrateRoutinesFromBackend();
+  }, []);
 
   const navItems = buildNavItems(viewMode);
   const themeLabel =

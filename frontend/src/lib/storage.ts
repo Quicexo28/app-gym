@@ -1,3 +1,5 @@
+import { getRoutineStore, putRoutineStore } from "../api";
+
 export function loadJSON<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -8,8 +10,15 @@ export function loadJSON<T>(key: string, fallback: T): T {
   }
 }
 
-export function saveJSON(key: string, value: unknown): void {
-  localStorage.setItem(key, JSON.stringify(value));
+export function saveJSON(key: string, value: unknown): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (err) {
+    // QuotaExceededError u otro fallo de persistencia: no tumbar la app.
+    console.error(`No se pudo guardar "${key}" en localStorage`, err);
+    return false;
+  }
 }
 
 export type ExerciseCatalogItem = {
@@ -473,6 +482,61 @@ function readRoutinesStore(): RoutinesStoreV2 {
 
 function writeRoutinesStore(store: RoutinesStoreV2): void {
   saveJSON(KEY_ROUTINES, normalizeRoutinesStore(store));
+  scheduleRoutinesPush();
+}
+
+// --- Sync de rutinas con backend (write-through, last-write-wins) ---
+
+export const ROUTINES_HYDRATED_EVENT = "coach-ai:routines-hydrated";
+
+let routineSyncEnabled = false;
+let routinePushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function currentScopesForBackend(): Record<string, unknown[]> {
+  const raw = loadJSON<unknown>(KEY_ROUTINES, []);
+  const normalized = normalizeRoutinesStore(raw);
+  return normalized.scopes as unknown as Record<string, unknown[]>;
+}
+
+function scheduleRoutinesPush(): void {
+  if (!routineSyncEnabled) return;
+  if (routinePushTimer !== null) clearTimeout(routinePushTimer);
+  routinePushTimer = setTimeout(() => {
+    routinePushTimer = null;
+    putRoutineStore(currentScopesForBackend()).catch((err) => {
+      console.warn("No se pudo sincronizar rutinas con el backend", err);
+    });
+  }, 1200);
+}
+
+function storeHasRoutines(scopes: Record<string, unknown>): boolean {
+  return Object.values(scopes).some((list) => Array.isArray(list) && list.length > 0);
+}
+
+/**
+ * Trae el store remoto y reconcilia con localStorage.
+ * Remoto no vacío gana (última escritura); si solo hay datos locales, se suben.
+ * El push write-through queda habilitado solo tras hidratar con éxito, para no
+ * pisar datos remotos nuevos con una copia local vieja tras un fallo de red.
+ */
+export async function hydrateRoutinesFromBackend(): Promise<void> {
+  try {
+    const remote = await getRoutineStore();
+    const remoteScopes =
+      remote && typeof remote.scopes === "object" && remote.scopes !== null ? remote.scopes : {};
+    const localScopes = currentScopesForBackend();
+
+    if (storeHasRoutines(remoteScopes)) {
+      const normalized = normalizeRoutinesStore({ schema: ROUTINES_SCHEMA, scopes: remoteScopes });
+      saveJSON(KEY_ROUTINES, normalized);
+      window.dispatchEvent(new CustomEvent(ROUTINES_HYDRATED_EVENT));
+    } else if (storeHasRoutines(localScopes)) {
+      await putRoutineStore(localScopes);
+    }
+    routineSyncEnabled = true;
+  } catch (err) {
+    console.warn("No se pudo hidratar rutinas desde el backend; modo local", err);
+  }
 }
 
 function routineMatchesByIdentity(source: RoutineTemplate, candidate: RoutineTemplate): boolean {

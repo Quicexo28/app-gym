@@ -24,7 +24,6 @@ from app.db.models import (
 )
 from app.db.repo import ensure_athlete
 
-
 DEFAULT_TOLERANCE_DAYS = 2
 DEFAULT_TIMEZONE = "UTC"
 ACTIVE_ASSIGNMENT_STATES = {CycleStatus.DRAFT, CycleStatus.ACTIVE}
