@@ -16,8 +16,8 @@ export default defineConfig({
       injectRegister: "auto",
       includeAssets: ["vite.svg", "icons/pwa-192.png", "icons/pwa-512.png"],
       manifest: {
-        name: "Coach AI Engineer",
-        short_name: "Coach AI",
+        name: "Alzo",
+        short_name: "Alzo",
         description: "Registro de entrenamiento y analitica de decisiones, usable sin conexion.",
         lang: "es",
         display: "standalone",

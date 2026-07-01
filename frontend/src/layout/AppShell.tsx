@@ -101,7 +101,7 @@ export default function AppShell() {
       <header className="topbar2">
         <div className="topbarRow">
           <div className="brand2">
-            <div className="brandTitle">Coach AI Engineer</div>
+            <div className="brandTitle">Alzo</div>
             <div className="brandSub">seguimiento rapido para decisiones de entrenamiento</div>
           </div>
 

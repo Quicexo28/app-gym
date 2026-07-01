@@ -1,4 +1,4 @@
-package com.santiagoquiceno.coachai;
+package com.santiagoquiceno.alzo;
 
 import com.getcapacitor.BridgeActivity;
 
