@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        # webview de Capacitor (app Android/iOS)
+        "https://localhost",
+        "capacitor://localhost",
     ]
     google_client_id: str | None = None
 
