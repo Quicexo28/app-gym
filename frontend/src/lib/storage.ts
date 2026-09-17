@@ -59,7 +59,8 @@ export type RoutineTemplate = {
 export type RoutineExerciseTemplate = {
   name: string;
   group?: string;
-  target_sets: number;
+  target_sets_min: number;
+  target_sets_max: number;
   target_reps_min: number;
   target_reps_max: number;
   rest_seconds: number;
@@ -157,6 +158,30 @@ function parseLegacyRepsRange(value: unknown): { min: number; max: number } | nu
   };
 }
 
+/** Acepta "3" o "3-4" (rango). Usado para el campo Series, editable como texto libre. */
+export function parseSetsRangeText(value: string): { min: number; max: number } | null {
+  const text = clean(value);
+  if (!text) return null;
+  const matches = text.match(/\d+/g);
+  if (!matches || matches.length === 0) return null;
+
+  const values = matches
+    .slice(0, 2)
+    .map((token) => Number(token))
+    .filter((numeric) => Number.isFinite(numeric))
+    .map((numeric) => Math.max(1, Math.min(30, Math.round(numeric))));
+
+  if (values.length === 0) return null;
+  return {
+    min: Math.min(...values),
+    max: Math.max(...values),
+  };
+}
+
+export function formatSetsRange(min: number, max: number): string {
+  return min === max ? String(min) : `${min}-${max}`;
+}
+
 function inferGroupFromRoutineExerciseName(name: string): string | null {
   if (!name.includes(">")) return null;
   const parts = name
@@ -175,7 +200,8 @@ function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null 
     return {
       name,
       group: inferredGroup || undefined,
-      target_sets: DEFAULT_TARGET_SETS,
+      target_sets_min: DEFAULT_TARGET_SETS,
+      target_sets_max: DEFAULT_TARGET_SETS,
       target_reps_min: DEFAULT_TARGET_REPS_MIN,
       target_reps_max: DEFAULT_TARGET_REPS_MAX,
       rest_seconds: DEFAULT_REST_SECONDS,
@@ -187,6 +213,10 @@ function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null 
     name?: unknown;
     target_sets?: unknown;
     sets?: unknown;
+    target_sets_min?: unknown;
+    sets_min?: unknown;
+    target_sets_max?: unknown;
+    sets_max?: unknown;
     target_reps_min?: unknown;
     reps_min?: unknown;
     target_reps_max?: unknown;
@@ -201,7 +231,13 @@ function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null 
   const name = clean(source.name);
   if (!name) return null;
 
-  const targetSets = parseBoundedInt(source.target_sets ?? source.sets, DEFAULT_TARGET_SETS, 1, 30);
+  const legacySetsSingle = parseOptionalBoundedInt(source.target_sets ?? source.sets, 1, 30);
+  const directSetsMin = parseOptionalBoundedInt(source.target_sets_min ?? source.sets_min, 1, 30);
+  const directSetsMax = parseOptionalBoundedInt(source.target_sets_max ?? source.sets_max, 1, 30);
+  const setsMin = directSetsMin ?? directSetsMax ?? legacySetsSingle ?? DEFAULT_TARGET_SETS;
+  const setsMax = directSetsMax ?? directSetsMin ?? legacySetsSingle ?? DEFAULT_TARGET_SETS;
+  const normalizedSetsMin = Math.min(setsMin, setsMax);
+  const normalizedSetsMax = Math.max(setsMin, setsMax);
   const directRepsMin = parseOptionalBoundedInt(source.target_reps_min ?? source.reps_min, 1, 100);
   const directRepsMax = parseOptionalBoundedInt(source.target_reps_max ?? source.reps_max, 1, 100);
   const legacyRepsRange = parseLegacyRepsRange(source.target_reps ?? source.reps);
@@ -217,7 +253,8 @@ function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null 
   return {
     name,
     group: normalizedGroup || undefined,
-    target_sets: targetSets,
+    target_sets_min: normalizedSetsMin,
+    target_sets_max: normalizedSetsMax,
     target_reps_min: normalizedRepsMin,
     target_reps_max: normalizedRepsMax,
     rest_seconds: restSeconds,

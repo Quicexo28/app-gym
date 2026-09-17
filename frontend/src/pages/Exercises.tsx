@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   ALL_EXERCISE_FILTER as ALL,
+  ALL_EXERCISE_MOVEMENT_FILTER,
   ALL_EXERCISE_ZONE_FILTER,
   buildExerciseCatalogBrowser,
   canonicalizeExerciseGroup,
@@ -10,15 +11,18 @@ import {
   computeExerciseEntrySearchScore,
   EXERCISE_ZONE_LOWER,
   EXERCISE_ZONE_UPPER,
+  getMuscleGroupOrderIndex,
   tokenizeExerciseSearch,
   type ExerciseBodyZoneFilter,
   type ExerciseCatalogEntry,
   type ExerciseFilters,
+  type ExerciseMovementFilter,
 } from "../lib/exerciseCatalog";
+import Select from "../components/Select";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
 import { useUndo } from "../state/undo";
-import { useViewMode } from "../state/viewMode";
+import { useViewScopes } from "../state/viewScopes";
 
 type MutableNode = {
   label: string;
@@ -122,9 +126,15 @@ function freezeNodes(source: Map<string, MutableNode>, rankBySimilarity: boolean
     };
   });
 
+  const isRootLevel = nodes.length > 0 && nodes[0].path.length === 1;
+
   nodes.sort((a, b) => {
     if (rankBySimilarity && b.maxScore !== a.maxScore) {
       return b.maxScore - a.maxScore;
+    }
+    if (isRootLevel) {
+      const orderDiff = getMuscleGroupOrderIndex(a.label) - getMuscleGroupOrderIndex(b.label);
+      if (orderDiff !== 0) return orderDiff;
     }
     return a.label.localeCompare(b.label);
   });
@@ -249,9 +259,9 @@ function renderTree(
 
 export default function Exercises() {
   const { isAdmin } = useAuth();
-  const { viewMode } = useViewMode();
+  const { adminView } = useViewScopes();
   const { registerUndo } = useUndo();
-  const isAdminMode = isAdmin && viewMode === "admin";
+  const isAdminMode = isAdmin && adminView;
   const { ready, loading, syncError, items, entries, addCustom, addGlobal, updateItem, removeItem } = useExerciseCatalog();
   const [group, setGroup] = useState("");
   const [family, setFamily] = useState("");
@@ -268,16 +278,19 @@ export default function Exercises() {
 
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
   const [selectedZone, setSelectedZone] = useState<ExerciseBodyZoneFilter>(ALL_EXERCISE_ZONE_FILTER);
+  const [selectedMovement, setSelectedMovement] = useState<ExerciseMovementFilter>(ALL_EXERCISE_MOVEMENT_FILTER);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
 
   const filters = useMemo<ExerciseFilters>(
     () => ({
       group: ALL,
       zone: selectedZone,
+      movement: selectedMovement,
       search,
     }),
-    [search, selectedZone],
+    [search, selectedZone, selectedMovement],
   );
   const browser = useMemo(() => buildExerciseCatalogBrowser(entries, filters), [entries, filters]);
 
@@ -358,6 +371,7 @@ export default function Exercises() {
   function clearFilters() {
     setSelectedGroup(ALL);
     setSelectedZone(ALL_EXERCISE_ZONE_FILTER);
+    setSelectedMovement(ALL_EXERCISE_MOVEMENT_FILTER);
     setSearch("");
   }
 
@@ -373,6 +387,27 @@ export default function Exercises() {
     setEditSubvariation("");
     setEditExecutionType("");
   }
+
+  useEffect(() => {
+    if (!filterMenuOpen) return;
+
+    const onPointerDownOutside = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-filter-menu]")) return;
+      setFilterMenuOpen(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFilterMenuOpen(false);
+    };
+
+    window.addEventListener("pointerdown", onPointerDownOutside, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDownOutside, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [filterMenuOpen]);
 
   useEffect(() => {
     if (!editingItem) return;
@@ -476,12 +511,12 @@ export default function Exercises() {
     }
 
     if (normalizedSubvariation && !normalizedVariation) {
-      setError("Para usar subvariacion debes indicar antes una variacion.");
+      setError("Para usar subvariación debes indicar antes una variación.");
       return;
     }
 
     if (normalizedExecutionType && !normalizedSubvariation) {
-      setError("Para usar execution type debes indicar antes una subvariacion.");
+      setError("Para usar execution type debes indicar antes una subvariación.");
       return;
     }
 
@@ -500,7 +535,7 @@ export default function Exercises() {
       return item.scope !== "global";
     });
     if (exists) {
-      setError("Ese ejercicio ya existe en el catalogo.");
+      setError("Ese ejercicio ya existe en el catálogo.");
       return;
     }
 
@@ -579,12 +614,12 @@ export default function Exercises() {
     }
 
     if (normalizedSubvariation && !normalizedVariation) {
-      setError("Para usar subvariacion debes indicar antes una variacion.");
+      setError("Para usar subvariación debes indicar antes una variación.");
       return;
     }
 
     if (normalizedExecutionType && !normalizedSubvariation) {
-      setError("Para usar execution type debes indicar antes una subvariacion.");
+      setError("Para usar execution type debes indicar antes una subvariación.");
       return;
     }
 
@@ -605,7 +640,7 @@ export default function Exercises() {
       return item.scope !== "global";
     });
     if (exists) {
-      setError("Ese ejercicio ya existe en el catalogo.");
+      setError("Ese ejercicio ya existe en el catálogo.");
       return;
     }
 
@@ -624,12 +659,7 @@ export default function Exercises() {
   }
 
   return (
-    <div className="container stack">
-      <header className="titleBlock">
-        <h1>Ejercicios</h1>
-        <p>Catalogo jerarquico para elegir ejercicios de forma consistente y rapida.</p>
-      </header>
-
+    <>
       <section className="surface">
         {syncError ? <div className="message error">{syncError}</div> : null}
         {error ? <div className="message error">{error}</div> : null}
@@ -686,7 +716,7 @@ export default function Exercises() {
             </datalist>
           </div>
           <div>
-            <label className="smallLabel">Variacion (opcional)</label>
+            <label className="smallLabel">Variación (opcional)</label>
             <input
               className="input"
               list="create-variation-options"
@@ -702,7 +732,7 @@ export default function Exercises() {
             </datalist>
           </div>
           <div>
-            <label className="smallLabel">Subvariacion (opcional)</label>
+            <label className="smallLabel">Subvariación (opcional)</label>
             <input
               className="input"
               list="create-subvariation-options"
@@ -718,7 +748,7 @@ export default function Exercises() {
             </datalist>
           </div>
           <div>
-            <label className="smallLabel">Execution type (opcional)</label>
+            <label className="smallLabel">Tipo de ejecución (opcional)</label>
             <input
               className="input"
               list="create-execution-type-options"
@@ -739,41 +769,78 @@ export default function Exercises() {
           <button className="btn primary" onClick={() => void add()} disabled={loading || !ready}>
             {loading ? "Sincronizando..." : createScope === "global" ? "Agregar global" : "Agregar personal"}
           </button>
-          <span className="chip">Total catalogo: {items.length}</span>
+          <span className="chip">Total catálogo: {items.length}</span>
         </div>
       </section>
 
       <section className="surface">
         <div className="sectionHead">
           <h3>Explorador</h3>
-          <p>Filtra por zona y grupo muscular antes de buscar en el arbol.</p>
+          <p>Busca en el arbol o filtra por zona, músculo y tipo de movimiento.</p>
         </div>
 
-        <div className="splitGrid" style={{ marginTop: 10 }}>
-          <div>
-            <label className="smallLabel">Zona</label>
-            <select className="input" value={selectedZone} onChange={(e) => setSelectedZone(e.target.value as ExerciseBodyZoneFilter)}>
-              <option value={ALL_EXERCISE_ZONE_FILTER}>Todas</option>
-              <option value={EXERCISE_ZONE_UPPER}>Superior</option>
-              <option value={EXERCISE_ZONE_LOWER}>Inferior</option>
-            </select>
+        <div className="hstack compact" style={{ marginTop: 10 }}>
+          <div className="searchInputWrap" style={{ flex: 1 }}>
+            <input
+              className="input searchInput"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Buscar en catálogo"
+            />
+            <span className="searchInputIcon" aria-hidden="true">
+              <svg className="iconGlyph" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+            </span>
+          </div>
+
+          <div className="filterMenu" data-filter-menu>
+            <button
+              type="button"
+              className="filterMenuTrigger"
+              aria-haspopup="menu"
+              aria-expanded={filterMenuOpen}
+              aria-label="Filtros"
+              onClick={() => setFilterMenuOpen((prev) => !prev)}
+            >
+              <svg className="iconGlyph" viewBox="0 0 24 24">
+                <path d="M4 5h16l-6.5 7.5v6L10.5 21v-8.5z" />
+              </svg>
+            </button>
+
+            {filterMenuOpen ? (
+              <div className="filterMenuPopover" role="menu">
+                <div>
+                  <label className="smallLabel">Zona</label>
+                  <Select
+                    value={selectedZone}
+                    onChange={(v) => setSelectedZone(v as ExerciseBodyZoneFilter)}
+                    options={[
+                      { value: ALL_EXERCISE_ZONE_FILTER, label: "Todas" },
+                      { value: EXERCISE_ZONE_UPPER, label: "Superior" },
+                      { value: EXERCISE_ZONE_LOWER, label: "Inferior" },
+                    ]}
+                  />
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <label className="smallLabel">Movimiento</label>
+                  <Select
+                    value={selectedMovement}
+                    onChange={(v) => setSelectedMovement(v as ExerciseMovementFilter)}
+                    options={[
+                      { value: ALL_EXERCISE_MOVEMENT_FILTER, label: "Todos" },
+                      { value: "push", label: "Empuje" },
+                      { value: "pull", label: "Traccion" },
+                    ]}
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div style={{ marginTop: 12 }}>
-          <label className="smallLabel">Buscar en catalogo</label>
-          <input
-            className="input"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="ej: sentadilla posterior smith"
-          />
-        </div>
-
         <div className="chipRow" style={{ marginTop: 10 }}>
-          <span className="chip">Resultados: {filteredEntries.length}</span>
-          <span className="chip">Zona: {selectedZone === ALL_EXERCISE_ZONE_FILTER ? "Todas" : selectedZone === EXERCISE_ZONE_LOWER ? "Inferior" : "Superior"}</span>
-          <span className="chip">Grupo: {selectedGroup === ALL ? "Todos" : selectedGroup}</span>
           <button type="button" className="btn" onClick={clearFilters}>
             Limpiar filtros
           </button>
@@ -847,7 +914,7 @@ export default function Exercises() {
                 </datalist>
               </div>
               <div>
-                <label className="smallLabel">Variacion (opcional)</label>
+                <label className="smallLabel">Variación (opcional)</label>
                 <input
                   className="input"
                   list="edit-variation-options"
@@ -863,7 +930,7 @@ export default function Exercises() {
                 </datalist>
               </div>
               <div>
-                <label className="smallLabel">Subvariacion (opcional)</label>
+                <label className="smallLabel">Subvariación (opcional)</label>
                 <input
                   className="input"
                   list="edit-subvariation-options"
@@ -879,7 +946,7 @@ export default function Exercises() {
                 </datalist>
               </div>
               <div>
-                <label className="smallLabel">Execution type (opcional)</label>
+                <label className="smallLabel">Tipo de ejecución (opcional)</label>
                 <input
                   className="input"
                   list="edit-execution-type-options"
@@ -907,6 +974,6 @@ export default function Exercises() {
           </section>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

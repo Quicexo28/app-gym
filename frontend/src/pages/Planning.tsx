@@ -23,6 +23,8 @@ import {
   type PlanningTemplateItem,
   type PlanningTemplateTree,
 } from "../api";
+import DatePicker from "../components/DatePicker";
+import Select from "../components/Select";
 import { loadRoutines, type RoutineTemplate } from "../lib/storage";
 import { useAthleteAccess } from "../state/athlete";
 import { useUndo } from "../state/undo";
@@ -70,19 +72,19 @@ const OBJECTIVE_PRESETS: ObjectivePreset[] = [
   {
     id: "hypertrophy",
     label: "Hipertrofia",
-    objective: "Aumentar volumen util con ejecucion controlada.",
+    objective: "Aumentar volumen útil con ejecución controlada.",
     trainingPhase: "hypertrophy",
   },
   {
     id: "strength",
     label: "Fuerza",
-    objective: "Elevar fuerza maxima con enfasis tecnico.",
+    objective: "Elevar fuerza máxima con enfasis técnico.",
     trainingPhase: "strength",
   },
   {
     id: "deload",
     label: "Descarga",
-    objective: "Reducir fatiga acumulada sin perder patron tecnico.",
+    objective: "Reducir fatiga acumulada sin perder patron técnico.",
     trainingPhase: "deload",
   },
   {
@@ -93,7 +95,7 @@ const OBJECTIVE_PRESETS: ObjectivePreset[] = [
   },
   {
     id: "technique",
-    label: "Tecnica",
+    label: "Técnica",
     objective: "Refinar patron motor, ritmo y estabilidad.",
     trainingPhase: "technique",
   },
@@ -140,7 +142,7 @@ function defaultBuilderName(level: BuilderLevel): string {
 function makeMicroSlots(duration: number): MicroSlot[] {
   return Array.from({ length: duration }, (_, idx) => ({
     index: idx + 1,
-    title: `Sesion ${idx + 1}`,
+    title: `Sesión ${idx + 1}`,
     routineId: "",
   }));
 }
@@ -160,7 +162,7 @@ function resizeMicroSlots(slots: MicroSlot[], duration: number): MicroSlot[] {
     if (existing) return { ...existing, index };
     return {
       index,
-      title: `Sesion ${index}`,
+      title: `Sesión ${index}`,
       routineId: "",
     };
   });
@@ -213,7 +215,7 @@ function TreeNode({ node }: { node: PlanningTemplateTree }) {
               <article key={`${node.id}_block_${idx}`} className="treeLeaf">
                 <div>
                   <strong>{block.title}</strong>
-                  <div className="small">{`Sesion ${block.relative_day}`}</div>
+                  <div className="small">{`Sesión ${block.relative_day}`}</div>
                 </div>
               </article>
             ))}
@@ -230,6 +232,14 @@ function TreeNode({ node }: { node: PlanningTemplateTree }) {
     </details>
   );
 }
+
+const PLANNING_TABS: ReadonlyArray<{ key: PlanningTab; label: string }> = [
+  { key: "micro", label: "Microciclo" },
+  { key: "meso", label: "Mesociclo" },
+  { key: "macro", label: "Macrociclo" },
+  { key: "assignments", label: "Asignaciones" },
+  { key: "tracking", label: "Seguimiento" },
+];
 
 export default function Planning() {
   const { athleteId, subjects } = useAthleteAccess();
@@ -249,6 +259,14 @@ export default function Planning() {
   const [microBuilder, setMicroBuilder] = useState<MicroBuilder>(() => buildBlankMicroBuilder());
   const [mesoBuilder, setMesoBuilder] = useState<LinkBuilder>(() => buildBlankLinkBuilder("meso"));
   const [macroBuilder, setMacroBuilder] = useState<LinkBuilder>(() => buildBlankLinkBuilder("macro"));
+
+  // texto en edición para el campo "duración": permite dejarlo vacio mientras se escribe
+  // sin forzar el mínimo en cada tecla (null = usar el valor numerico del builder)
+  const [microDurationDraft, setMicroDurationDraft] = useState<string | null>(null);
+  const [linkDurationDraft, setLinkDurationDraft] = useState<Record<"meso" | "macro", string | null>>({
+    meso: null,
+    macro: null,
+  });
 
   const [selectedMicroSlot, setSelectedMicroSlot] = useState<number>(1);
   const [selectedMesoSlot, setSelectedMesoSlot] = useState<number>(1);
@@ -445,12 +463,15 @@ export default function Planning() {
     if (level === "micro") {
       setMicroBuilder(buildBlankMicroBuilder());
       setSelectedMicroSlot(1);
+      setMicroDurationDraft(null);
     } else if (level === "meso") {
       setMesoBuilder(buildBlankLinkBuilder("meso"));
       setSelectedMesoSlot(1);
+      setLinkDurationDraft((current) => ({ ...current, meso: null }));
     } else {
       setMacroBuilder(buildBlankLinkBuilder("macro"));
       setSelectedMacroSlot(1);
+      setLinkDurationDraft((current) => ({ ...current, macro: null }));
     }
     setFeedback(`${levelLabel(level)} listo para configurar.`);
     setTemplatesError("");
@@ -466,6 +487,12 @@ export default function Planning() {
   }
 
   function updateMicroDuration(rawValue: string) {
+    if (rawValue === "") {
+      // deja el campo vacio mientras se escribe, sin tocar aún el builder
+      setMicroDurationDraft("");
+      return;
+    }
+    setMicroDurationDraft(null);
     setMicroBuilder((current) => {
       const duration = parseDurationInput(rawValue, current.duration);
       return {
@@ -477,6 +504,11 @@ export default function Planning() {
   }
 
   function updateLinkDuration(level: "meso" | "macro", rawValue: string) {
+    if (rawValue === "") {
+      setLinkDurationDraft((current) => ({ ...current, [level]: "" }));
+      return;
+    }
+    setLinkDurationDraft((current) => ({ ...current, [level]: null }));
     const setter = level === "meso" ? setMesoBuilder : setMacroBuilder;
     setter((current) => {
       const duration = parseDurationInput(rawValue, current.duration);
@@ -532,7 +564,7 @@ export default function Planning() {
           return {
             sequence_index: idx + 1,
             relative_day: slot.index,
-            title: slot.title || `Sesion ${slot.index}`,
+            title: slot.title || `Sesión ${slot.index}`,
             routine_snapshot: routine
               ? {
                   routine_id: routine.id,
@@ -647,7 +679,7 @@ export default function Planning() {
           };
         });
         setTemplatesError("");
-        setFeedback("Eliminacion de plantilla deshecha.");
+        setFeedback("Eliminación de plantilla deshecha.");
       },
     });
   }
@@ -663,7 +695,7 @@ export default function Planning() {
         tolerance_days: Math.max(0, Number(toleranceDays) || 2),
         timezone: timezone || "UTC",
       });
-      setFeedback("Asignacion creada.");
+      setFeedback("Asignación creada.");
       await refreshAssignments(assignmentAthleteId);
     } catch (cause: unknown) {
       setTemplatesError(String((cause as { message?: string })?.message || cause));
@@ -744,7 +776,7 @@ export default function Planning() {
           className="input"
           value={builder.objective}
           onChange={(e) => onObjectiveChange(e.target.value)}
-          placeholder="Puedes personalizar el objetivo aqui"
+          placeholder="Puedes personalizar el objetivo aquí"
         />
       </>
     );
@@ -781,8 +813,9 @@ export default function Planning() {
               className="input"
               type="number"
               min={1}
-              value={microBuilder.duration}
+              value={microDurationDraft ?? microBuilder.duration}
               onChange={(e) => updateMicroDuration(e.target.value)}
+              onBlur={() => setMicroDurationDraft((draft) => (draft === "" ? null : draft))}
               inputMode="numeric"
             />
           </aside>
@@ -803,7 +836,7 @@ export default function Planning() {
                     onClick={() => setSelectedMicroSlot(slot.index)}
                   >
                     <span className="planningSquareIdx">{`S${slot.index}`}</span>
-                    <strong>{slot.title || `Sesion ${slot.index}`}</strong>
+                    <strong>{slot.title || `Sesión ${slot.index}`}</strong>
                     <span className="small">{routineName || "Sin rutina"}</span>
                   </button>
                 );
@@ -812,8 +845,8 @@ export default function Planning() {
 
             {selectedMicroSlotData ? (
               <aside className="planningInspector">
-                <h4>{`Sesion ${selectedMicroSlotData.index}`}</h4>
-                <label className="smallLabel">Titulo</label>
+                <h4>{`Sesión ${selectedMicroSlotData.index}`}</h4>
+                <label className="smallLabel">Título</label>
                 <input
                   className="input"
                   value={selectedMicroSlotData.title}
@@ -821,18 +854,14 @@ export default function Planning() {
                 />
 
                 <label className="smallLabel">Rutina</label>
-                <select
-                  className="input"
+                <Select
                   value={selectedMicroSlotData.routineId}
-                  onChange={(e) => updateMicroSlot(selectedMicroSlotData.index, { routineId: e.target.value })}
-                >
-                  <option value="">Sin rutina</option>
-                  {routines.map((routine) => (
-                    <option key={routine.id} value={routine.id}>
-                      {routine.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => updateMicroSlot(selectedMicroSlotData.index, { routineId: v })}
+                  options={[
+                    { value: "", label: "Sin rutina" },
+                    ...routines.map((routine) => ({ value: routine.id, label: routine.name })),
+                  ]}
+                />
 
                 {routines.length === 0 ? (
                   <div className="small" style={{ marginTop: 8 }}>
@@ -897,8 +926,14 @@ export default function Planning() {
               className="input"
               type="number"
               min={1}
-              value={builder.duration}
+              value={linkDurationDraft[level] ?? builder.duration}
               onChange={(e) => updateLinkDuration(level, e.target.value)}
+              onBlur={() =>
+                setLinkDurationDraft((current) => ({
+                  ...current,
+                  [level]: current[level] === "" ? null : current[level],
+                }))
+              }
               inputMode="numeric"
             />
 
@@ -936,22 +971,18 @@ export default function Planning() {
               <aside className="planningInspector">
                 <h4>{`${childLabel} ${selectedSlot.index}`}</h4>
                 <label className="smallLabel">{childLabel}</label>
-                <select
-                  className="input"
+                <Select
                   value={selectedSlot.childTemplateId}
-                  onChange={(e) => updateLinkSlot(level, selectedSlot.index, e.target.value)}
-                >
-                  <option value="">Sin asignar</option>
-                  {childTemplates.map((item) => (
-                    <option
-                      key={item.id}
-                      value={item.id}
-                      disabled={usedIds.has(item.id) && item.id !== selectedSlot.childTemplateId}
-                    >
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => updateLinkSlot(level, selectedSlot.index, v)}
+                  options={[
+                    { value: "", label: "Sin asignar" },
+                    ...childTemplates.map((item) => ({
+                      value: item.id,
+                      label: item.name,
+                      disabled: usedIds.has(item.id) && item.id !== selectedSlot.childTemplateId,
+                    })),
+                  ]}
+                />
               </aside>
             ) : null}
           </div>
@@ -962,36 +993,28 @@ export default function Planning() {
     );
   }
   return (
-    <div className="container stack">
-      <header className="titleBlock">
-        <h1>Planificacion</h1>
-      </header>
-
+    <>
       {templatesError ? <section className="message error">{templatesError}</section> : null}
       {feedback ? <section className="message">{feedback}</section> : null}
 
-      <section className="surface">
-        <div className="quickActions">
-          <button className={`btn ${tab === "micro" ? "primary" : ""}`} onClick={() => setTab("micro")}>
-            Microciclo
+      {/* Mismo lenguaje visual que el resto de hubs (pildoras de navegacion).
+          El boton "Refrescar" salio de aqui: mezclaba una accion dentro de una
+          fila de navegacion y ya se recarga solo al entrar y al guardar. */}
+      <nav className="hubTabs" aria-label="Secciones de programación">
+        {PLANNING_TABS.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={`hubTab ${tab === item.key ? "active" : ""}`.trim()}
+            aria-current={tab === item.key ? "page" : undefined}
+            onClick={() => setTab(item.key)}
+          >
+            {item.label}
           </button>
-          <button className={`btn ${tab === "meso" ? "primary" : ""}`} onClick={() => setTab("meso")}>
-            Mesociclo
-          </button>
-          <button className={`btn ${tab === "macro" ? "primary" : ""}`} onClick={() => setTab("macro")}>
-            Macrociclo
-          </button>
-          <button className={`btn ${tab === "assignments" ? "primary" : ""}`} onClick={() => setTab("assignments")}>
-            Asignaciones
-          </button>
-          <button className={`btn ${tab === "tracking" ? "primary" : ""}`} onClick={() => setTab("tracking")}>
-            Seguimiento
-          </button>
-          <button className="btn" onClick={() => void refreshTemplates()} disabled={loadingTemplates}>
-            Refrescar
-          </button>
-        </div>
-      </section>
+        ))}
+      </nav>
+
+      {loadingTemplates ? <div className="small">Cargando plantillas...</div> : null}
 
       {tab === "micro" ? renderMicroTab() : null}
       {tab === "meso" ? renderHierarchyTab("meso") : null}
@@ -1002,34 +1025,38 @@ export default function Planning() {
           <div className="sectionHead">
             <h3>Asignar ciclo</h3>
           </div>
-          <select className="input" value={assignmentAthleteId} onChange={(e) => setAssignmentAthleteId(e.target.value)}>
-            <option value="">Sujeto</option>
-            {subjects.map((subject) => (
-              <option key={subject.id} value={subject.id}>
-                {subject.label}
-              </option>
-            ))}
-          </select>
-          <select className="input" value={assignmentTemplateId} onChange={(e) => setAssignmentTemplateId(e.target.value)}>
-            <option value="">Plantilla</option>
-            {allTemplates.map((item) => (
-              <option key={item.id} value={item.id}>
-                {`${item.name} (${levelLabel(item.level)})`}
-              </option>
-            ))}
-          </select>
-          <select className="input" value={startMode} onChange={(e) => setStartMode(e.target.value as CycleStartMode)}>
-            <option value="auto_on_first_session">Inicio auto (primera sesion)</option>
-            <option value="manual">Inicio manual</option>
-          </select>
-          {startMode === "manual" ? (
-            <input className="input" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          ) : null}
+          <Select
+            ariaLabel="Sujeto"
+            value={assignmentAthleteId}
+            onChange={setAssignmentAthleteId}
+            options={[
+              { value: "", label: "Sujeto" },
+              ...subjects.map((subject) => ({ value: subject.id, label: subject.label })),
+            ]}
+          />
+          <Select
+            ariaLabel="Plantilla"
+            value={assignmentTemplateId}
+            onChange={setAssignmentTemplateId}
+            options={[
+              { value: "", label: "Plantilla" },
+              ...allTemplates.map((item) => ({ value: item.id, label: `${item.name} (${levelLabel(item.level)})` })),
+            ]}
+          />
+          <Select
+            value={startMode}
+            onChange={(v) => setStartMode(v as CycleStartMode)}
+            options={[
+              { value: "auto_on_first_session", label: "Inicio auto (primera sesión)" },
+              { value: "manual", label: "Inicio manual" },
+            ]}
+          />
+          {startMode === "manual" ? <DatePicker value={startDate} onChange={setStartDate} /> : null}
           <input
             className="input"
             value={toleranceDays}
             onChange={(e) => setToleranceDays(e.target.value)}
-            placeholder="Tolerancia dias"
+            placeholder="Tolerancia días"
           />
           <input className="input" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Timezone" />
           <div className="quickActions">
@@ -1038,7 +1065,7 @@ export default function Planning() {
               onClick={() => void submitAssignment()}
               disabled={!assignmentAthleteId || !assignmentTemplateId}
             >
-              Crear asignacion
+              Crear asignación
             </button>
             <button className="btn" onClick={() => athleteId && void refreshAssignments(athleteId)} disabled={!athleteId}>
               Recargar
@@ -1080,7 +1107,7 @@ export default function Planning() {
           {selectedAssignmentId && assignmentDetail ? (
             <article className="surface">
               <div className="sectionHead">
-                <h4>Detalle asignacion</h4>
+                <h4>Detalle asignación</h4>
                 <p>{assignmentDetail.template_name || assignmentDetail.template_id}</p>
               </div>
               <div className="chipRow" style={{ marginTop: 10 }}>
@@ -1105,7 +1132,7 @@ export default function Planning() {
                       <span className="small">
                         {`${
                           assignmentDetail.level === "micro"
-                            ? "Sesion"
+                            ? "Sesión"
                             : assignmentDetail.level === "meso"
                               ? "Ciclo"
                               : "Bloque"
@@ -1125,7 +1152,7 @@ export default function Planning() {
           {assignmentMetrics ? (
             <article className="surface">
               <div className="sectionHead">
-                <h4>Metricas</h4>
+                <h4>Métricas</h4>
               </div>
               <div className="statsGrid" style={{ marginTop: 10 }}>
                 <article className="statCard">
@@ -1179,7 +1206,6 @@ export default function Planning() {
           </div>
         </section>
       ) : null}
-
-    </div>
+    </>
   );
 }

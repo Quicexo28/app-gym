@@ -3,7 +3,7 @@
 export type Role = "user" | "coach" | "admin";
 export type BackendPlan = "free" | "pro" | "coach";
 export type PlanLabel = "standard" | "plus" | "coach";
-export type ViewMode = "admin" | "coach" | "user_plus" | "user_normal";
+export type ViewScopes = { admin: boolean; coach: boolean };
 export type CycleLevel = "micro" | "meso" | "macro";
 export type CycleStatus = "draft" | "active" | "completed" | "archived";
 export type CycleStartMode = "auto_on_first_session" | "manual";
@@ -34,10 +34,11 @@ export type AuthUser = {
   phone_number?: string | null;
   role: Role;
   plan: BackendPlan;
-  effective_mode?: ViewMode;
+  can_admin_view?: boolean;
+  can_coach_view?: boolean;
+  admin_view?: boolean;
+  coach_view?: boolean;
   effective_role?: Role;
-  effective_plan?: BackendPlan;
-  allowed_view_modes?: ViewMode[];
 };
 
 export type TokenResponse = {
@@ -427,18 +428,15 @@ export type PlanningAthleteOverview = {
   recent_assignments: PlanningAssignment[];
 };
 
-export type ViewModeResponse = {
-  mode: ViewMode;
-  allowed_modes: ViewMode[];
-  role: Role;
-  plan: BackendPlan;
-  effective_role: Role;
-  effective_plan: BackendPlan;
-};
+export type ProfileGender = "male" | "female" | "other" | "unspecified";
 
 export type ProfileData = {
+  display_name?: string | null;
   username?: string | null;
   bio?: string | null;
+  birth_date?: string | null;
+  gender?: ProfileGender | null;
+  height_cm?: number | null;
 };
 
 export type ProfileTrainingStats = {
@@ -448,45 +446,15 @@ export type ProfileTrainingStats = {
   last_run_at?: string | null;
 };
 
-export type ProfileGamificationPlanning = {
-  completed_days_total: number;
-  current_streak_days: number;
-  longest_streak_days: number;
-  streak_gap_tolerance_days: number;
-  last_training_day?: string | null;
+export type ProfileContact = {
+  user_id: string;
+  label: string;
 };
 
-export type ProfileGamificationLifts = {
-  back_squat?: number | null;
-  bench_press?: number | null;
-  deadlift?: number | null;
-};
-
-export type ProfileGamificationRelativeStrength = {
-  body_weight_kg?: number | null;
-  back_squat?: number | null;
-  bench_press?: number | null;
-  deadlift?: number | null;
-};
-
-export type ProfileGamificationShowcaseItem = {
-  title: string;
-  emblem_png?: string | null;
-};
-
-export type ProfileGamificationShowcase = {
-  achievements: ProfileGamificationShowcaseItem[];
-  medals: ProfileGamificationShowcaseItem[];
-};
-
-export type ProfileGamification = {
-  planning: ProfileGamificationPlanning;
-  basic_lifts_pr_kg: ProfileGamificationLifts;
-  relative_strength: ProfileGamificationRelativeStrength;
-  showcase: ProfileGamificationShowcase;
-  unlocked_achievements: string[];
-  unlocked_medals: string[];
-  next_targets: string[];
+export type ProfileNetwork = {
+  athlete_id: string;
+  coaches: ProfileContact[];
+  athletes_total: number;
 };
 
 export type ProfileResponse = {
@@ -495,42 +463,52 @@ export type ProfileResponse = {
   plan: BackendPlan;
   profile: ProfileData;
   training_stats: ProfileTrainingStats;
-  gamification: ProfileGamification;
+  network: ProfileNetwork;
 };
 
-export type GamificationTier = {
-  threshold: number;
-  achievement: string;
-  medal: string;
-  emblem_png?: string | null;
+export type ProgressSnapshotMetric = {
+  key: string;
+  label: string;
+  value: number;
+  unit: string;
+  delta?: number | null;
 };
 
-export type GamificationConfig = {
-  streak_gap_tolerance_days: number;
-  streak_tiers: GamificationTier[];
-  planning_days_tiers: GamificationTier[];
-  lift_tiers: {
-    back_squat: GamificationTier[];
-    bench_press: GamificationTier[];
-    deadlift: GamificationTier[];
-  };
-  relative_strength_tiers: {
-    back_squat: GamificationTier[];
-    bench_press: GamificationTier[];
-    deadlift: GamificationTier[];
-  };
-  trilogy_achievement: string;
-  trilogy_medal: string;
-  trilogy_emblem_png?: string | null;
+export type ProgressAuthor = {
+  user_id: string;
+  label: string;
+  role: Role;
 };
 
-export type GamificationConfigResponse = {
-  config: GamificationConfig;
-  defaults: GamificationConfig;
+export type ProgressShareCommentItem = {
+  id: string;
+  author: ProgressAuthor;
+  body: string;
+  created_at_utc: string;
+};
+
+export type ProgressShareItem = {
+  id: string;
+  athlete_id: string;
+  author: ProgressAuthor;
+  note?: string | null;
+  metrics: ProgressSnapshotMetric[];
+  sessions_total: number;
+  sessions_recent: number;
+  measured_at?: string | null;
+  created_at_utc: string;
+  comments: ProgressShareCommentItem[];
+};
+
+export type ProgressShareListResponse = {
+  athlete_id: string;
+  total: number;
+  items: ProgressShareItem[];
 };
 
 let authToken: string | null = null;
-let apiViewMode: ViewMode | null = null;
+let apiViewScopes: ViewScopes = { admin: false, coach: false };
+let onUnauthorized: (() => void) | null = null;
 const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "").replace(/\/+$/, "");
 
 function toApiUrl(path: string): string {
@@ -548,21 +526,39 @@ export function setApiToken(token: string | null): void {
   authToken = token;
 }
 
-export function setApiViewMode(mode: ViewMode | null): void {
-  apiViewMode = mode;
+export function setApiViewScopes(scopes: ViewScopes): void {
+  apiViewScopes = scopes;
+}
+
+/**
+ * Aviso global de token rechazado. El access token vive 24h y no hay refresh:
+ * sin esto la sesión vencida se queda montada y cada pantalla muestra el
+ * "Invalid token." crudo del backend en vez de mandar al login.
+ */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
+/** Solo cuenta como sesión vencida si mandamos token y el endpoint no es el de autenticacion. */
+function notifyUnauthorized(status: number, path: string): void {
+  if (status !== 401 || !authToken) return;
+  if (path.startsWith("/api/v1/auth/")) return;
+  onUnauthorized?.();
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers || {});
-  if (init?.body !== undefined && !headers.has("Content-Type")) {
+  const isFormDataBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
+  if (init?.body !== undefined && !isFormDataBody && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  // multipart (subida de fotos): NO se fija Content-Type a mano, el navegador
+  // le agrega el boundary automaticamente cuando el body es un FormData.
   if (authToken) {
     headers.set("Authorization", `Bearer ${authToken}`);
   }
-  if (apiViewMode) {
-    headers.set("X-App-View-Mode", apiViewMode);
-  }
+  headers.set("X-App-Admin-View", apiViewScopes.admin ? "1" : "0");
+  headers.set("X-App-Coach-View", apiViewScopes.coach ? "1" : "0");
 
   const res = await fetch(toApiUrl(path), {
     ...init,
@@ -594,6 +590,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
     if (!detail) {
       detail = `${res.status} ${res.statusText}`;
     }
+    notifyUnauthorized(res.status, path);
     throw new ApiError(res.status, detail);
   }
 
@@ -766,17 +763,6 @@ export function createBodyMeasurement(payload: BodyMeasurementCreatePayload): Pr
   });
 }
 
-export function getViewMode(): Promise<ViewModeResponse> {
-  return http("/api/v1/view-mode");
-}
-
-export function putViewMode(mode: ViewMode): Promise<ViewModeResponse> {
-  return http("/api/v1/view-mode", {
-    method: "PUT",
-    body: JSON.stringify({ mode }),
-  });
-}
-
 export function deleteMyAccount(confirm: string): Promise<{ ok: boolean }> {
   return http("/api/v1/auth/me", {
     method: "DELETE",
@@ -789,8 +775,12 @@ export function getMyProfile(): Promise<ProfileResponse> {
 }
 
 export function updateMyProfile(payload: {
+  display_name?: string | null;
   username?: string | null;
   bio?: string | null;
+  birth_date?: string | null;
+  gender?: ProfileGender | null;
+  height_cm?: number | null;
 }): Promise<ProfileResponse> {
   return http("/api/v1/profile/me", {
     method: "PUT",
@@ -798,15 +788,30 @@ export function updateMyProfile(payload: {
   });
 }
 
-export function getAdminGamificationConfig(): Promise<GamificationConfigResponse> {
-  return http("/api/v1/admin/dev/gamification-config");
+export function listProgressShares(athleteId: string, limit = 20): Promise<ProgressShareListResponse> {
+  const qs = new URLSearchParams({ athlete_id: athleteId, limit: String(limit) });
+  return http(`/api/v1/progress/shares?${qs.toString()}`);
 }
 
-export function updateAdminGamificationConfig(payload: GamificationConfig): Promise<GamificationConfig> {
-  return http("/api/v1/admin/dev/gamification-config", {
-    method: "PUT",
+export function createProgressShare(payload: {
+  athlete_id: string;
+  note?: string | null;
+}): Promise<ProgressShareItem> {
+  return http("/api/v1/progress/shares", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function createProgressComment(shareId: string, body: string): Promise<ProgressShareItem> {
+  return http(`/api/v1/progress/shares/${encodeURIComponent(shareId)}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function deleteProgressShare(shareId: string): Promise<{ ok: boolean; id: string }> {
+  return http(`/api/v1/progress/shares/${encodeURIComponent(shareId)}`, { method: "DELETE" });
 }
 
 export function adminSwitchPlan(payload: {
@@ -940,5 +945,710 @@ export function getPlanningAssignmentMetrics(assignmentId: string): Promise<Plan
 
 export function getPlanningAthleteOverview(athleteId: string): Promise<PlanningAthleteOverview> {
   return http(`/api/v1/planning/athletes/${encodeURIComponent(athleteId)}/overview`);
+}
+
+// Mismos 12 grupos y orden que coach_ai.training_core.muscle_groups (backend) -
+// deben coincidir literalmente: son los valores validos de AthletePlan.priority_muscle_groups.
+export const MUSCLE_GROUPS = [
+  "Hombros",
+  "Biceps",
+  "Triceps",
+  "Pecho",
+  "Espalda",
+  "Abdomen",
+  "Gluteos",
+  "Abductores",
+  "Aductores",
+  "Cuadriceps",
+  "Femorales",
+  "Pantorrillas",
+] as const;
+
+export type MuscleGroup = (typeof MUSCLE_GROUPS)[number];
+
+// Los valores de arriba viajan al backend sin tildes (son claves validadas alla).
+// En pantalla se muestran bien escritos.
+const MUSCLE_GROUP_LABELS: Record<string, string> = {
+  Biceps: "Bíceps",
+  Triceps: "Tríceps",
+  Gluteos: "Glúteos",
+  Cuadriceps: "Cuádriceps",
+};
+
+export function muscleGroupLabel(group: string): string {
+  return MUSCLE_GROUP_LABELS[group] || group;
+}
+
+export type HubSubject = {
+  id: string;
+  label: string;
+  display_name?: string | null;
+  kind: "self" | "assigned";
+  sessions_total: number;
+  runs_total: number;
+  last_session_at?: string | null;
+  last_run_at?: string | null;
+  is_active_now: boolean;
+  unread_reports_count: number;
+};
+
+export type AthleteHubResponse = {
+  active_subject_id: string;
+  subjects: HubSubject[];
+};
+
+export function getAthleteHub(params?: { q?: string; active_only?: boolean }): Promise<AthleteHubResponse> {
+  const qs = new URLSearchParams();
+  if (params?.q) qs.set("q", params.q);
+  if (params?.active_only) qs.set("active_only", "true");
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return http(`/api/v1/athletes/hub${suffix}`);
+}
+
+export type CoachAthlete = {
+  athlete_id: string;
+  display_name?: string | null;
+  notes?: string | null;
+  priority_muscle_groups: string[];
+};
+
+export function createCoachAthlete(payload: {
+  display_name: string;
+  notes?: string | null;
+  priority_muscle_groups?: string[];
+}): Promise<CoachAthlete> {
+  return http("/api/v1/coach/athletes", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function updateCoachAthlete(
+  athleteId: string,
+  payload: { display_name?: string; notes?: string | null; priority_muscle_groups?: string[] },
+): Promise<CoachAthlete> {
+  return http(`/api/v1/coach/athletes/${encodeURIComponent(athleteId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function removeCoachAthlete(athleteId: string): Promise<{ ok: boolean }> {
+  return http(`/api/v1/coach/athletes/${encodeURIComponent(athleteId)}`, { method: "DELETE" });
+}
+
+export function markAthleteSeen(athleteId: string): Promise<{ ok: boolean }> {
+  return http(`/api/v1/coach/athletes/${encodeURIComponent(athleteId)}/seen`, { method: "POST" });
+}
+
+export type CoachCapacity = {
+  used: number;
+  included: number;
+  extra: number;
+  total: number;
+};
+
+export type CoachInvite = {
+  invite_code: string;
+  invite_enabled: boolean;
+  capacity: CoachCapacity;
+};
+
+export function getCoachInvite(): Promise<CoachInvite> {
+  return http("/api/v1/coach/invite");
+}
+
+export function rotateCoachInvite(): Promise<CoachInvite> {
+  return http("/api/v1/coach/invite/rotate", { method: "POST" });
+}
+
+export function setCoachInviteEnabled(enabled: boolean): Promise<CoachInvite> {
+  return http("/api/v1/coach/invite", {
+    method: "PATCH",
+    body: JSON.stringify({ invite_enabled: enabled }),
+  });
+}
+
+export function joinCoachByCode(code: string): Promise<{ ok: boolean; coach_user_id: string; coach_label: string }> {
+  return http("/api/v1/coach/join", { method: "POST", body: JSON.stringify({ code }) });
+}
+
+export function leaveCoach(): Promise<{ ok: boolean; removed: number }> {
+  return http("/api/v1/coach/leave", { method: "DELETE" });
+}
+
+export type CoachBillingStatus = "none" | "active" | "past_due" | "canceled";
+
+export type CoachBilling = {
+  status: CoachBillingStatus;
+  has_subscription: boolean;
+  capacity: CoachCapacity;
+};
+
+export function getCoachBilling(): Promise<CoachBilling> {
+  return http("/api/v1/coach/billing");
+}
+
+export function subscribeCoachPlan(): Promise<{ checkout_url: string }> {
+  return http("/api/v1/coach/billing/subscribe", { method: "POST" });
+}
+
+export function adjustCoachSeats(delta: 1 | -1): Promise<CoachBilling> {
+  return http("/api/v1/coach/billing/seats", { method: "POST", body: JSON.stringify({ delta }) });
+}
+
+export function openCoachBillingPortal(): Promise<{ portal_url: string }> {
+  return http("/api/v1/coach/billing/portal");
+}
+
+export type TrendDirection = "up" | "down" | "stable" | "insufficient" | "volatile";
+
+export type MuscleSeriesPoint = { t: string; volume_kg: number };
+
+export type MuscleGroupState = {
+  group: string;
+  trend_direction: TrendDirection;
+  plateau_p: number | null;
+  confidence: number;
+  recent_series: MuscleSeriesPoint[];
+  exercises_involved: string[];
+};
+
+export type MuscleInsightsResponse = {
+  athlete_id: string;
+  priority_muscle_groups: string[];
+  states: MuscleGroupState[];
+  weakest_group: string | null;
+};
+
+export function getAthleteMuscleInsights(athleteId: string): Promise<MuscleInsightsResponse> {
+  return http(`/api/v1/coach/athletes/${encodeURIComponent(athleteId)}/muscle-insights`);
+}
+
+export type CoachNoteScope = "routine_exercise" | "programming";
+
+export type CoachNote = {
+  id: string;
+  athlete_id: string;
+  author_user_id: string;
+  scope_type: CoachNoteScope;
+  routine_id?: string | null;
+  exercise_name_normalized?: string | null;
+  assignment_id?: string | null;
+  body: string;
+  created_at_utc: string;
+  read_at_utc?: string | null;
+};
+
+export function createCoachNote(payload: {
+  athlete_id: string;
+  scope_type: CoachNoteScope;
+  routine_id?: string;
+  exercise_name?: string;
+  assignment_id?: string;
+  body: string;
+}): Promise<CoachNote> {
+  return http("/api/v1/coach/notes", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function listCoachNotes(params: {
+  athlete_id: string;
+  routine_id?: string;
+  exercise_name?: string;
+}): Promise<CoachNote[]> {
+  const qs = new URLSearchParams({ athlete_id: params.athlete_id });
+  if (params.routine_id) qs.set("routine_id", params.routine_id);
+  if (params.exercise_name) qs.set("exercise_name", params.exercise_name);
+  return http(`/api/v1/coach/notes?${qs.toString()}`);
+}
+
+export function markCoachNoteRead(noteId: string): Promise<CoachNote> {
+  return http(`/api/v1/coach/notes/${encodeURIComponent(noteId)}/read`, { method: "PATCH" });
+}
+
+export function sendSessionHeartbeat(payload: {
+  athlete_id: string;
+  routine_id?: string | null;
+  routine_name?: string | null;
+}): Promise<{ ok: boolean }> {
+  return http("/api/v1/me/session-heartbeat", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export type RoutineUsageAthlete = { athlete_id: string; routine_id: string; routine_name: string };
+export type RoutineUsageResponse = { template_key: string; athletes: RoutineUsageAthlete[] };
+
+export function getRoutineTemplateUsage(templateKey: string): Promise<RoutineUsageResponse> {
+  return http(`/api/v1/coach/routines/${encodeURIComponent(templateKey)}/usage`);
+}
+
+export type ExerciseUsageEntry = {
+  athlete_id: string;
+  routine_id: string;
+  routine_name: string;
+  target_sets_min?: number | null;
+  target_sets_max?: number | null;
+  target_reps_min?: number | null;
+  target_reps_max?: number | null;
+};
+export type ExerciseUsageResponse = { exercise_name_normalized: string; entries: ExerciseUsageEntry[] };
+
+export function getExerciseUsage(exerciseName: string): Promise<ExerciseUsageResponse> {
+  return http(`/api/v1/coach/exercises/${encodeURIComponent(exerciseName)}/usage`);
+}
+
+export type CoachReportKind = "session_completed" | "measurement_taken";
+
+export type CoachReportExerciseComparison = {
+  name: string;
+  comparable: boolean;
+  avg_load_delta_pct?: number | null;
+  avg_volume_delta_pct?: number | null;
+  per_set: Array<{
+    set_index: number | null;
+    comparable: boolean;
+    load_delta_pct?: number | null;
+    volume_delta_pct?: number | null;
+  }>;
+  athlete_note?: string | null;
+};
+
+export type CoachReportSessionPayload = {
+  session_id: string;
+  routine_id?: string | null;
+  routine_name?: string | null;
+  start_time: string;
+  has_previous_session: boolean;
+  session_note?: string | null;
+  wellness_signals?: JsonObject | null;
+  exercises: CoachReportExerciseComparison[];
+};
+
+export type CoachReportMeasurementPayload = {
+  measurement_id: string;
+  measured_at: string;
+  metrics: ProgressSnapshotMetric[];
+  notes?: string | null;
+};
+
+export type CoachReportItem = {
+  id: string;
+  athlete_id: string;
+  athlete_display_name?: string | null;
+  kind: CoachReportKind;
+  ref_id: string;
+  payload: CoachReportSessionPayload | CoachReportMeasurementPayload | JsonObject;
+  created_at_utc: string;
+};
+
+export function listCoachReports(params?: { athlete_id?: string; limit?: number }): Promise<CoachReportItem[]> {
+  const qs = new URLSearchParams();
+  if (params?.athlete_id) qs.set("athlete_id", params.athlete_id);
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return http(`/api/v1/coach/reports${suffix}`);
+}
+
+// --------------------------------------------------------------------------
+// Dieta (`src/app/api/v1/endpoints/diet.py`)
+// --------------------------------------------------------------------------
+
+// Franjas legacy (fijas) + genericas personalizables `comida_1`..`comida_8`
+// (ver `MealSlot` en `src/app/api/v1/endpoints/diet.py`). El nombre visible de
+// las genericas sale de `NutritionTarget.meal_labels`, no de este id.
+export type MealSlot = string;
+export type FoodScope = "all" | "mine" | "global";
+export type FoodBasis = "per_100g" | "per_100ml";
+export type FoodStatus = "active" | "pending" | "rejected";
+
+export type NutritionTarget = {
+  athlete_id: string;
+  energy_kcal: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  fiber_g: number | null;
+  micronutrient_targets: Record<string, number>;
+  meal_labels: string[] | null;
+  updated_at_utc: string | null;
+};
+
+export type NutritionTargetPayload = {
+  athlete_id: string;
+  energy_kcal?: number | null;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  fat_g?: number | null;
+  fiber_g?: number | null;
+  micronutrient_targets?: Record<string, number> | null;
+  meal_labels?: string[] | null;
+};
+
+export function getDietTargets(athleteId: string): Promise<NutritionTarget> {
+  const qs = new URLSearchParams({ athlete_id: athleteId });
+  return http(`/api/v1/diet/targets?${qs.toString()}`);
+}
+
+export function putDietTargets(payload: NutritionTargetPayload): Promise<NutritionTarget> {
+  return http("/api/v1/diet/targets", { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export type DailyTotals = {
+  energy_kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  sugars_g: number;
+  fiber_g: number;
+  fat_g: number;
+  sat_fat_g: number;
+  sodium_mg: number;
+  micronutrients: Record<string, number>;
+};
+
+export type MealEntry = {
+  id: string;
+  athlete_id: string;
+  logged_by_user_id: string;
+  consumed_at: string;
+  meal_slot: MealSlot;
+  food_product_id: string | null;
+  food_name: string;
+  // `quantity_g` es la cantidad normalizada a la unidad base del alimento (g, o
+  // ml si su basis es per_100ml): es la que entra en los macros.
+  // `quantity_value`/`quantity_unit` guardan lo que escribio el usuario
+  // ("2 porciones"); son null en entradas anteriores a las unidades.
+  quantity_g: number;
+  quantity_value: number | null;
+  quantity_unit: string | null;
+  energy_kcal: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  sugars_g: number | null;
+  fiber_g: number | null;
+  fat_g: number | null;
+  sat_fat_g: number | null;
+  sodium_mg: number | null;
+  micronutrients: Record<string, number>;
+  notes: string | null;
+  created_at_utc: string;
+};
+
+export type MealEntryCreatePayload = {
+  athlete_id: string;
+  consumed_at?: string | null;
+  meal_slot: MealSlot;
+  food_product_id?: string | null;
+  food_name?: string | null;
+  // Se manda la cantidad en la unidad que eligio el usuario y el backend
+  // convierte (es el único que conoce el `serving_size_g` del catálogo).
+  // `quantity_g` solo para entradas ya normalizadas (reencolar, deshacer).
+  quantity_g?: number;
+  quantity_value?: number | null;
+  quantity_unit?: string | null;
+  notes?: string | null;
+  energy_kcal?: number | null;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  sugars_g?: number | null;
+  fiber_g?: number | null;
+  fat_g?: number | null;
+  sat_fat_g?: number | null;
+  sodium_mg?: number | null;
+  micronutrients?: Record<string, number> | null;
+  // Idempotencia del outbox offline (`lib/nutrition/mealOutbox.ts`): mismo
+  // client_ref -> el backend devuelve la entrada ya creada en vez de duplicarla.
+  client_ref?: string | null;
+};
+
+export type MealEntryUpdatePayload = {
+  consumed_at?: string | null;
+  meal_slot?: MealSlot;
+  quantity_g?: number;
+  quantity_value?: number | null;
+  quantity_unit?: string | null;
+  food_name?: string;
+  notes?: string | null;
+  energy_kcal?: number | null;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  sugars_g?: number | null;
+  fiber_g?: number | null;
+  fat_g?: number | null;
+  sat_fat_g?: number | null;
+  sodium_mg?: number | null;
+  micronutrients?: Record<string, number> | null;
+};
+
+export type MealEntryFromPresetPayload = {
+  athlete_id: string;
+  preset_id: string;
+  consumed_at?: string | null;
+  meal_slot?: MealSlot | null;
+  // Ref de LOTE (uno por intento de guardado), no uno por item del preset.
+  client_ref?: string | null;
+};
+
+export type MealEntriesResponse = {
+  athlete_id: string;
+  date: string;
+  items: MealEntry[];
+  totals: DailyTotals;
+};
+
+export type DietSummaryDayItem = {
+  date: string;
+  totals: DailyTotals;
+};
+
+export type DietSummaryResponse = {
+  athlete_id: string;
+  from_date: string;
+  to_date: string;
+  days: DietSummaryDayItem[];
+};
+
+export function getDietEntries(athleteId: string, date: string): Promise<MealEntriesResponse> {
+  const qs = new URLSearchParams({ athlete_id: athleteId, date });
+  return http(`/api/v1/diet/entries?${qs.toString()}`);
+}
+
+export function createDietEntry(payload: MealEntryCreatePayload): Promise<MealEntry> {
+  return http("/api/v1/diet/entries", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function updateDietEntry(entryId: string, payload: MealEntryUpdatePayload): Promise<MealEntry> {
+  return http(`/api/v1/diet/entries/${encodeURIComponent(entryId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteDietEntry(entryId: string): Promise<{ ok: boolean; id: string }> {
+  return http(`/api/v1/diet/entries/${encodeURIComponent(entryId)}`, { method: "DELETE" });
+}
+
+export function createDietEntriesFromPreset(payload: MealEntryFromPresetPayload): Promise<MealEntry[]> {
+  return http("/api/v1/diet/entries/from-preset", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function getDietSummary(athleteId: string, from: string, to: string): Promise<DietSummaryResponse> {
+  const qs = new URLSearchParams({ athlete_id: athleteId, from, to });
+  return http(`/api/v1/diet/summary?${qs.toString()}`);
+}
+
+export type FoodProduct = {
+  id: string;
+  owner_user_id: string | null;
+  barcode: string | null;
+  source: string;
+  source_ref: string | null;
+  name: string;
+  brand: string | null;
+  country_code: string | null;
+  category: string | null;
+  serving_size_g: number | null;
+  serving_label: string | null;
+  package_qty_g: number | null;
+  basis: FoodBasis;
+  energy_kcal: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  sugars_g: number | null;
+  fiber_g: number | null;
+  fat_g: number | null;
+  sat_fat_g: number | null;
+  trans_fat_g: number | null;
+  sodium_mg: number | null;
+  cholesterol_mg: number | null;
+  micronutrients: Record<string, number>;
+  image_front_path: string | null;
+  image_nutrition_path: string | null;
+  verified_count: number;
+  status: FoodStatus;
+  created_at_utc: string;
+};
+
+export type FoodProductCreatePayload = {
+  barcode?: string | null;
+  name: string;
+  brand?: string | null;
+  country_code?: string | null;
+  serving_size_g?: number | null;
+  serving_label?: string | null;
+  package_qty_g?: number | null;
+  basis?: FoodBasis;
+  energy_kcal?: number | null;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  sugars_g?: number | null;
+  fiber_g?: number | null;
+  fat_g?: number | null;
+  sat_fat_g?: number | null;
+  trans_fat_g?: number | null;
+  sodium_mg?: number | null;
+  cholesterol_mg?: number | null;
+  micronutrients?: Record<string, number> | null;
+};
+
+export type FoodProductUpdatePayload = Partial<FoodProductCreatePayload> & { status?: FoodStatus };
+
+export type FoodSearchFilters = {
+  q: string;
+  scope?: FoodScope;
+  /** Una o varias categorias del catálogo; se envian como `?category=` repetido. */
+  category?: string | string[];
+  min_kcal?: number;
+  max_kcal?: number;
+  min_protein?: number;
+  max_protein?: number;
+  min_carbs?: number;
+  max_carbs?: number;
+  min_fat?: number;
+  max_fat?: number;
+  limit?: number;
+};
+
+function toArray(value: string | string[] | undefined): string[] {
+  if (!value) return [];
+  return (Array.isArray(value) ? value : [value]).filter((item) => item.trim() !== "");
+}
+
+export function searchDietFoods(params: FoodSearchFilters): Promise<FoodProduct[]> {
+  const qs = new URLSearchParams({ q: params.q });
+  if (params.scope) qs.set("scope", params.scope);
+  for (const category of toArray(params.category)) qs.append("category", category);
+  if (params.min_kcal !== undefined) qs.set("min_kcal", String(params.min_kcal));
+  if (params.max_kcal !== undefined) qs.set("max_kcal", String(params.max_kcal));
+  if (params.min_protein !== undefined) qs.set("min_protein", String(params.min_protein));
+  if (params.max_protein !== undefined) qs.set("max_protein", String(params.max_protein));
+  if (params.min_carbs !== undefined) qs.set("min_carbs", String(params.min_carbs));
+  if (params.max_carbs !== undefined) qs.set("max_carbs", String(params.max_carbs));
+  if (params.min_fat !== undefined) qs.set("min_fat", String(params.min_fat));
+  if (params.max_fat !== undefined) qs.set("max_fat", String(params.max_fat));
+  if (params.limit) qs.set("limit", String(params.limit));
+  return http(`/api/v1/diet/foods/search?${qs.toString()}`);
+}
+
+export function getRecentDietFoods(athleteId: string, limit?: number): Promise<FoodProduct[]> {
+  const qs = new URLSearchParams({ athlete_id: athleteId });
+  if (limit) qs.set("limit", String(limit));
+  return http(`/api/v1/diet/foods/recent?${qs.toString()}`);
+}
+
+export function getDietFoodCategories(scope?: FoodScope): Promise<string[]> {
+  const qs = new URLSearchParams();
+  if (scope) qs.set("scope", scope);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return http(`/api/v1/diet/foods/categories${suffix}`);
+}
+
+export function getDietFoodByBarcode(barcode: string): Promise<FoodProduct> {
+  return http(`/api/v1/diet/foods/barcode/${encodeURIComponent(barcode)}`);
+}
+
+export function createDietFood(payload: FoodProductCreatePayload): Promise<FoodProduct> {
+  return http("/api/v1/diet/foods", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function updateDietFood(foodId: string, payload: FoodProductUpdatePayload): Promise<FoodProduct> {
+  return http(`/api/v1/diet/foods/${encodeURIComponent(foodId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteDietFood(foodId: string): Promise<{ ok: boolean; id: string }> {
+  return http(`/api/v1/diet/foods/${encodeURIComponent(foodId)}`, { method: "DELETE" });
+}
+
+export type FoodPhotoKind = "front" | "nutrition";
+
+export type FoodPhotoUploadResponse = {
+  ok: boolean;
+  kind: FoodPhotoKind;
+  path: string;
+};
+
+/** Sube la foto de un producto (multipart: `kind` + `file`). Ver `upload_food_photo` en el backend. */
+export function uploadDietFoodPhoto(
+  foodId: string,
+  kind: FoodPhotoKind,
+  file: Blob,
+  filename?: string,
+): Promise<FoodPhotoUploadResponse> {
+  const form = new FormData();
+  form.append("kind", kind);
+  form.append("file", file, filename || `${kind}.jpg`);
+  return http(`/api/v1/diet/foods/${encodeURIComponent(foodId)}/photos`, { method: "POST", body: form });
+}
+
+/** La respuesta es la imagen binaria (JPEG), no JSON: `http()` no aplica aquí. */
+export async function getDietFoodPhoto(foodId: string, kind: FoodPhotoKind): Promise<Blob> {
+  const headers = new Headers();
+  if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
+  headers.set("X-App-Admin-View", apiViewScopes.admin ? "1" : "0");
+  headers.set("X-App-Coach-View", apiViewScopes.coach ? "1" : "0");
+
+  const path = `/api/v1/diet/foods/${encodeURIComponent(foodId)}/photos/${kind}`;
+  const res = await fetch(toApiUrl(path), { headers });
+  if (!res.ok) {
+    notifyUnauthorized(res.status, path);
+    throw new ApiError(res.status, res.statusText || "No se pudo obtener la foto.");
+  }
+  return res.blob();
+}
+
+export type MicronutrientDefinition = {
+  key: string;
+  label: string;
+  unit: string;
+  rda: number;
+  upper_limit: number | null;
+};
+
+export function getDietMicronutrients(): Promise<MicronutrientDefinition[]> {
+  return http("/api/v1/diet/micronutrients");
+}
+
+export type MealPresetItem = {
+  food_product_id?: string | null;
+  food_name: string;
+  quantity_g: number;
+  // Solo presentacion: `quantity_g` sigue mandando al crear las entradas.
+  quantity_value?: number | null;
+  quantity_unit?: string | null;
+  energy_kcal?: number | null;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  sugars_g?: number | null;
+  fiber_g?: number | null;
+  fat_g?: number | null;
+  sat_fat_g?: number | null;
+  sodium_mg?: number | null;
+  micronutrients?: Record<string, number> | null;
+};
+
+export type MealPreset = {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  meal_slot: MealSlot | null;
+  items: MealPresetItem[];
+  created_at_utc: string;
+  updated_at_utc: string;
+};
+
+export type MealPresetCreatePayload = {
+  name: string;
+  meal_slot?: MealSlot | null;
+  items: MealPresetItem[];
+};
+
+export function getDietPresets(): Promise<MealPreset[]> {
+  return http("/api/v1/diet/presets");
+}
+
+export function createDietPreset(payload: MealPresetCreatePayload): Promise<MealPreset> {
+  return http("/api/v1/diet/presets", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function deleteDietPreset(presetId: string): Promise<{ ok: boolean; id: string }> {
+  return http(`/api/v1/diet/presets/${encodeURIComponent(presetId)}`, { method: "DELETE" });
 }
 

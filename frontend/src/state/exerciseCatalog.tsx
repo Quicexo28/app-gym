@@ -19,7 +19,7 @@ import {
 import { toExerciseCatalogEntries, type ExerciseCatalogEntry } from "../lib/exerciseCatalog";
 import { loadExerciseCatalog, saveExerciseCatalog, uid, type ExerciseCatalogItem } from "../lib/storage";
 import { useAuth } from "./auth";
-import { useViewMode } from "./viewMode";
+import { useViewScopes } from "./viewScopes";
 
 type ExerciseCreateInput = {
   group: string;
@@ -76,7 +76,7 @@ function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
-  return "No se pudo sincronizar el catalogo.";
+  return "No se pudo sincronizar el catálogo.";
 }
 
 async function migrateLocalCatalogToCustom(items: ExerciseCatalogItem[]): Promise<void> {
@@ -98,8 +98,8 @@ async function migrateLocalCatalogToCustom(items: ExerciseCatalogItem[]): Promis
 
 export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
   const { ready: authReady, isAuthenticated, isAdmin } = useAuth();
-  const { viewMode } = useViewMode();
-  const isAdminMode = isAdmin && viewMode === "admin";
+  const { adminView } = useViewScopes();
+  const isAdminMode = isAdmin && adminView;
   const [items, setItems] = useState<ExerciseCatalogItem[]>(() => loadExerciseCatalog());
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
@@ -231,7 +231,7 @@ export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
   const importGlobalCatalog = useCallback(
     async (payload: ExerciseImportInput): Promise<ExerciseImportResult> => {
       if (!isAdminMode) {
-        throw new Error("Solo admin puede importar catalogo global.");
+        throw new Error("Solo admin puede importar catálogo global.");
       }
 
       const requestItems = payload.items.map((item) => ({
@@ -254,7 +254,7 @@ export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
 
   const exportGlobalCatalog = useCallback(async (): Promise<GlobalExerciseExportPayload> => {
     if (!isAdminMode) {
-      throw new Error("Solo admin puede exportar catalogo global.");
+      throw new Error("Solo admin puede exportar catálogo global.");
     }
     return exportGlobalExercises();
   }, [isAdminMode]);

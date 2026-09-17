@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { ingestSessions } from "../api";
+import { ingestSessions, listCoachNotes, markCoachNoteRead } from "../api";
+import type { CoachNote } from "../api";
+import { dayKeyToDatetimeLocal } from "../lib/dates";
 import { enqueueSessionUpload, isNetworkError } from "../lib/sessionOutbox";
-import { loadRoutines } from "../lib/storage";
+import { formatSetsRange, loadRoutines } from "../lib/storage";
 import type { RoutineExerciseTemplate, RoutineTemplate } from "../lib/storage";
 import type { OfflineVoskRecognizer as OfflineVoskRecognizerClass } from "../lib/voice/offlineRecognizer";
 import { findCurrentSetTarget } from "../lib/voice/setTarget";
@@ -14,10 +16,23 @@ import { useActiveSession } from "../state/activeSession";
 import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import { useUndo } from "../state/undo";
+import { APP_LOCALE } from "../lib/locale";
 
 type SetRow = { reps: string; load: string; completed: boolean; effort: string };
-type RoutineExerciseDraft = { name: string; target_reps_min: number; target_reps_max: number; rest_seconds: number; sets: SetRow[] };
+type RoutineExerciseDraft = {
+  name: string;
+  group?: string;
+  athleteNote?: string;
+  target_reps_min: number;
+  target_reps_max: number;
+  rest_seconds: number;
+  sets: SetRow[];
+};
 type SessionStep = "pick_routine" | "capture_session";
+
+function normalizeExerciseNameForNotes(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 type SessionTimerState = {
   started_at_ms: number | null;
@@ -93,7 +108,7 @@ const VOICE_ENGINE = "vosk-browser@0.0.8";
 const VOICE_MODEL_ID = "vosk-model-small-es-0.42";
 const VOICE_MODEL_URL = `/models/${VOICE_MODEL_ID}.zip`;
 const VOICE_LANGUAGE = "es-ES";
-const VOICE_WAKE_PHRASE = "test";
+const VOICE_WAKE_PHRASE = "alzo";
 const VOICE_ASSIST_DESKTOP_KEY = "coach_ai_voice_assist_desktop_v1";
 
 function readVoiceAssistDesktopPreference(): boolean {
@@ -135,7 +150,7 @@ function describeMicrophoneError(cause: unknown): string {
     return "No se detecto un microfono disponible.";
   }
   if (name === "NotReadableError" || name === "TrackStartError") {
-    return "El microfono esta ocupado por otra aplicacion.";
+    return "El microfono esta ocupado por otra aplicación.";
   }
   if (name === "SecurityError") {
     return "La captura de microfono requiere HTTPS o localhost.";
@@ -163,6 +178,13 @@ function deviceDatetimeLocal(): string {
   return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
 }
 
+function formatStartLabel(datetimeLocal: string): string {
+  if (!datetimeLocal) return "Sin fecha de inicio";
+  const parsed = new Date(datetimeLocal);
+  if (Number.isNaN(parsed.getTime())) return datetimeLocal.replace("T", " ");
+  return parsed.toLocaleString(APP_LOCALE, { dateStyle: "medium", timeStyle: "short" });
+}
+
 function formatTimer(totalSeconds: number): string {
   const safe = Math.max(0, Math.floor(totalSeconds));
   const hours = Math.floor(safe / 3600);
@@ -174,6 +196,11 @@ function formatTimer(totalSeconds: number): string {
   }
 
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatTimerSigned(totalSeconds: number): string {
+  if (totalSeconds < 0) return `-${formatTimer(-totalSeconds)}`;
+  return formatTimer(totalSeconds);
 }
 
 function formatRepsRange(min: number, max: number): string {
@@ -219,7 +246,9 @@ function normalizeRoutineExercises(source: RoutineExerciseTemplate[]): RoutineEx
     seen.add(key);
     out.push({
       name,
-      target_sets: Math.max(1, Math.min(30, Math.round(raw.target_sets || 1))),
+      group: raw.group,
+      target_sets_min: Math.max(1, Math.min(30, Math.round(raw.target_sets_min || 1))),
+      target_sets_max: Math.max(1, Math.min(30, Math.round(raw.target_sets_max || 1))),
       target_reps_min: Math.max(1, Math.min(100, Math.round(raw.target_reps_min || 1))),
       target_reps_max: Math.max(1, Math.min(100, Math.round(raw.target_reps_max || 1))),
       rest_seconds: Math.max(0, Math.min(900, Math.round(raw.rest_seconds || 0))),
@@ -227,6 +256,8 @@ function normalizeRoutineExercises(source: RoutineExerciseTemplate[]): RoutineEx
   }
   return out.map((exercise) => ({
     ...exercise,
+    target_sets_min: Math.min(exercise.target_sets_min, exercise.target_sets_max),
+    target_sets_max: Math.max(exercise.target_sets_min, exercise.target_sets_max),
     target_reps_min: Math.min(exercise.target_reps_min, exercise.target_reps_max),
     target_reps_max: Math.max(exercise.target_reps_min, exercise.target_reps_max),
   }));
@@ -235,10 +266,12 @@ function normalizeRoutineExercises(source: RoutineExerciseTemplate[]): RoutineEx
 function routineToDraft(routine: RoutineTemplate): RoutineExerciseDraft[] {
   return normalizeRoutineExercises(routine.exercises).map((exercise) => ({
     name: exercise.name,
+    group: exercise.group,
+    athleteNote: "",
     target_reps_min: exercise.target_reps_min,
     target_reps_max: exercise.target_reps_max,
     rest_seconds: exercise.rest_seconds,
-    sets: Array.from({ length: exercise.target_sets }, () => defaultSetForExercise()),
+    sets: Array.from({ length: exercise.target_sets_min }, () => defaultSetForExercise()),
   }));
 }
 
@@ -388,7 +421,16 @@ export default function NewSession() {
   const { registerUndo } = useUndo();
   const { draft: activeSessionDraft, saveDraft, clearDraft } = useActiveSession();
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
   const draftForAthlete = activeSessionDraft && activeSessionDraft.athleteId === athleteId ? activeSessionDraft : null;
+
+  // Home enlaza aquí para registrar un día concreto (`?date=YYYY-MM-DD`) y opcionalmente
+  // arrancar ya con una rutina (`?routine=<id>`), así se pueden cargar sesiones pasadas.
+  const requestedDayKey = useMemo(() => {
+    const raw = searchParams.get("date") || "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : "";
+  }, [searchParams]);
+  const requestedRoutineId = useMemo(() => searchParams.get("routine") || "", [searchParams]);
 
   const [step, setStep] = useState<SessionStep>(() => draftForAthlete?.step ?? "pick_routine");
   const [sessionAthleteId, setSessionAthleteId] = useState<string>(() => draftForAthlete?.athleteId || athleteId);
@@ -401,6 +443,8 @@ export default function NewSession() {
   const [routineId, setRoutineId] = useState<string>(() => draftForAthlete?.routineId ?? "");
   const [routines, setRoutines] = useState<RoutineTemplate[]>([]);
   const [routineExercises, setRoutineExercises] = useState<RoutineExerciseDraft[]>(() => draftForAthlete?.routineExercises ?? []);
+  const [coachNotesByExercise, setCoachNotesByExercise] = useState<Record<string, CoachNote[]>>({});
+  const [expandedNoteExercise, setExpandedNoteExercise] = useState<number | null>(null);
 
   const [sessionTimer, setSessionTimer] = useState<SessionTimerState>(() => draftForAthlete?.sessionTimer ?? IDLE_SESSION_TIMER);
   const [restTimer, setRestTimer] = useState<RestTimerState | null>(() => draftForAthlete?.restTimer ?? null);
@@ -413,10 +457,15 @@ export default function NewSession() {
   const [voiceStatus, setVoiceStatus] = useState<OfflineRecognizerState>("inactive");
   const [voiceError, setVoiceError] = useState<string>("");
   const [voicePartial, setVoicePartial] = useState<string>("");
+  // El dock de voz arranca plegado: antes flotaba siempre abierto y tapaba la
+  // columna de RPE de cada serie.
+  const [voiceDockOpen, setVoiceDockOpen] = useState<boolean>(false);
   const [clipboardBusy, setClipboardBusy] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
+  const [extrasMenuOpen, setExtrasMenuOpen] = useState(false);
+  const [closeRoutineOpen, setCloseRoutineOpen] = useState(false);
   const [uncheckingSetKeys, setUncheckingSetKeys] = useState<string[]>([]);
   const [deletingSetKeys, setDeletingSetKeys] = useState<string[]>([]);
 
@@ -426,6 +475,7 @@ export default function NewSession() {
   const pendingSetDeletesRef = useRef<Map<string, PendingSetDelete>>(new Map());
   const nextSetDeleteIdRef = useRef(1);
   const activeSessionDraftRef = useRef(activeSessionDraft);
+  const autoStartedRef = useRef(false);
   const voiceRecognizerRef = useRef<OfflineVoskRecognizerClass | null>(null);
   const voiceStatusPulseTimeoutRef = useRef<number | null>(null);
   const clearAnimationTimeouts = useCallback(() => {
@@ -540,6 +590,54 @@ export default function NewSession() {
   const sortedRoutines = useMemo(() => [...routines].sort((a, b) => a.name.localeCompare(b.name)), [routines]);
   const selectedRoutine = useMemo(() => sortedRoutines.find((routine) => routine.id === routineId) || null, [routineId, sortedRoutines]);
   const selectedRoutineName = selectedRoutine?.name || "";
+
+  // Indicaciones del entrenador para los ejercicios de esta rutina - se cargan
+  // una vez al elegir rutina, no por set (ver notepad icon en cada exerciseCard).
+  useEffect(() => {
+    if (!athleteId || !selectedRoutine) {
+      setCoachNotesByExercise({});
+      return;
+    }
+    let cancelled = false;
+    listCoachNotes({ athlete_id: athleteId, routine_id: selectedRoutine.id })
+      .then((notes) => {
+        if (cancelled) return;
+        const grouped: Record<string, CoachNote[]> = {};
+        for (const note of notes) {
+          const key = note.exercise_name_normalized || "";
+          (grouped[key] ||= []).push(note);
+        }
+        setCoachNotesByExercise(grouped);
+      })
+      .catch(() => {
+        if (!cancelled) setCoachNotesByExercise({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [athleteId, selectedRoutine]);
+
+  function updateExerciseAthleteNote(exIdx: number, value: string) {
+    setRoutineExercises((prev) => prev.map((entry, i) => (i === exIdx ? { ...entry, athleteNote: value } : entry)));
+  }
+
+  function handleToggleExerciseNote(exIdx: number, notes: CoachNote[]) {
+    setExpandedNoteExercise((prev) => (prev === exIdx ? null : exIdx));
+    const unread = notes.filter((note) => !note.read_at_utc);
+    if (unread.length === 0) return;
+    const nowIso = new Date().toISOString();
+    setCoachNotesByExercise((prev) => {
+      const next = { ...prev };
+      for (const note of unread) {
+        const key = note.exercise_name_normalized || "";
+        next[key] = (next[key] || []).map((item) => (item.id === note.id ? { ...item, read_at_utc: nowIso } : item));
+      }
+      return next;
+    });
+    for (const note of unread) {
+      void markCoachNoteRead(note.id).catch(() => {});
+    }
+  }
   const sessionElapsedMs = useMemo(() => computeSessionElapsedMs(sessionTimer, nowMs), [sessionTimer, nowMs]);
   const sessionElapsedSec = useMemo(() => Math.floor(sessionElapsedMs / 1000), [sessionElapsedMs]);
   const sessionTimerRunning = sessionTimer.running_since_ms !== null && sessionTimer.completed_at_ms === null;
@@ -548,6 +646,10 @@ export default function NewSession() {
   const restRemainingSec = useMemo(() => {
     if (!restTimer) return 0;
     return Math.max(0, Math.ceil((restTimer.ends_at_ms - nowMs) / 1_000));
+  }, [nowMs, restTimer]);
+  const restRemainingSecSigned = useMemo(() => {
+    if (!restTimer) return 0;
+    return Math.ceil((restTimer.ends_at_ms - nowMs) / 1_000);
   }, [nowMs, restTimer]);
   const allSetsCompleted = useMemo(
     () => routineExercises.length > 0 && routineExercises.every((exercise) => exercise.sets.length > 0 && exercise.sets.every((set) => set.completed)),
@@ -678,7 +780,7 @@ export default function NewSession() {
     if (notificationCapability === "granted" && "Notification" in window) {
       try {
         new Notification("Descanso finalizado", {
-          body: `Continua con el siguiente ejercicio. Ultimo completado: ${restTimer.exercise_name}.`,
+          body: `Continua con el siguiente ejercicio. Último completado: ${restTimer.exercise_name}.`,
         });
       } catch {
         // El navegador puede bloquear notificaciones en segundo plano.
@@ -744,7 +846,7 @@ export default function NewSession() {
         value_text: null,
         confidence: 1,
         applied: false,
-        reason: "Transcripcion manual desde portapapeles.",
+        reason: "Transcripción manual desde portapapeles.",
       });
     } catch (cause: unknown) {
       const message = String((cause as { message?: string })?.message || cause);
@@ -829,7 +931,7 @@ export default function NewSession() {
               value_text: null,
               confidence: clampVoiceConfidence(result.confidence),
               applied: false,
-              reason: "Transcripcion por microfono (sin aplicar comando).",
+              reason: "Transcripción por microfono (sin aplicar comando).",
             });
           },
           onError: (message) => {
@@ -929,7 +1031,7 @@ export default function NewSession() {
   function startSessionStep(nextRoutineId?: string) {
     const routine = nextRoutineId ? sortedRoutines.find((item) => item.id === nextRoutineId) || null : selectedRoutine;
     if (!routine) {
-      setError("Selecciona una rutina para comenzar la sesion.");
+      setError("Selecciona una rutina para comenzar la sesión.");
       return;
     }
 
@@ -938,7 +1040,7 @@ export default function NewSession() {
     resetSetAnimations();
     const draft = routineToDraft(routine);
     setRoutineExercises(draft);
-    setStartLocal(deviceDatetimeLocal());
+    setStartLocal(requestedDayKey ? dayKeyToDatetimeLocal(requestedDayKey) : deviceDatetimeLocal());
     setStep("capture_session");
     setSessionAthleteId(athleteId);
     const now = Date.now();
@@ -952,7 +1054,35 @@ export default function NewSession() {
     setVoiceStatus("inactive");
   }
 
+  // Un enlace con `?routine=` salta el paso 1, salvo que ya haya una sesión activa en curso.
+  useEffect(() => {
+    if (autoStartedRef.current) return;
+    if (!requestedRoutineId || !athleteId) return;
+    if (step !== "pick_routine" || routines.length === 0) return;
+
+    const stored = activeSessionDraftRef.current;
+    if (stored && stored.athleteId === athleteId) return;
+
+    const match = routines.find((item) => item.id === requestedRoutineId);
+    if (!match) return;
+
+    autoStartedRef.current = true;
+    startSessionStep(match.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [athleteId, requestedRoutineId, routines, step]);
+
+  useEffect(() => {
+    if (!extrasMenuOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExtrasMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [extrasMenuOpen]);
+
   function goBackToRoutineStep() {
+    setExtrasMenuOpen(false);
     void deactivateVoiceCapture();
     resetSetAnimations();
     setStep("pick_routine");
@@ -966,9 +1096,9 @@ export default function NewSession() {
 
   function exitSession() {
     if (step !== "capture_session") return;
-    const confirmed = window.confirm("Seguro que quieres cerrar la sesion activa? Se perderan los cambios no guardados.");
-    if (!confirmed) return;
 
+    setExtrasMenuOpen(false);
+    setCloseRoutineOpen(false);
     void deactivateVoiceCapture();
     clearDraft();
     resetSetAnimations();
@@ -1220,38 +1350,30 @@ export default function NewSession() {
     }
   }
 
-  function resetRoutineSets() {
-    if (!selectedRoutine) return;
-    resetSetAnimations();
-    const draft = routineToDraft(selectedRoutine);
-    setRoutineExercises(draft);
-    setRestTimer(null);
-  }
-
-  async function submit() {
+  async function submit(): Promise<boolean> {
     setError("");
 
     if (!athleteId) {
-      setError("No hay atleta activo para registrar la sesion.");
-      return;
+      setError("No hay atleta activo para registrar la sesión.");
+      return false;
     }
 
     if (!selectedRoutine) {
-      setError("Selecciona una rutina para registrar la sesion.");
-      return;
+      setError("Selecciona una rutina para registrar la sesión.");
+      return false;
     }
 
     if (!startLocal) {
       setError("Falta fecha/hora de inicio.");
-      return;
+      return false;
     }
 
     const now = Date.now();
     const finalizedTimer = sessionTimer.completed_at_ms === null ? completeSessionTimerState(sessionTimer, now) : sessionTimer;
     const elapsedMinutes = Number((computeSessionElapsedMs(finalizedTimer, now) / 60_000).toFixed(2));
     if (!Number.isFinite(elapsedMinutes) || elapsedMinutes <= 0) {
-      setError("Inicia la sesion y espera al menos un segundo antes de guardar.");
-      return;
+      setError("Inicia la sesión y espera al menos un segundo antes de guardar.");
+      return false;
     }
 
     const exercisesOut: Array<{
@@ -1274,6 +1396,8 @@ export default function NewSession() {
         target_reps_min: number;
         target_reps_max: number;
         target_rest_seconds: number;
+        group?: string;
+        athlete_note?: string;
       };
     }> = [];
     for (const [exerciseIndex, entry] of routineExercises.entries()) {
@@ -1297,15 +1421,15 @@ export default function NewSession() {
         const parsedEffort = parseSetEffortValue(set.effort, prefs.effortScale);
         if (!parsedEffort.valid) {
           setError(
-            `${prefs.effortScale.toUpperCase()} invalido en ${entry.name}, set ${setIndex + 1} (usa ${
+            `${prefs.effortScale.toUpperCase()} inválido en ${entry.name}, set ${setIndex + 1} (usa ${
               prefs.effortScale === "rir" ? "0-6" : "0-10"
             }).`,
           );
-          return;
+          return false;
         }
         if (!parsedEffort.hasValue) {
           setError(`${prefs.effortScale.toUpperCase()} requerido en ${entry.name}, set ${setIndex + 1}.`);
-          return;
+          return false;
         }
 
         sets.push({
@@ -1322,10 +1446,8 @@ export default function NewSession() {
         });
       }
 
-      if (sets.length === 0) {
-        setError(`Completa al menos 1 set valido en "${entry.name}".`);
-        return;
-      }
+      // Ejercicio sin sets capturados: se omite para poder cerrar rutinas parciales.
+      if (sets.length === 0) continue;
 
       exercisesOut.push({
         name: entry.name,
@@ -1336,8 +1458,15 @@ export default function NewSession() {
           target_reps_min: entry.target_reps_min,
           target_reps_max: entry.target_reps_max,
           target_rest_seconds: entry.rest_seconds,
+          group: entry.group || undefined,
+          athlete_note: entry.athleteNote?.trim() || undefined,
         },
       });
+    }
+
+    if (exercisesOut.length === 0) {
+      setError("Captura al menos un set con reps y carga antes de guardar.");
+      return false;
     }
 
     const voiceAuditCommands = voiceAudit.slice(-MAX_VOICE_AUDIT_ENTRIES);
@@ -1384,7 +1513,7 @@ export default function NewSession() {
             average_score_1_10: Number(((sleepScore + stressScore + sensationScore) / 3).toFixed(2)),
           },
           capture_protocol: {
-            version: "session_capture_v2",
+            versión: "session_capture_v2",
             voice_ready: ENABLE_OFFLINE_VOICE_CAPTURE,
             voice: {
               enabled: ENABLE_OFFLINE_VOICE_CAPTURE && voiceAssistDesktopEnabled,
@@ -1425,17 +1554,19 @@ export default function NewSession() {
       await ingestSessions(payload);
       await deactivateVoiceCapture();
       clearDraft();
-      nav("/history");
+      nav("/home");
+      return true;
     } catch (cause: unknown) {
       if (isNetworkError(cause)) {
         // Sin conexión: la sesión queda en cola local y se sube al reconectar.
         enqueueSessionUpload(payload);
         await deactivateVoiceCapture();
         clearDraft();
-        nav("/history");
-        return;
+        nav("/home");
+        return true;
       }
       setError(String((cause as { message?: string })?.message || cause));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -1448,16 +1579,16 @@ export default function NewSession() {
     return (
       <div className="container stack">
         <header className="titleBlock">
-          <h1>Nueva sesion</h1>
+          <h1>Nueva sesión</h1>
           <p>Paso 1/2. Selecciona una rutina para iniciar el registro.</p>
         </header>
 
         <section className="surface">
-          <div className="chipRow">
-            <span className="chip">Escala: {prefs.effortScale.toUpperCase()}</span>
-            <span className="chip">Carga: {prefs.weightUnit}</span>
-            <span className="chip">Rutinas: {sortedRoutines.length}</span>
-          </div>
+          {requestedDayKey ? (
+            <div className="chipRow">
+              <span className="chip">Día: {requestedDayKey}</span>
+            </div>
+          ) : null}
 
           {error ? (
             <div className="message error" style={{ marginTop: 12 }}>
@@ -1469,7 +1600,7 @@ export default function NewSession() {
             <div className="emptyState" style={{ marginTop: 12 }}>
               No hay rutinas creadas. Crea al menos una rutina para registrar sesiones.
               <div className="quickActions" style={{ marginTop: 10 }}>
-                <button className="btn primary" onClick={() => nav("/routines")}>
+                <button className="btn primary" onClick={() => nav("/training")}>
                   Ir a rutinas
                 </button>
               </div>
@@ -1481,8 +1612,12 @@ export default function NewSession() {
           ) : (
             <div className="routinePickGrid" style={{ marginTop: 12 }}>
               {sortedRoutines.map((routine) => {
-                const totalSets = routine.exercises.reduce(
-                  (acc, exercise) => acc + Math.max(1, Math.round(exercise.target_sets || 1)),
+                const totalSetsMin = routine.exercises.reduce(
+                  (acc, exercise) => acc + Math.max(1, Math.round(exercise.target_sets_min || 1)),
+                  0,
+                );
+                const totalSetsMax = routine.exercises.reduce(
+                  (acc, exercise) => acc + Math.max(1, Math.round(exercise.target_sets_max || 1)),
                   0,
                 );
                 const averageRestSeconds =
@@ -1506,7 +1641,7 @@ export default function NewSession() {
                       <span className="chip">{`${routine.exercises.length} ejercicio${routine.exercises.length === 1 ? "" : "s"}`}</span>
                     </div>
                     <div className="chipRow">
-                      <span className="chip">{`${totalSets} series objetivo`}</span>
+                      <span className="chip">{`${formatSetsRange(totalSetsMin, totalSetsMax)} series objetivo`}</span>
                       <span className="chip">{`Descanso prom: ${formatRestRecommendation(averageRestSeconds)}`}</span>
                     </div>
                     <div className="small">
@@ -1517,15 +1652,20 @@ export default function NewSession() {
                       <button className="btn primary routineStartBtn" onClick={() => startSessionStep(routine.id)} disabled={!hasActiveAthlete}>
                         Iniciar rutina
                       </button>
-                      <button className="btn routineGotoBtn" onClick={() => nav("/routines")}>
-                        Ir a rutinas
-                      </button>
                     </div>
                   </article>
                 );
               })}
             </div>
           )}
+
+          {hasRoutines ? (
+            <div className="quickActions" style={{ marginTop: 12 }}>
+              <button className="btn ghost" onClick={() => nav("/training")}>
+                Editar rutinas
+              </button>
+            </div>
+          ) : null}
         </section>
       </div>
     );
@@ -1540,21 +1680,10 @@ export default function NewSession() {
     return appendVoiceTranscript(voiceTranscript, partial);
   })();
   const voiceAuditPreview = [...voiceAudit].slice(Math.max(0, voiceAudit.length - 8)).reverse();
-  const voiceAppliedCount = voiceAudit.reduce((acc, entry) => (entry.applied ? acc + 1 : acc), 0);
-  const voiceRejectedCount = voiceAudit.length - voiceAppliedCount;
-  const notificationLabel =
-    notificationCapability === "unsupported"
-      ? "No disponible en este dispositivo"
-      : notificationCapability === "granted"
-      ? "Activas"
-      : notificationCapability === "denied"
-      ? "Bloqueadas"
-      : "Pendientes";
-
   return (
     <div className="container stack">
       <header className="titleBlock">
-        <h1>Sesion por rutina</h1>
+        <h1>Sesión por rutina</h1>
       </header>
 
       <section className="surface">
@@ -1571,36 +1700,48 @@ export default function NewSession() {
         ) : null}
 
         <div className="quickActions" style={{ marginTop: 12 }}>
-          <button className="btn" onClick={goBackToRoutineStep}>
-            Cambiar rutina
-          </button>
-          <button className="btn" onClick={() => nav("/routines")}>
-            Gestionar rutinas
-          </button>
-          <button className="btn" onClick={resetRoutineSets} disabled={!selectedRoutine}>
-            Reiniciar sets
-          </button>
-          <button className="btn trashBtn" type="button" onClick={exitSession}>
-            Cerrar sesion
-          </button>
+          <div className="extrasMenu">
+            <button
+              type="button"
+              className="menuBtn"
+              aria-label="Funciones extra"
+              aria-haspopup="menu"
+              aria-expanded={extrasMenuOpen}
+              onClick={() => setExtrasMenuOpen((prev) => !prev)}
+            >
+              <span className="menuBtnBars" aria-hidden="true" />
+            </button>
+
+            {extrasMenuOpen ? (
+              <>
+                <div className="extrasMenuBackdrop" onClick={() => setExtrasMenuOpen(false)} />
+                <div className="extrasMenuPanel" role="menu" aria-label="Funciones extra">
+                  <button className="extrasMenuItem" type="button" role="menuitem" onClick={goBackToRoutineStep}>
+                    Cambiar rutina
+                  </button>
+                  <button
+                    className="extrasMenuItem danger"
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setExtrasMenuOpen(false);
+                      setCloseRoutineOpen(true);
+                    }}
+                  >
+                    Cerrar rutina
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
       </section>
+
+      <div className="sessionStartText">{formatStartLabel(startLocal)}</div>
 
       <section className="surface">
         <div className="sectionHead">
           <h3>Datos de la rutina</h3>
-        </div>
-
-        <div className="splitGrid" style={{ marginTop: 10 }}>
-          <div>
-            <label className="smallLabel">Inicio</label>
-            <input
-              className="input"
-              type="datetime-local"
-              value={startLocal}
-              onChange={(e) => setStartLocal(e.target.value)}
-            />
-          </div>
         </div>
 
         <div className="wellnessPanel" style={{ marginTop: 12 }}>
@@ -1610,7 +1751,7 @@ export default function NewSession() {
           <div className="wellnessStack" style={{ marginTop: 10 }}>
             <div className="wellnessField">
               <div className="wellnessFieldHead">
-                <label className="smallLabel">Sueno</label>
+                <label className="smallLabel">Sueño</label>
                 <span className="chip">{`${formatWellnessScore(sleepScore)} / 10 - ${wellnessLabelFromScore(sleepScore)}`}</span>
               </div>
               <input
@@ -1646,7 +1787,7 @@ export default function NewSession() {
 
               <div className="wellnessField">
               <div className="wellnessFieldHead">
-                <label className="smallLabel">Estres</label>
+                <label className="smallLabel">Estrés</label>
                 <span className="chip">{`${formatWellnessScore(stressScore)} / 10 - ${stressLabelFromScore(stressScore)}`}</span>
               </div>
               <input
@@ -1682,7 +1823,7 @@ export default function NewSession() {
 
             <div className="wellnessField">
               <div className="wellnessFieldHead">
-                <label className="smallLabel">Sensaciones/Motivacion</label>
+                <label className="smallLabel">Sensaciones / motivación</label>
                 <span className="chip">{`${formatWellnessScore(sensationScore)} / 10 - ${wellnessLabelFromScore(sensationScore)}`}</span>
               </div>
               <input
@@ -1724,20 +1865,20 @@ export default function NewSession() {
             className="input"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="comentarios adicionales de la sesion"
+            placeholder="comentarios adicionales de la sesión"
           />
         </div>
 
         <div className="surface" style={{ marginTop: 12, padding: 12 }}>
           <div className="sectionHead">
-            <h4>Temporizador de sesion</h4>
+            <h4>Temporizador de sesión</h4>
           </div>
           <div className="timerValue" style={{ marginTop: 10 }}>
             {formatTimer(sessionElapsedSec)}
           </div>
           <div className="chipRow" style={{ marginTop: 8 }}>
             <span className="chip">Estado: {timerStatus}</span>
-            {sessionTimer.completed_at_ms ? <span className="chip">{`Completada: ${new Date(sessionTimer.completed_at_ms).toLocaleTimeString()}`}</span> : null}
+            {sessionTimer.completed_at_ms ? <span className="chip">{`Completada: ${new Date(sessionTimer.completed_at_ms).toLocaleTimeString(APP_LOCALE)}`}</span> : null}
           </div>
           <div className="quickActions" style={{ marginTop: 10 }}>
             {sessionTimerRunning ? (
@@ -1753,7 +1894,7 @@ export default function NewSession() {
               Reiniciar
             </button>
             <button className="btn" type="button" onClick={completeSession} disabled={sessionTimerCompleted}>
-              Completar sesion
+              Completar sesión
             </button>
           </div>
         </div>
@@ -1772,10 +1913,10 @@ export default function NewSession() {
 
         {allSetsCompleted && !sessionTimerCompleted ? (
           <div className="message" style={{ marginTop: 12 }}>
-            Terminaste todas las series. Puedes completar la sesion para detener el cronometro.
+            Terminaste todas las series. Puedes completar la sesión para detener el cronometro.
             <div className="quickActions" style={{ marginTop: 10 }}>
               <button className="btn primary" type="button" onClick={completeSession}>
-                Completar sesion
+                Completar sesión
               </button>
             </div>
           </div>
@@ -1783,23 +1924,66 @@ export default function NewSession() {
 
         {!selectedRoutine ? (
           <div className="emptyState" style={{ marginTop: 12 }}>
-            Aun no seleccionaste una rutina.
+            Aún no seleccionaste una rutina.
           </div>
         ) : (
           <div className="stack" style={{ marginTop: 12 }}>
-            {routineExercises.map((exercise, exIdx) => (
+            {routineExercises.map((exercise, exIdx) => {
+              const exerciseNotes = coachNotesByExercise[normalizeExerciseNameForNotes(exercise.name)] || [];
+              const hasUnreadNote = exerciseNotes.some((note) => !note.read_at_utc);
+              const noteExpanded = expandedNoteExercise === exIdx;
+              return (
               <div key={`${selectedRoutine.id}_${exercise.name}_${exIdx}`} className="exerciseCard">
                 <div className="hstack" style={{ justifyContent: "space-between" }}>
                   <div>
                     <label className="smallLabel">Ejercicio</label>
                     <strong>{formatExerciseNameForCard(exercise.name)}</strong>
                   </div>
-                  <span className="chip">Sets: {exercise.sets.length}</span>
+                  <div className="hstack compact">
+                    <span className="chip">Sets: {exercise.sets.length}</span>
+                    <button
+                      type="button"
+                      className={`btn iconBtn notepadBtn ${noteExpanded ? "active" : ""}`}
+                      onClick={() => handleToggleExerciseNote(exIdx, exerciseNotes)}
+                      aria-label={hasUnreadNote ? "Indicacion del entrenador sin leer" : "Notas del ejercicio"}
+                      title={hasUnreadNote ? "Indicacion del entrenador sin leer" : "Notas del ejercicio"}
+                    >
+                      <svg className="iconGlyph" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 3h9l3 3v15H6z" />
+                        <path d="M6 8h9" />
+                        <path d="M6 12h9" />
+                        <path d="M6 16h6" />
+                      </svg>
+                      {hasUnreadNote ? <span className="notifyDot" aria-hidden="true" /> : null}
+                    </button>
+                  </div>
                 </div>
                 <div className="chipRow" style={{ marginTop: 8 }}>
                   <span className="chip">{`Reps objetivo: ${formatRepsRange(exercise.target_reps_min, exercise.target_reps_max)}`}</span>
                   <span className="chip">{`Descanso recomendado: ${formatRestRecommendation(exercise.rest_seconds)}`}</span>
                 </div>
+
+                {noteExpanded ? (
+                  <div className="exerciseNotePanel" style={{ marginTop: 8 }}>
+                    {exerciseNotes.length === 0 ? (
+                      <p className="small">Sin indicaciones del entrenador para este ejercicio.</p>
+                    ) : (
+                      exerciseNotes.map((note) => (
+                        <div key={note.id} className="coachNoteBubble">
+                          <p>{note.body}</p>
+                          <span className="smallLabel">{new Date(note.created_at_utc).toLocaleString(APP_LOCALE)}</span>
+                        </div>
+                      ))
+                    )}
+                    <label className="smallLabel">Tu nota para el entrenador</label>
+                    <input
+                      className="input"
+                      value={exercise.athleteNote ?? ""}
+                      onChange={(e) => updateExerciseAthleteNote(exIdx, e.target.value)}
+                      placeholder="observaciones sobre este ejercicio"
+                    />
+                  </div>
+                ) : null}
 
                 <div className="setGrid">
                   {exercise.sets.map((set, setIdx) => {
@@ -1904,43 +2088,67 @@ export default function NewSession() {
                     + Set vacio
                   </button>
                   <button className="btn" onClick={() => duplicateLastSet(exIdx)} disabled={hasPendingSetDelete}>
-                    + Duplicar ultimo set
+                    + Duplicar último set
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
 
       <section className="surface">
         <div className="chipRow" style={{ marginBottom: 10 }}>
-          <span className="chip">{`RPE sesion (auto): ${sessionRpeAuto === null ? "-" : sessionRpeAuto.toFixed(2)}`}</span>
+          <span className="chip">{`RPE sesión (auto): ${sessionRpeAuto === null ? "-" : sessionRpeAuto.toFixed(2)}`}</span>
           <span className="chip">{`Calculado desde ${prefs.effortScale.toUpperCase()} por serie`}</span>
         </div>
+        {error ? (
+          <div className="message error" style={{ marginBottom: 10 }}>
+            {error}
+          </div>
+        ) : null}
+
         <div className="hstack">
-          <button className="btn primary" onClick={submit} disabled={busy || !selectedRoutine || !hasActiveAthlete}>
-            {busy ? "Guardando..." : "Guardar sesion"}
+          <button className="btn primary" onClick={() => void submit()} disabled={busy || !selectedRoutine || !hasActiveAthlete}>
+            {busy ? "Guardando..." : "Guardar sesión"}
           </button>
-          <button className="btn" onClick={() => nav("/history")} disabled={busy}>
+          <button className="btn" onClick={() => nav("/home")} disabled={busy}>
             Cancelar
           </button>
         </div>
+
+        {!hasActiveAthlete ? <div className="small">No hay atleta activo: selecciona uno para poder guardar.</div> : null}
+        {hasActiveAthlete && !selectedRoutine ? <div className="small">Selecciona una rutina para poder guardar.</div> : null}
       </section>
 
-      <aside className="voiceStatusDock desktopDockOnly" aria-live="polite">
+      {!voiceDockOpen ? (
+        <button
+          className={`voiceDockToggle ${voiceCaptureActive ? "listening" : ""}`.trim()}
+          type="button"
+          onClick={() => setVoiceDockOpen(true)}
+          aria-label="Abrir asistencia por voz"
+        >
+          <span className="voiceDockDot" aria-hidden="true" />
+          Voz
+        </button>
+      ) : (
+      <aside className="voiceStatusDock" aria-live="polite">
         <div className="voiceStatusHead">
           <strong>Asistencia por voz</strong>
-          <button className="btn" type="button" onClick={toggleVoiceAssistDesktop}>
-            {voiceAssistDesktopEnabled ? "Desactivar" : "Activar"}
-          </button>
+          <div className="hstack compact">
+            <button className="btn" type="button" onClick={toggleVoiceAssistDesktop}>
+              {voiceAssistDesktopEnabled ? "Desactivar" : "Activar"}
+            </button>
+            <button className="btn ghost" type="button" onClick={() => setVoiceDockOpen(false)} aria-label="Ocultar asistencia por voz">
+              Ocultar
+            </button>
+          </div>
         </div>
         <div className="chipRow">
           <span className={`chip ${voiceStatus === "error" ? "voiceChipError" : ""}`}>{`Estado: ${voiceStatusLabel(voiceStatus)}`}</span>
           <span className="chip">{`Escuchando: ${voiceCaptureActive ? "si" : "no"}`}</span>
-          <span className={`chip ${ENABLE_OFFLINE_VOICE_CAPTURE ? "" : "voiceChipError"}`}>{`Flag: ${ENABLE_OFFLINE_VOICE_CAPTURE ? "on" : "off"}`}</span>
         </div>
-        <div className="small">{`Wake: ${VOICE_WAKE_PHRASE}`}</div>
         <div className="small">
           {voiceCurrentTarget
             ? `Set actual: ${formatExerciseNameForCard(voiceCurrentTarget.exerciseName)} - Set ${voiceCurrentTarget.setIndex + 1}`
@@ -1969,18 +2177,17 @@ export default function NewSession() {
             Limpiar
           </button>
         </div>
-        <div className="voiceDockTranscript">{voiceTranscriptDisplay || "Sin transcripcion aun."}</div>
-        <div className="small">{`Eventos: ${voiceAudit.length} (aplicados ${voiceAppliedCount} / rechazados ${voiceRejectedCount})`}</div>
+        <div className="voiceDockTranscript">{voiceTranscriptDisplay || "Sin transcripción aún."}</div>
         {voiceError ? <div className="message error">{voiceError}</div> : null}
         <div className="voiceLog">
           {voiceAuditPreview.length === 0 ? (
-            <div className="small">Sin eventos de voz en esta sesion.</div>
+            <div className="small">Sin eventos de voz en esta sesión.</div>
           ) : (
             voiceAuditPreview.map((entry, index) => (
               <article key={`${entry.timestamp_ms}_${index}`} className={`voiceLogItem ${entry.applied ? "applied" : "rejected"}`.trim()}>
                 <div className="hstack" style={{ justifyContent: "space-between" }}>
                   <strong>{entry.applied ? "Aplicado" : "Rechazado"}</strong>
-                  <span className="small">{new Date(entry.timestamp_ms).toLocaleTimeString()}</span>
+                  <span className="small">{new Date(entry.timestamp_ms).toLocaleTimeString(APP_LOCALE)}</span>
                 </div>
                 <div className="small">{entry.transcript_normalized || "(sin texto)"}</div>
                 <div className="small">{entry.reason}</div>
@@ -1989,19 +2196,59 @@ export default function NewSession() {
           )}
         </div>
       </aside>
+      )}
+
+      {closeRoutineOpen ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Cerrar rutina">
+          <div className="modalCard closeRoutineModal">
+            <div className="sectionHead">
+              <h3>Cerrar rutina</h3>
+              <p>Elige como quieres cerrar la sesión activa.</p>
+            </div>
+
+            {error ? <div className="message error">{error}</div> : null}
+
+            <div className="closeRoutineActions">
+              <button
+                className="btn primary"
+                type="button"
+                disabled={busy || !selectedRoutine || !hasActiveAthlete}
+                onClick={() => {
+                  void submit().then((saved) => {
+                    if (saved) setCloseRoutineOpen(false);
+                  });
+                }}
+              >
+                {busy ? "Guardando..." : "Completar rutina"}
+              </button>
+              <span className="small">Guarda los datos capturados y cierra la sesión.</span>
+
+              <button className="btn trashBtn" type="button" disabled={busy} onClick={exitSession}>
+                Cancelar rutina
+              </button>
+              <span className="small">Cierra sin guardar. Se pierden los datos de esta sesión.</span>
+
+              <button className="btn ghost" type="button" onClick={() => setCloseRoutineOpen(false)}>
+                Volver
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {restTimer ? (
         <section className="restFloatBar" aria-live="polite">
           <div className="restFloatTop">
             <strong>Descanso entre series</strong>
-            <span className="timerValue restFloatTimer">{formatTimer(restRemainingSec)}</span>
+            <span className={`timerValue restFloatTimer${restRemainingSecSigned < 0 ? " restFloatTimerOver" : ""}`}>
+              {formatTimerSigned(restRemainingSecSigned)}
+            </span>
           </div>
           <div className="small">{`${restTimer.exercise_name} - Set ${restTimer.set_index + 1}`}</div>
           <div className="restFloatTrack" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={restProgressPct}>
             <div className="restFloatFill" style={{ width: `${restProgressPct}%` }} />
           </div>
           <div className="restFloatBottom">
-            <span className="small">{restRemainingSec > 0 ? "En descanso" : "Listo para la siguiente serie"}</span>
             <div className="hstack compact">
               {notificationCapability !== "unsupported" && notificationCapability !== "granted" ? (
                 <button className="btn" type="button" onClick={() => void requestDeviceNotifications()}>
@@ -2013,7 +2260,6 @@ export default function NewSession() {
               </button>
             </div>
           </div>
-          <div className="small">{`Notificaciones: ${notificationLabel}`}</div>
         </section>
       ) : null}
     </div>

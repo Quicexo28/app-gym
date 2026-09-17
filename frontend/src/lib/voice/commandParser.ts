@@ -3,7 +3,7 @@ import { normalizeVoiceTranscript } from "./wakePhrase";
 
 const INTENT_KEYWORDS: Record<VoiceCommandIntent, string[]> = {
   set_load: ["peso", "carga", "kilo", "kilos", "kg", "libra", "libras", "lb"],
-  set_reps: ["rep", "reps", "repeticion", "repeticiones"],
+  set_reps: ["rep", "reps", "repetición", "repeticiones"],
   set_set_effort: ["rpe", "rir", "esfuerzo", "intensidad"],
   set_set_completed: ["completa", "completado", "completada", "listo", "terminado", "terminada", "marcar serie"],
 };
@@ -65,7 +65,7 @@ export function parseVoiceCommand(rawTranscript: string): VoiceParseResult {
     return {
       status: "no_match",
       normalizedText: "",
-      reason: "No se detecto texto util en el comando.",
+      reason: "No se detecto texto útil en el comando.",
     };
   }
 
@@ -74,14 +74,14 @@ export function parseVoiceCommand(rawTranscript: string): VoiceParseResult {
     return {
       status: "no_match",
       normalizedText,
-      reason: "No se detecto ninguna accion de set soportada.",
+      reason: "No se detecto ninguna acción de set soportada.",
     };
   }
   if (candidates.length > 1) {
     return {
       status: "no_match",
       normalizedText,
-      reason: "Comando ambiguo: detecte mas de una accion en la misma frase.",
+      reason: "Comando ambiguo: detecte más de una acción en la misma frase.",
     };
   }
 

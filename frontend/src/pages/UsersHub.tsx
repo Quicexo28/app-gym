@@ -1,86 +1,111 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
-  getPlanningAthleteOverview,
-  getSessions,
-  listRuns,
-  type PlanningAthleteOverview,
-  type RunListItem,
-  type SessionRecord,
+  MUSCLE_GROUPS,
+  createCoachAthlete,
+  getAthleteHub,
+  removeCoachAthlete,
+  muscleGroupLabel,
+  type HubSubject,
 } from "../api";
-import { loadRoutines } from "../lib/storage";
+import KebabMenu from "../components/KebabMenu";
 import { useAthleteAccess } from "../state/athlete";
-import { useViewMode } from "../state/viewMode";
+import { useViewScopes } from "../state/viewScopes";
+import { APP_LOCALE } from "../lib/locale";
 
-type HubTab = "routines" | "sessions" | "analytics" | "projections" | "cycles";
+/** "12 sesiones · última: 16/09/2026" */
+function athleteSummaryLine(subject: HubSubject): string {
+  const sessions = `${subject.sessions_total} ${subject.sessions_total === 1 ? "sesión" : "sesiones"}`;
+  if (!subject.last_session_at) return `${sessions} · sin sesiones aún`;
+  return `${sessions} · última: ${new Date(subject.last_session_at).toLocaleDateString(APP_LOCALE)}`;
+}
 
 export default function UsersHub() {
-  const { viewMode } = useViewMode();
-  const { subjects, activeSubject, athleteId, setAthleteId, selfAthleteId, ready } = useAthleteAccess();
-  const [tab, setTab] = useState<HubTab>("sessions");
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [runs, setRuns] = useState<RunListItem[]>([]);
-  const [planningOverview, setPlanningOverview] = useState<PlanningAthleteOverview | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const { coachView } = useViewScopes();
+  const { setAthleteId } = useAthleteAccess();
   const nav = useNavigate();
 
-  const selfSubject = useMemo(() => subjects.find((subject) => subject.kind === "self") || null, [subjects]);
-  const assignedSubjects = useMemo(() => subjects.filter((subject) => subject.kind === "assigned"), [subjects]);
-  const localRoutines = useMemo(() => loadRoutines(athleteId), [athleteId]);
-  const isCoachScope = viewMode === "coach" || viewMode === "admin";
+  const [subjects, setSubjects] = useState<HubSubject[]>([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newGroups, setNewGroups] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
+
+  function refresh() {
+    setLoading(true);
+    setError("");
+    getAthleteHub({ q: query.trim() || undefined })
+      .then((res) => {
+        setSubjects(res.subjects.filter((subject) => subject.kind === "assigned"));
+      })
+      .catch((cause: unknown) => {
+        setError(String((cause as { message?: string })?.message || cause));
+        setSubjects([]);
+      })
+      .finally(() => setLoading(false));
+  }
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (!athleteId) return;
-      setLoading(true);
-      setError("");
-      try {
-        const [sessionsData, runsData, planningData] = await Promise.all([
-          getSessions(athleteId),
-          listRuns(athleteId, 20),
-          getPlanningAthleteOverview(athleteId),
-        ]);
-        if (cancelled) return;
-        setSessions(sessionsData);
-        setRuns(runsData);
-        setPlanningOverview(planningData);
-      } catch (cause: unknown) {
-        if (cancelled) return;
-        setError(String((cause as { message?: string })?.message || cause));
-        setSessions([]);
-        setRuns([]);
-        setPlanningOverview(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId]);
+    if (!coachView) return;
+    const timeoutId = window.setTimeout(refresh, 250);
+    return () => window.clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coachView, query]);
 
-  const sessionsSorted = useMemo(
-    () => [...sessions].sort((a, b) => String(b.start_time || "").localeCompare(String(a.start_time || ""))),
-    [sessions],
-  );
-  const runsSorted = useMemo(
-    () => [...runs].sort((a, b) => String(b.generated_at_utc || "").localeCompare(String(a.generated_at_utc || ""))),
-    [runs],
-  );
+  function toggleNewGroup(group: string) {
+    setNewGroups((prev) => (prev.includes(group) ? prev.filter((item) => item !== group) : [...prev, group]));
+  }
 
-  if (!isCoachScope) {
+  async function submitNewAthlete() {
+    const displayName = newName.trim();
+    if (!displayName) {
+      setError("El nombre del atleta es obligatorio.");
+      return;
+    }
+    setCreating(true);
+    setError("");
+    try {
+      await createCoachAthlete({ display_name: displayName, priority_muscle_groups: newGroups });
+      setNewName("");
+      setNewGroups([]);
+      setShowAddForm(false);
+      refresh();
+    } catch (cause: unknown) {
+      setError(String((cause as { message?: string })?.message || cause));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function removeAthlete(subject: HubSubject) {
+    if (!window.confirm(`¿Quitar a ${subject.display_name || subject.label} de tu cartera?`)) return;
+    try {
+      await removeCoachAthlete(subject.id);
+      refresh();
+    } catch (cause: unknown) {
+      setError(String((cause as { message?: string })?.message || cause));
+    }
+  }
+
+  function openAthlete(subject: HubSubject) {
+    setAthleteId(subject.id);
+    nav(`/users/${encodeURIComponent(subject.id)}`);
+  }
+
+  if (!coachView) {
     return (
       <div className="container stack">
         <header className="titleBlock">
           <h1>Usuarios</h1>
-          <p>Esta vista esta disponible en modo coach/admin.</p>
+          <p>Enciende la vista coach (interruptor de la barra superior) para ver tu cartera.</p>
         </header>
         <section className="surface">
-          <div className="emptyState">Cambia la vista a coach para gestionar sujetos asignados.</div>
+          <div className="emptyState">Vista coach apagada.</div>
         </section>
       </div>
     );
@@ -89,236 +114,101 @@ export default function UsersHub() {
   return (
     <div className="container stack">
       <header className="titleBlock">
-        <h1>Hub de usuarios</h1>
-        <p>Mi perfil arriba y luego usuarios asignados con detalle de sesiones, analitica y proyecciones.</p>
+        <h1>Usuarios</h1>
       </header>
 
       {error ? <section className="message error">{error}</section> : null}
 
       <section className="surface">
-        <div className="sectionHead">
-          <h3>Sujetos disponibles</h3>
-          <p>Selecciona el sujeto activo para revisar su informacion.</p>
-        </div>
-
-        <div className="chipRow" style={{ marginTop: 10 }}>
-          {selfSubject ? (
-            <button
-              className={`chipButton ${athleteId === selfSubject.id ? "activeChipButton" : ""}`}
-              onClick={() => setAthleteId(selfSubject.id)}
-            >
-              Mi perfil
-            </button>
-          ) : null}
-          {assignedSubjects.map((subject) => (
-            <button
-              key={subject.id}
-              className={`chipButton ${athleteId === subject.id ? "activeChipButton" : ""}`}
-              onClick={() => setAthleteId(subject.id)}
-            >
-              {subject.label}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="surface">
-        <div className="sectionHead">
-          <h3>Detalle del sujeto</h3>
-          <p>{activeSubject ? `Activo: ${activeSubject.label}` : "Sin sujeto activo."}</p>
-        </div>
-
-        <div className="chipRow" style={{ marginTop: 10 }}>
-          <span className="chip">Sesiones: {sessionsSorted.length}</span>
-          <span className="chip">Runs: {runsSorted.length}</span>
-          <span className="chip">{`Ciclos activos: ${planningOverview?.active_assignments?.length || 0}`}</span>
-          <span className="chip">Tipo: {activeSubject?.kind === "self" ? "Mi perfil" : "Asignado"}</span>
-          <button
-            className="btn"
-            onClick={() => {
-              if (!selfAthleteId) return;
-              setAthleteId(selfAthleteId);
-              nav("/session/new");
-            }}
-            disabled={!selfAthleteId}
-          >
-            Entrenarme
-          </button>
-          <button
-            className="btn"
-            onClick={() => {
-              if (!selfAthleteId) return;
-              setAthleteId(selfAthleteId);
-              nav("/history");
-            }}
-            disabled={!selfAthleteId}
-          >
-            Mi historial
-          </button>
-          <button className="btn" onClick={() => nav("/routines")}>
-            Mi rutinas
-          </button>
-          <button className="btn" onClick={() => nav("/measurements")} disabled={!athleteId}>
-            Medidas
-          </button>
-          <button className="btn" onClick={() => nav("/planning")}>
-            Planificacion
-          </button>
-        </div>
-
-        <div className="quickActions" style={{ marginTop: 12 }}>
-          <button className={`btn ${tab === "routines" ? "primary" : ""}`} onClick={() => setTab("routines")}>
-            Rutinas
-          </button>
-          <button className={`btn ${tab === "sessions" ? "primary" : ""}`} onClick={() => setTab("sessions")}>
-            Sesiones
-          </button>
-          <button className={`btn ${tab === "analytics" ? "primary" : ""}`} onClick={() => setTab("analytics")}>
-            Analitica
-          </button>
-          <button className={`btn ${tab === "projections" ? "primary" : ""}`} onClick={() => setTab("projections")}>
-            Proyecciones
-          </button>
-          <button className={`btn ${tab === "cycles" ? "primary" : ""}`} onClick={() => setTab("cycles")}>
-            Ciclos
-          </button>
-        </div>
-
-        {loading ? <div className="emptyState" style={{ marginTop: 12 }}>Cargando informacion...</div> : null}
-
-        {!loading && tab === "routines" ? (
-          <div style={{ marginTop: 12 }}>
-            {localRoutines.length === 0 ? (
-              <div className="emptyState">No hay rutinas guardadas para este sujeto.</div>
-            ) : (
-              <div className="gridCards">
-                {localRoutines.map((routine) => (
-                  <article key={routine.id} className="surfaceButton">
-                    <strong>{routine.name}</strong>
-                    <span className="small">{`Ejercicios: ${routine.exercises.length}`}</span>
-                  </article>
+        {showAddForm ? (
+          <div className="stack">
+            <div className="sectionHead">
+              <h3>Nuevo atleta</h3>
+            </div>
+            <div>
+              <label className="smallLabel">Nombre</label>
+              <input
+                className="input"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Nombre del atleta"
+              />
+            </div>
+            <div>
+              <label className="smallLabel">Músculos prioritarios (opcional)</label>
+              <div className="chipRow" style={{ marginTop: 6 }}>
+                {MUSCLE_GROUPS.map((group) => (
+                  <button
+                    key={group}
+                    type="button"
+                    className={`chip chipToggle ${newGroups.includes(group) ? "active" : ""}`.trim()}
+                    onClick={() => toggleNewGroup(group)}
+                  >
+                    {muscleGroupLabel(group)}
+                  </button>
                 ))}
               </div>
-            )}
-            <div className="quickActions" style={{ marginTop: 10 }}>
-              <button className="btn" onClick={() => nav("/routines")} disabled={!athleteId}>
-                Editar rutinas del sujeto activo
+            </div>
+            <div className="quickActions">
+              <button type="button" className="btn primary" onClick={() => void submitNewAthlete()} disabled={creating}>
+                {creating ? "Creando..." : "Crear atleta"}
+              </button>
+              <button type="button" className="btn ghost" onClick={() => setShowAddForm(false)}>
+                Cancelar
               </button>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <>
+            {/* El buscador solo aparece cuando hay cartera que filtrar. */}
+            {subjects.length > 0 || query ? (
+              <input
+                className="input"
+                placeholder="Buscar atleta..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                style={{ marginBottom: 12 }}
+              />
+            ) : null}
 
-        {!loading && tab === "sessions" ? (
-          <div style={{ marginTop: 12 }}>
-            {sessionsSorted.length === 0 ? (
-              <div className="emptyState">Sin sesiones para este sujeto.</div>
-            ) : (
-              <div className="stack compactStack">
-                {sessionsSorted.slice(0, 12).map((session, idx) => (
-                  <article key={`${session.start_time}_${idx}`} className="listItem">
-                    <div className="listMain">
-                      <strong>{session.start_time ? new Date(session.start_time).toLocaleString() : "Sin fecha"}</strong>
-                      <span className="small">{`Duracion: ${session.duration_min || "-"} min`}</span>
-                    </div>
-                    <div className="listMeta">
-                      <span className="small">{`RPE: ${session.rpe ?? "-"}`}</span>
-                      <span className="small">{`Ejercicios: ${session.exercises?.length || 0}`}</span>
-                    </div>
-                  </article>
-                ))}
+            {loading ? (
+              <div className="emptyState">Cargando...</div>
+            ) : subjects.length === 0 ? (
+              <div className="emptyState">
+                {query ? "Ningún atleta coincide con la búsqueda." : "Aún no tienes atletas en tu cartera."}
               </div>
-            )}
-          </div>
-        ) : null}
-
-        {!loading && tab === "analytics" ? (
-          <div style={{ marginTop: 12 }}>
-            {runsSorted.length === 0 ? (
-              <div className="emptyState">Aun no hay runs para analitica.</div>
             ) : (
-              <div className="gridCards">
-                {runsSorted.slice(0, 8).map((run) => (
-                  <article key={run.run_id} className="surfaceButton">
-                    <strong>{run.summary?.top_scenario || "Run"}</strong>
-                    <span className="small">{new Date(run.generated_at_utc).toLocaleString()}</span>
-                    <span className="small">
-                      {`Confianza top: ${
-                        typeof run.summary?.top_probability === "number"
-                          ? `${Math.round(run.summary.top_probability * 100)}%`
-                          : "-"
-                      }`}
-                    </span>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        {!loading && tab === "projections" ? (
-          <div style={{ marginTop: 12 }}>
-            {runsSorted.length === 0 ? (
-              <div className="emptyState">No hay proyecciones disponibles todavia.</div>
-            ) : (
-              <div className="stack compactStack">
-                {runsSorted.slice(0, 6).map((run) => (
-                  <article key={run.run_id} className="listItem">
-                    <div className="listMain">
-                      <strong>{run.summary?.top_scenario || "Escenario principal"}</strong>
-                      <span className="small">{new Date(run.generated_at_utc).toLocaleString()}</span>
-                    </div>
-                    <div className="listMeta">
-                      <span className="small">{`Metrica: ${run.metric_key}`}</span>
-                      <button className="btn" onClick={() => nav(`/run/${encodeURIComponent(run.run_id)}`)}>
-                        Ver run
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        {!loading && tab === "cycles" ? (
-          <div style={{ marginTop: 12 }}>
-            {!planningOverview ? (
-              <div className="emptyState">Sin datos de ciclos para este sujeto.</div>
-            ) : (
-              <div className="stack compactStack">
-                <article className="listItem">
-                  <div className="listMain">
-                    <strong>{`Ciclos activos: ${planningOverview.active_assignments.length}`}</strong>
-                    <span className="small">{`Recientes: ${planningOverview.recent_assignments.length}`}</span>
+              <div className="rowList">
+                {subjects.map((subject) => (
+                  <div key={subject.id} className="rowItem">
+                    <button type="button" className="rowMain" onClick={() => openAthlete(subject)}>
+                      <strong>{subject.display_name || subject.label}</strong>
+                      <span className="small">{athleteSummaryLine(subject)}</span>
+                    </button>
+                    {subject.is_active_now ? <span className="chip activeNowChip">Entrenando</span> : null}
+                    {subject.unread_reports_count > 0 ? (
+                      <span className="chip notifyChip">{subject.unread_reports_count}</span>
+                    ) : null}
+                    <KebabMenu
+                      ariaLabel={`Opciones de ${subject.display_name || subject.label}`}
+                      actions={[
+                        { label: "Abrir", onSelect: () => openAthlete(subject) },
+                        { label: "Quitar de la cartera", destructive: true, onSelect: () => void removeAthlete(subject) },
+                      ]}
+                    />
                   </div>
-                </article>
-                {planningOverview.active_assignments.length === 0 ? (
-                  <div className="emptyState">No hay ciclos activos.</div>
-                ) : (
-                  planningOverview.active_assignments.slice(0, 8).map((item) => (
-                    <article key={item.id} className="listItem">
-                      <div className="listMain">
-                        <strong>{item.template_name || item.template_id}</strong>
-                        <span className="small">{`${item.level} | ${item.status}`}</span>
-                      </div>
-                      <div className="listMeta">
-                        <span className="small">{`Adherencia: ${Math.round((item.adherence || 0) * 100)}%`}</span>
-                        <span className="small">{`Bloques: ${item.blocks_completed || 0}/${item.blocks_total || 0}`}</span>
-                      </div>
-                    </article>
-                  ))
-                )}
+                ))}
               </div>
             )}
-          </div>
-        ) : null}
-      </section>
 
-      {!ready ? (
-        <section className="surface">
-          <div className="emptyState">Sincronizando sujetos...</div>
-        </section>
-      ) : null}
+            <div className="rowListActions">
+              <button type="button" className="linkBtn" onClick={() => setShowAddForm(true)}>
+                + Nuevo atleta
+              </button>
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 }

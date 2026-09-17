@@ -14,7 +14,7 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
-      includeAssets: ["vite.svg", "icons/pwa-192.png", "icons/pwa-512.png"],
+      includeAssets: ["icons/pwa-192.png", "icons/pwa-512.png", "icons/pwa-maskable-512.png"],
       manifest: {
         name: "Alzo",
         short_name: "Alzo",
