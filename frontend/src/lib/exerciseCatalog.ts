@@ -4,9 +4,12 @@ export const ALL_EXERCISE_FILTER = "__all__";
 export const EXERCISE_ZONE_UPPER = "upper";
 export const EXERCISE_ZONE_LOWER = "lower";
 export const ALL_EXERCISE_ZONE_FILTER = "__all_zone__";
+export const ALL_EXERCISE_MOVEMENT_FILTER = "__all_movement__";
 
 export type ExerciseBodyZone = typeof EXERCISE_ZONE_UPPER | typeof EXERCISE_ZONE_LOWER;
 export type ExerciseBodyZoneFilter = ExerciseBodyZone | typeof ALL_EXERCISE_ZONE_FILTER;
+export type ExerciseMovementPattern = "push" | "pull";
+export type ExerciseMovementFilter = ExerciseMovementPattern | typeof ALL_EXERCISE_MOVEMENT_FILTER;
 
 const LOWER_BODY_GROUP_TOKENS = new Set([
   "gluteo",
@@ -23,9 +26,57 @@ const LOWER_BODY_GROUP_TOKENS = new Set([
   "aductores",
 ]);
 
+// Clasificacion por grupo muscular (no hay patron de movimiento por ejercicio).
+const PUSH_GROUP_TOKENS = new Set([
+  "pecho",
+  "pectoral",
+  "pectorales",
+  "hombro",
+  "hombros",
+  "deltoide",
+  "deltoides",
+  "tricep",
+  "triceps",
+  "cuadricep",
+  "cuadriceps",
+]);
+
+const PULL_GROUP_TOKENS = new Set([
+  "espalda",
+  "dorsal",
+  "dorsales",
+  "trapecio",
+  "trapecios",
+  "bicep",
+  "biceps",
+  "femoral",
+  "femorales",
+  "isquiotibial",
+  "isquiotibiales",
+  "gluteo",
+  "gluteos",
+]);
+
+// Orden vertical de arriba (hombros) a abajo (pantorrilla) para las cards del explorador.
+const MUSCLE_GROUP_DISPLAY_ORDER: string[][] = [
+  ["hombro", "hombros", "deltoide", "deltoides"],
+  ["bicep", "biceps"],
+  ["tricep", "triceps"],
+  ["pecho", "pectoral", "pectorales"],
+  ["espalda", "dorsal", "dorsales", "trapecio", "trapecios"],
+  ["abdomen", "abdominales", "abdominal", "core"],
+  ["gluteo", "gluteos"],
+  ["abductor", "abductores"],
+  ["aductor", "aductores"],
+  ["cuadricep", "cuadriceps"],
+  ["femoral", "femorales", "isquiotibial", "isquiotibiales"],
+  ["pantorrilla", "pantorrillas", "gemelo", "gemelos"],
+];
+
 export type ExerciseFilters = {
   group: string;
   zone: ExerciseBodyZoneFilter;
+  movement: ExerciseMovementFilter;
   search: string;
 };
 
@@ -79,7 +130,7 @@ function scoreTokenAgainstWord(token: string, word: string, aggressiveness: Sear
   if (token === word) return 160;
 
   if (aggressiveness === "strict") {
-    // Modo estricto (grupos): solo prefijo/exacto, pero sin umbral minimo.
+    // Modo estricto (grupos): solo prefijo/exacto, pero sin umbral mínimo.
     if (word.startsWith(token)) {
       const extraChars = Math.max(0, word.length - token.length);
       return Math.max(120, 170 - extraChars * 8);
@@ -221,7 +272,7 @@ export function computeExerciseEntrySearchScore(entry: ExerciseCatalogEntry, sea
     }
   }
 
-  // Desempate estable: ejercicios mas profundos ligeramente por encima.
+  // Desempate estable: ejercicios más profundos ligeramente por encima.
   score += entry.depth * 10;
 
   return score;
@@ -264,6 +315,26 @@ export function getExerciseBodyZone(group: string): ExerciseBodyZone {
   }
 
   return EXERCISE_ZONE_UPPER;
+}
+
+export function getExerciseMovementPattern(group: string): ExerciseMovementPattern | null {
+  const normalizedGroup = normalizeSearchValue(group);
+  const words = tokenizeNormalizedWords(normalizedGroup);
+
+  if (words.some((word) => PUSH_GROUP_TOKENS.has(word))) return "push";
+  if (words.some((word) => PULL_GROUP_TOKENS.has(word))) return "pull";
+  return null;
+}
+
+export function getMuscleGroupOrderIndex(group: string): number {
+  const normalizedGroup = normalizeSearchValue(group);
+  const words = tokenizeNormalizedWords(normalizedGroup);
+
+  for (let index = 0; index < MUSCLE_GROUP_DISPLAY_ORDER.length; index += 1) {
+    if (words.some((word) => MUSCLE_GROUP_DISPLAY_ORDER[index].includes(word))) return index;
+  }
+
+  return MUSCLE_GROUP_DISPLAY_ORDER.length;
 }
 
 function splitSubvariationChain(value: string): { subvariation: string; executionType: string } {
@@ -346,6 +417,8 @@ function getFilteredForOptions(entries: ExerciseCatalogEntry[], filters: Exercis
 
   return entries.filter((entry) => {
     if (filters.zone !== ALL_EXERCISE_ZONE_FILTER && getExerciseBodyZone(entry.group) !== filters.zone) return false;
+    if (filters.movement !== ALL_EXERCISE_MOVEMENT_FILTER && getExerciseMovementPattern(entry.group) !== filters.movement)
+      return false;
     if (filters.group !== ALL_EXERCISE_FILTER && !includesByKey(filters.group, entry.group)) return false;
     if (searchTokens.length > 0 && computeExerciseEntrySearchScore(entry, searchTokens) <= 0) return false;
     return true;
@@ -367,6 +440,8 @@ export function filterExerciseEntries(entries: ExerciseCatalogEntry[], filters: 
 
   const scored = entries.flatMap((entry) => {
     if (filters.zone !== ALL_EXERCISE_ZONE_FILTER && getExerciseBodyZone(entry.group) !== filters.zone) return [];
+    if (filters.movement !== ALL_EXERCISE_MOVEMENT_FILTER && getExerciseMovementPattern(entry.group) !== filters.movement)
+      return [];
     if (filters.group !== ALL_EXERCISE_FILTER && !includesByKey(filters.group, entry.group)) return [];
 
     const similarity = searchTokens.length === 0 ? 0 : computeExerciseEntrySearchScore(entry, searchTokens);

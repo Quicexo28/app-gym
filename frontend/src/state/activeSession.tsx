@@ -258,8 +258,8 @@ function writeStoredDraft(next: ActiveSessionDraft | null): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
   } catch (err) {
-    // QuotaExceededError: la sesion sigue en memoria; no tumbar la captura.
-    console.error("No se pudo persistir la sesion activa en localStorage", err);
+    // QuotaExceededError: la sesión sigue en memoria; no tumbar la captura.
+    console.error("No se pudo persistir la sesión activa en localStorage", err);
   }
 }
 

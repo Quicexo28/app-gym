@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { sendSessionHeartbeat } from "../api";
 import { useAthleteAccess } from "../state/athlete";
 import { useActiveSession } from "../state/activeSession";
 
 const TICK_MS = 1_000;
+const HEARTBEAT_MS = 60_000;
 
 function formatTimer(totalSeconds: number): string {
   const safe = Math.max(0, Math.floor(totalSeconds));
@@ -69,6 +71,22 @@ export default function ActiveSessionBar() {
     };
   }, [visible]);
 
+  // Única senal server-side de "quien esta entrenando ahora" para el filtro
+  // de Home coach - la sesión en si vive solo en localStorage hasta guardarse.
+  useEffect(() => {
+    if (!visible || !draft?.athleteId) return;
+    const ping = () => {
+      void sendSessionHeartbeat({
+        athlete_id: draft.athleteId,
+        routine_id: draft.routineId || null,
+        routine_name: draft.routineName || null,
+      }).catch(() => {});
+    };
+    ping();
+    const intervalId = window.setInterval(ping, HEARTBEAT_MS);
+    return () => window.clearInterval(intervalId);
+  }, [visible, draft?.athleteId, draft?.routineId, draft?.routineName]);
+
   if (!visible || !draft) return null;
   const session = draft;
 
@@ -77,7 +95,7 @@ export default function ActiveSessionBar() {
     : "Todos los sets marcados";
   const restLabel = session.restTimer
     ? restRemainingSec > 0
-      ? `Descanso: ${formatTimer(restRemainingSec)}`
+      ? "Descanso en curso"
       : "Descanso listo"
     : "Sin descanso activo";
 
@@ -92,7 +110,7 @@ export default function ActiveSessionBar() {
     <section className="activeSessionBar" aria-live="polite">
       <div className="activeSessionMain">
         <div className="activeSessionHead">
-          <strong>{`Sesion activa${session.routineName ? `: ${session.routineName}` : ""}`}</strong>
+          <strong>{`Sesión activa${session.routineName ? `: ${session.routineName}` : ""}`}</strong>
           <span className="chip">{currentPending ? "Pendiente" : "Completada"}</span>
         </div>
         <div className="small">{`Actual: ${exerciseLabel}`}</div>
@@ -107,22 +125,27 @@ export default function ActiveSessionBar() {
         ) : null}
       </div>
       <div className="activeSessionActions">
-        <button
-          className="btn iconBtn setCompleteBtn activeSessionCheckBtn"
-          type="button"
-          onClick={completeFirstPendingSet}
-          disabled={!currentPending}
-          aria-label="Marcar set pendiente como completado"
-          title="Marcar set pendiente como completado"
-        >
-          <svg className="iconGlyph" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M8.5 12.2L10.8 14.5L15.6 9.7" />
-          </svg>
-        </button>
-        <button className="btn primary" type="button" onClick={backToSession}>
-          Volver a sesion
-        </button>
+        <div className="activeSessionTimerBig" aria-live="polite">
+          {session.restTimer ? formatTimer(restRemainingSec) : "--:--"}
+        </div>
+        <div className="activeSessionButtonGroup">
+          <button
+            className="btn iconBtn setCompleteBtn activeSessionCheckBtn"
+            type="button"
+            onClick={completeFirstPendingSet}
+            disabled={!currentPending}
+            aria-label="Marcar set pendiente como completado"
+            title="Marcar set pendiente como completado"
+          >
+            <svg className="iconGlyph" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M8.5 12.2L10.8 14.5L15.6 9.7" />
+            </svg>
+          </button>
+          <button className="btn primary" type="button" onClick={backToSession}>
+            Volver a sesión
+          </button>
+        </div>
       </div>
     </section>
   );

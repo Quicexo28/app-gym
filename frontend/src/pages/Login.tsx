@@ -79,13 +79,13 @@ function toFriendlyError(error: unknown): string {
       return "El correo ya existe.";
     }
     if (error.status === 409 && detail.includes("Phone already registered")) {
-      return "El numero de celular ya existe.";
+      return "El número de celular ya existe.";
     }
     if (error.status === 400 && detail.includes("Invalid email")) {
-      return "Correo invalido.";
+      return "Correo inválido.";
     }
     if (error.status === 400 && detail.includes("Invalid phone number")) {
-      return "Numero de celular invalido.";
+      return "Número de celular inválido.";
     }
     if (error.status === 503 && detail.includes("Google login is not configured")) {
       return "Inicio con Google no configurado en el servidor.";
@@ -129,7 +129,7 @@ function PasswordVisibilityIcon({ visible }: { visible: boolean }) {
 }
 
 export default function Login() {
-  const { isAuthenticated, login, register, loginWithGoogle, loginAsGuest } = useAuth();
+  const { isAuthenticated, sessionExpired, login, register, loginWithGoogle, loginAsGuest } = useAuth();
   const nav = useNavigate();
 
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -304,12 +304,12 @@ export default function Login() {
       <section className="surface loginCard">
         <div className="titleBlock">
           <h1>Alzo</h1>
-          <p>Inicia sesion para gestionar atletas, sesiones y escenarios.</p>
+          <p>Inicia sesión para gestionar atletas, sesiones y escenarios.</p>
         </div>
 
         <div className="pillGroup">
           <button type="button" className={`pill ${mode === "login" ? "active" : ""}`} onClick={() => setMode("login")}>
-            <span>Iniciar sesion</span>
+            <span>Iniciar sesión</span>
             <small>Correo o celular con contrasena</small>
           </button>
           <button
@@ -323,6 +323,9 @@ export default function Login() {
         </div>
 
         {error ? <div className="message error">{error}</div> : null}
+        {!error && sessionExpired ? (
+          <div className="message">Tu sesión expiro. Inicia sesión de nuevo.</div>
+        ) : null}
 
         <div className="stack">
           {mode === "login" ? (
@@ -344,7 +347,7 @@ export default function Login() {
               </div>
 
               <div>
-                <label className="smallLabel">Numero celular (opcional)</label>
+                <label className="smallLabel">Número celular (opcional)</label>
                 <input
                   className="input"
                   type="tel"
@@ -426,7 +429,7 @@ export default function Login() {
             {googleStatus === "unavailable" ? (
               <div className="smallLabel">
                 {googleClientId
-                  ? "Inicio con Google no disponible (sin conexion con Google)."
+                  ? "Inicio con Google no disponible (sin conexión con Google)."
                   : "Inicio con Google no configurado."}
               </div>
             ) : null}

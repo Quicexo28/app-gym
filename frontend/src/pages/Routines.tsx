@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent
 
 import {
   ALL_EXERCISE_FILTER as ALL,
+  ALL_EXERCISE_MOVEMENT_FILTER,
   ALL_EXERCISE_ZONE_FILTER,
   buildExerciseCatalogBrowser,
   computeExerciseEntrySearchScore,
@@ -13,18 +14,23 @@ import {
   type ExerciseFilters,
 } from "../lib/exerciseCatalog";
 import {
+  formatSetsRange,
   listRoutinePropagationTargets,
   loadRoutines,
+  parseSetsRangeText,
   propagateRoutineUpdate,
   ROUTINES_HYDRATED_EVENT,
   saveRoutines,
   uid,
 } from "../lib/storage";
+import { ChartPlaceholder } from "../components/Charts";
+import KebabMenu from "../components/KebabMenu";
+import Select from "../components/Select";
 import type { RoutineExerciseTemplate, RoutineTemplate } from "../lib/storage";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAthleteAccess } from "../state/athlete";
 import { useUndo } from "../state/undo";
-import { useViewMode } from "../state/viewMode";
+import { useViewScopes } from "../state/viewScopes";
 
 type MutableNode = {
   label: string;
@@ -49,6 +55,7 @@ type TreeItem = {
 };
 
 const DEFAULT_TARGET_SETS = 3;
+const SERIES_SUGGESTIONS = ["1", "1-2", "2", "2-3", "3", "3-4", "4"];
 const DEFAULT_TARGET_REPS_MIN = 8;
 const DEFAULT_TARGET_REPS_MAX = 12;
 const DEFAULT_REST_SECONDS = 90;
@@ -58,7 +65,11 @@ const DRAG_HOLD_TO_REORDER_MS = 280;
 const DRAG_AUTO_SCROLL_EDGE_PX = 92;
 const DRAG_AUTO_SCROLL_MAX_STEP_PX = 16;
 
-type DraftRoutineExercise = Omit<RoutineExerciseTemplate, "target_reps_min" | "target_reps_max" | "rest_seconds"> & {
+type DraftRoutineExercise = Omit<
+  RoutineExerciseTemplate,
+  "target_sets_min" | "target_sets_max" | "target_reps_min" | "target_reps_max" | "rest_seconds"
+> & {
+  target_sets: string;
   target_reps_min: string;
   target_reps_max: string;
   rest_minutes: string;
@@ -160,8 +171,30 @@ function normalizeGroupLabel(value: string | undefined): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function totalSeries(exercises: Array<{ target_sets: number }>): number {
-  return exercises.reduce((acc, exercise) => acc + normalizeSetTarget(exercise.target_sets), 0);
+function totalSeries(exercises: Array<{ target_sets_min: number; target_sets_max: number }>): {
+  min: number;
+  max: number;
+} {
+  return exercises.reduce(
+    (acc, exercise) => ({
+      min: acc.min + normalizeSetTarget(exercise.target_sets_min),
+      max: acc.max + normalizeSetTarget(exercise.target_sets_max),
+    }),
+    { min: 0, max: 0 },
+  );
+}
+
+/** "4 ejercicios · 12-15 series": una linea en vez de una pila de chips. */
+function routineSummaryLine(routine: RoutineTemplate): string {
+  const count = routine.exercises.length;
+  const exercisesLabel = `${count} ejercicio${count === 1 ? "" : "s"}`;
+  if (count === 0) return exercisesLabel;
+  return `${exercisesLabel} · ${formatTotalSeries(routine.exercises)} series`;
+}
+
+function formatTotalSeries(exercises: Array<{ target_sets_min: number; target_sets_max: number }>): string {
+  const { min, max } = totalSeries(exercises);
+  return formatSetsRange(min, max);
 }
 
 function routineExerciseIdentity(exercise: Pick<RoutineExerciseTemplate, "name" | "group">): string {
@@ -195,7 +228,7 @@ function buildRoutineSeriesByGroup(
 ): RoutineGroupSeries[] {
   const grouped = new Map<string, number>();
   for (const exercise of routine.exercises) {
-    const sets = normalizeSetTarget(exercise.target_sets);
+    const sets = normalizeSetTarget(exercise.target_sets_max);
     if (sets <= 0) continue;
     const group = resolveExerciseGroup(exercise, catalogGroupByName);
     grouped.set(group, (grouped.get(group) || 0) + sets);
@@ -244,7 +277,7 @@ function toDraftExercise(exercise: RoutineExerciseTemplate): DraftRoutineExercis
   return {
     name: exercise.name,
     group: exercise.group,
-    target_sets: exercise.target_sets,
+    target_sets: formatSetsRange(exercise.target_sets_min, exercise.target_sets_max),
     target_reps_min: String(exercise.target_reps_min),
     target_reps_max: String(exercise.target_reps_max),
     ...splitRestSeconds(exercise.rest_seconds),
@@ -402,8 +435,8 @@ function renderTree(
 }
 
 export default function Routines() {
-  const { athleteId, activeSubject, subjects } = useAthleteAccess();
-  const { viewMode } = useViewMode();
+  const { athleteId, subjects } = useAthleteAccess();
+  const { coachView } = useViewScopes();
   const { loading, syncError, entries: catalogEntries } = useExerciseCatalog();
   const { registerUndo } = useUndo();
   const [items, setItems] = useState<RoutineTemplate[]>(() => (athleteId ? loadRoutines(athleteId) : []));
@@ -413,10 +446,14 @@ export default function Routines() {
   const [feedback, setFeedback] = useState("");
   const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // El formulario de creacion ya no vive abierto encima de la lista: se abre
+  // con "+ Nueva rutina" o al editar una existente.
+  const [builderOpen, setBuilderOpen] = useState(false);
   const [infoRoutineId, setInfoRoutineId] = useState<string | null>(null);
   const [draggedExerciseIdentity, setDraggedExerciseIdentity] = useState<string | null>(null);
   const [dropSlotIndex, setDropSlotIndex] = useState<number | null>(null);
   const [dragArmedExerciseIdentity, setDragArmedExerciseIdentity] = useState<string | null>(null);
+  const [openCardMenuIdentity, setOpenCardMenuIdentity] = useState<string | null>(null);
 
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
   const [selectedZone, setSelectedZone] = useState<ExerciseBodyZoneFilter>(ALL_EXERCISE_ZONE_FILTER);
@@ -430,6 +467,7 @@ export default function Routines() {
     () => ({
       group: ALL,
       zone: selectedZone,
+      movement: ALL_EXERCISE_MOVEMENT_FILTER,
       search,
     }),
     [search, selectedZone],
@@ -448,6 +486,7 @@ export default function Routines() {
 
   const sorted = useMemo(() => [...items].sort((a, b) => a.name.localeCompare(b.name)), [items]);
   const isEditing = Boolean(editingRoutineId);
+  const showBuilder = builderOpen || isEditing;
   const hasIncompleteRepsRange = useMemo(
     () =>
       draftExercises.some(
@@ -455,8 +494,23 @@ export default function Routines() {
       ),
     [draftExercises],
   );
-  const canSaveRoutine = name.trim().length > 0 && draftExercises.length > 0 && !hasIncompleteRepsRange;
-  const draftTotalSeries = useMemo(() => totalSeries(draftExercises), [draftExercises]);
+  const hasIncompleteSeries = useMemo(
+    () => draftExercises.some((exercise) => parseSetsRangeText(exercise.target_sets) === null),
+    [draftExercises],
+  );
+  const canSaveRoutine =
+    name.trim().length > 0 && draftExercises.length > 0 && !hasIncompleteRepsRange && !hasIncompleteSeries;
+  const draftTotalSeries = useMemo(() => {
+    const totals = draftExercises.reduce(
+      (acc, exercise) => {
+        const parsed = parseSetsRangeText(exercise.target_sets);
+        if (!parsed) return acc;
+        return { min: acc.min + parsed.min, max: acc.max + parsed.max };
+      },
+      { min: 0, max: 0 },
+    );
+    return formatSetsRange(totals.min, totals.max);
+  }, [draftExercises]);
   const infoRoutine = useMemo(
     () => sorted.find((routine) => routine.id === infoRoutineId) || null,
     [infoRoutineId, sorted],
@@ -484,10 +538,6 @@ export default function Routines() {
     if (!infoRoutine) return [];
     return buildRoutineSeriesByGroup(infoRoutine, catalogGroupByName);
   }, [catalogGroupByName, infoRoutine]);
-  const infoRoutineTotalSeries = useMemo(() => {
-    if (!infoRoutine) return 0;
-    return totalSeries(infoRoutine.exercises);
-  }, [infoRoutine]);
   const infoRoutineMaxSeries = useMemo(() => {
     if (infoRoutineSeriesByGroup.length === 0) return 1;
     return Math.max(...infoRoutineSeriesByGroup.map((entry) => entry.sets), 1);
@@ -641,9 +691,30 @@ export default function Routines() {
     };
   }, [dragArmedExerciseIdentity, draggedExerciseIdentity]);
 
+  useEffect(() => {
+    if (!openCardMenuIdentity) return;
+
+    const onPointerDownOutside = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-card-menu]")) return;
+      setOpenCardMenuIdentity(null);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenCardMenuIdentity(null);
+    };
+
+    window.addEventListener("pointerdown", onPointerDownOutside, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDownOutside, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [openCardMenuIdentity]);
+
   function addSelectedExercise(entry: ExerciseCatalogEntry) {
     if (!isLeafEntry(entry)) {
-      setError("Selecciona una rama final del catalogo para agregar el ejercicio.");
+      setError("Selecciona una rama final del catálogo para agregar el ejercicio.");
       return;
     }
 
@@ -659,7 +730,7 @@ export default function Routines() {
         {
           name: next,
           group: entry.group,
-          target_sets: DEFAULT_TARGET_SETS,
+          target_sets: String(DEFAULT_TARGET_SETS),
           target_reps_min: String(DEFAULT_TARGET_REPS_MIN),
           target_reps_max: String(DEFAULT_TARGET_REPS_MAX),
           ...splitRestSeconds(DEFAULT_REST_SECONDS),
@@ -675,7 +746,39 @@ export default function Routines() {
     if (draggedExerciseIdentity === identityValue || dragArmedExerciseIdentity === identityValue) {
       clearDraftExerciseDragState();
     }
+    setOpenCardMenuIdentity(null);
     setDraftExercises((prev) => prev.filter((entry) => routineExerciseIdentity(entry) !== identityValue));
+  }
+
+  function applyDraftSettingsToAll(identityValue: string) {
+    setOpenCardMenuIdentity(null);
+
+    const source = draftExercises.find((entry) => routineExerciseIdentity(entry) === identityValue);
+    if (!source || draftExercises.length < 2) return;
+
+    const previousDraft = draftExercises;
+    setDraftExercises((prev) =>
+      prev.map((entry) => ({
+        ...entry,
+        target_sets: source.target_sets,
+        target_reps_min: source.target_reps_min,
+        target_reps_max: source.target_reps_max,
+        rest_minutes: source.rest_minutes,
+        rest_seconds: source.rest_seconds,
+      })),
+    );
+
+    const affected = draftExercises.length - 1;
+    setError("");
+    setFeedback(`Ajustes aplicados a ${affected} ejercicio${affected === 1 ? "" : "s"}.`);
+    registerUndo({
+      message: "Ajustes aplicados a todos los ejercicios.",
+      onUndo: () => {
+        setDraftExercises(previousDraft);
+        setFeedback("Ajustes restaurados.");
+        setError("");
+      },
+    });
   }
 
   function updateDraftExercise(
@@ -847,16 +950,26 @@ export default function Routines() {
     setSelectedGroup((prev) => (prev === groupValue ? ALL : groupValue));
   }
 
+  function openNewRoutineBuilder() {
+    resetDraft();
+    setBuilderOpen(true);
+    setError("");
+    setFeedback("");
+  }
+
   function resetDraft() {
+    setBuilderOpen(false);
     setName("");
     setDraftExercises([]);
     setEditingRoutineId(null);
     setDraggedExerciseIdentity(null);
     setDropSlotIndex(null);
     setDragArmedExerciseIdentity(null);
+    setOpenCardMenuIdentity(null);
   }
 
   function startEditRoutine(routine: RoutineTemplate) {
+    setBuilderOpen(true);
     setEditingRoutineId(routine.id);
     setName(routine.name);
     setDraftExercises(routine.exercises.map((exercise) => toDraftExercise(exercise)));
@@ -896,6 +1009,12 @@ export default function Routines() {
       return;
     }
 
+    const hasInvalidSeries = draftExercises.some((exercise) => parseSetsRangeText(exercise.target_sets) === null);
+    if (hasInvalidSeries) {
+      setError("Completa el campo Series en todos los ejercicios antes de guardar (ej: 3 o 3-4).");
+      return;
+    }
+
     const exists = items.some(
       (entry) => entry.name.toLowerCase() === trimmed.toLowerCase() && entry.id !== editingRoutineId,
     );
@@ -907,6 +1026,10 @@ export default function Routines() {
     const normalizedExercises: RoutineExerciseTemplate[] = draftExercises.map((exercise) => {
       const parsedMin = parseBoundedInt(exercise.target_reps_min, DEFAULT_TARGET_REPS_MIN, 1, 100);
       const parsedMax = parseBoundedInt(exercise.target_reps_max, DEFAULT_TARGET_REPS_MAX, 1, 100);
+      const parsedSets = parseSetsRangeText(exercise.target_sets) ?? {
+        min: DEFAULT_TARGET_SETS,
+        max: DEFAULT_TARGET_SETS,
+      };
       const explicitGroup = normalizeGroupLabel(exercise.group);
       const inferredGroup =
         inferLegacyExerciseGroup(exercise.name) || catalogGroupByName.get(normalizeLookupText(exercise.name)) || "";
@@ -915,7 +1038,8 @@ export default function Routines() {
       return {
         name: exercise.name,
         group: nextGroup || undefined,
-        target_sets: exercise.target_sets,
+        target_sets_min: parsedSets.min,
+        target_sets_max: parsedSets.max,
         target_reps_min: Math.min(parsedMin, parsedMax),
         target_reps_max: Math.max(parsedMin, parsedMax),
         rest_seconds: normalizeDraftRestSeconds(exercise),
@@ -952,8 +1076,7 @@ export default function Routines() {
             athlete_ids: string[];
           }
         | null = null;
-      const isCoachScope = viewMode === "coach" || viewMode === "admin";
-      if (isCoachScope) {
+      if (coachView) {
         const candidateAthleteIds = subjects.map((subject) => subject.id).filter((id) => id !== athleteId);
         const targets = listRoutinePropagationTargets({
           source_athlete_id: athleteId,
@@ -1096,59 +1219,40 @@ export default function Routines() {
   }
 
   return (
-    <div className="container stack">
-      <header className="titleBlock">
-        <h1>Rutinas</h1>
-        <p>
-          {activeSubject
-            ? `Gestiona rutinas del sujeto activo (${activeSubject.label}) y edita cualquier campo de la plantilla.`
-            : "Selecciona un sujeto activo para gestionar sus rutinas."}
-        </p>
-      </header>
+    <>
+      {syncError ? <div className="message error">{syncError}</div> : null}
+      {error ? <div className="message error">{error}</div> : null}
+      {feedback ? <div className="message">{feedback}</div> : null}
 
-      <section className="surface">
-        {syncError ? <div className="message error">{syncError}</div> : null}
-        {error ? <div className="message error">{error}</div> : null}
-        {feedback ? <div className="message">{feedback}</div> : null}
-
-        {!athleteId ? (
+      {!athleteId ? (
+        <section className="surface">
           <div className="emptyState">No hay sujeto seleccionado.</div>
-        ) : (
-          <>
-            <label className="smallLabel">Nombre de rutina</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Push A" />
+        </section>
+      ) : null}
 
-            <div className="quickActions" style={{ marginTop: 12 }}>
-              <button className="btn" onClick={() => setPickerOpen(true)} disabled={!athleteId}>
-                Agregar nuevo ejercicio
-              </button>
-              <button className="btn primary" onClick={saveRoutineDraft} disabled={!canSaveRoutine || !athleteId}>
-                {isEditing ? "Guardar cambios" : "Guardar rutina"}
-              </button>
-              {isEditing ? (
-                <button className="btn" onClick={resetDraft}>
-                  Cancelar edicion
-                </button>
+      {athleteId && showBuilder ? (
+        <section className="surface">
+          <div className="sectionHead">
+            <h3>{isEditing ? "Editar rutina" : "Nueva rutina"}</h3>
+          </div>
+
+          <label className="smallLabel">Nombre</label>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Push A" />
+
+          <div className="routineBuilderBlock">
+            <div className="sectionHead homeHead">
+              <h3>Ejercicios</h3>
+              {draftExercises.length > 0 ? (
+                <span className="small">{`${draftExercises.length} · ${draftTotalSeries} series`}</span>
               ) : null}
-              <span className="chip">Asignados: {draftExercises.length}</span>
-              <span className="chip">Series totales: {draftTotalSeries}</span>
-              <span className="chip">Total: {items.length}</span>
-              <span className="chip">{`Sujeto: ${activeSubject?.label || athleteId}`}</span>
-              {loading ? <span className="chip">Sincronizando...</span> : null}
             </div>
-          </>
-        )}
-      </section>
-
-      <section className="surface">
-        <div className="sectionHead">
-          <h3>Ejercicios asignados a la rutina</h3>
-          <p>Revisa, reordena (mantener pulsado y arrastrar) o quita ejercicios antes de guardar la plantilla.</p>
-        </div>
+            {draftExercises.length > 1 ? (
+              <p className="small">Mantén pulsado y arrastra para reordenar.</p>
+            ) : null}
 
         {draftExercises.length === 0 ? (
           <div className="emptyState" style={{ marginTop: 12 }}>
-            Aun no agregaste ejercicios a la rutina.
+            Aún no agregaste ejercicios a la rutina.
           </div>
         ) : (
           <div
@@ -1188,9 +1292,45 @@ export default function Routines() {
                         </span>
                         <strong>{formatExerciseNameForList(exercise.name)}</strong>
                       </div>
-                      <button className="btn" onClick={() => removeDraftExercise(exerciseIdentity)}>
-                        Quitar
-                      </button>
+                      <div className="cardMenu" data-card-menu onPointerDown={(event) => event.stopPropagation()}>
+                        <button
+                          className="cardMenuTrigger"
+                          type="button"
+                          aria-haspopup="menu"
+                          aria-expanded={openCardMenuIdentity === exerciseIdentity}
+                          aria-label="Opciones del ejercicio"
+                          onClick={() =>
+                            setOpenCardMenuIdentity((prev) => (prev === exerciseIdentity ? null : exerciseIdentity))
+                          }
+                        >
+                          <svg className="iconGlyph" viewBox="0 0 24 24">
+                            <path d="M12 6h.01M12 12h.01M12 18h.01" />
+                          </svg>
+                        </button>
+
+                        {openCardMenuIdentity === exerciseIdentity ? (
+                          <div className="cardMenuPopover" role="menu">
+                            <button
+                              className="cardMenuItem"
+                              type="button"
+                              role="menuitem"
+                              disabled={draftExercises.length < 2}
+                              onClick={() => applyDraftSettingsToAll(exerciseIdentity)}
+                            >
+                              Aplicar ajustes a todos
+                              <span className="cardMenuItemHint">Series, reps y descanso</span>
+                            </button>
+                            <button
+                              className="cardMenuItem cardMenuItemDanger"
+                              type="button"
+                              role="menuitem"
+                              onClick={() => removeDraftExercise(exerciseIdentity)}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="splitGrid" style={{ marginTop: 10 }}>
@@ -1198,16 +1338,22 @@ export default function Routines() {
                         <label className="smallLabel">Series</label>
                         <input
                           className="input"
-                          type="number"
-                          min={1}
-                          max={30}
+                          type="text"
+                          inputMode="numeric"
+                          list={`series-suggestions-${exerciseIndex}`}
+                          placeholder="Ej: 3 o 3-4"
                           value={exercise.target_sets}
                           onChange={(e) =>
                             updateDraftExercise(exerciseIdentity, {
-                              target_sets: parseBoundedInt(e.target.value, exercise.target_sets, 1, 30),
+                              target_sets: e.target.value,
                             })
                           }
                         />
+                        <datalist id={`series-suggestions-${exerciseIndex}`}>
+                          {SERIES_SUGGESTIONS.map((suggestion) => (
+                            <option key={suggestion} value={suggestion} />
+                          ))}
+                        </datalist>
                       </div>
                       <div>
                         <label className="smallLabel">Reps min</label>
@@ -1343,7 +1489,23 @@ export default function Routines() {
             />
           </div>
         )}
-      </section>
+
+            <button type="button" className="linkBtn" style={{ marginTop: 12 }} onClick={() => setPickerOpen(true)}>
+              + Agregar ejercicio
+            </button>
+          </div>
+
+          <div className="routineBuilderActions">
+            <button className="btn primary" onClick={saveRoutineDraft} disabled={!canSaveRoutine}>
+              {isEditing ? "Guardar cambios" : "Guardar rutina"}
+            </button>
+            <button className="btn ghost" onClick={resetDraft}>
+              Cancelar
+            </button>
+            {loading ? <span className="small">Sincronizando...</span> : null}
+          </div>
+        </section>
+      ) : null}
 
       {pickerOpen ? (
         <div className="modalOverlay" role="presentation" onClick={() => setPickerOpen(false)}>
@@ -1356,17 +1518,21 @@ export default function Routines() {
           >
             <div className="sectionHead">
               <h3 id="routine-picker-title">Agregar nuevo ejercicio</h3>
-              <p>Selecciona solo ejercicios finales de cada rama del catalogo.</p>
+              <p>Selecciona solo ejercicios finales de cada rama del catálogo.</p>
             </div>
 
             <div className="splitGrid" style={{ marginTop: 10 }}>
               <div>
                 <label className="smallLabel">Zona</label>
-                <select className="input" value={selectedZone} onChange={(e) => setSelectedZone(e.target.value as ExerciseBodyZoneFilter)}>
-                  <option value={ALL_EXERCISE_ZONE_FILTER}>Todas</option>
-                  <option value={EXERCISE_ZONE_UPPER}>Superior</option>
-                  <option value={EXERCISE_ZONE_LOWER}>Inferior</option>
-                </select>
+                <Select
+                  value={selectedZone}
+                  onChange={(v) => setSelectedZone(v as ExerciseBodyZoneFilter)}
+                  options={[
+                    { value: ALL_EXERCISE_ZONE_FILTER, label: "Todas" },
+                    { value: EXERCISE_ZONE_UPPER, label: "Superior" },
+                    { value: EXERCISE_ZONE_LOWER, label: "Inferior" },
+                  ]}
+                />
               </div>
             </div>
 
@@ -1381,7 +1547,7 @@ export default function Routines() {
             </div>
 
             <div className="chipRow" style={{ marginTop: 10, alignItems: "center" }}>
-              <span className="chip">Catalogo total: {catalogEntries.length}</span>
+              <span className="chip">Catálogo total: {catalogEntries.length}</span>
               <span className="chip">Resultados: {filteredEntries.length}</span>
               <span className="chip">Zona: {selectedZone === ALL_EXERCISE_ZONE_FILTER ? "Todas" : selectedZone === EXERCISE_ZONE_LOWER ? "Inferior" : "Superior"}</span>
               <span className="chip">Grupo: {selectedGroup === ALL ? "Todos" : selectedGroup}</span>
@@ -1398,7 +1564,7 @@ export default function Routines() {
 
             {filteredEntries.length === 0 ? (
               <div className="emptyState" style={{ marginTop: 12 }}>
-                Sin coincidencias para la combinacion de filtros actual.
+                Sin coincidencias para la combinación de filtros actual.
               </div>
             ) : (
               <div className="treeList" style={{ marginTop: 12 }}>
@@ -1419,19 +1585,33 @@ export default function Routines() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="sectionHead">
-              <h3 id="routine-info-title">{`Mas informacion: ${infoRoutine.name}`}</h3>
-              <p>Series por grupo muscular y reparto visual de la rutina.</p>
+              <h3 id="routine-info-title">{infoRoutine.name}</h3>
+              <p>{`${routineSummaryLine(infoRoutine)} · ${infoRoutineSeriesByGroup.length} grupo${infoRoutineSeriesByGroup.length === 1 ? "" : "s"}`}</p>
             </div>
 
-            <div className="chipRow" style={{ marginTop: 10 }}>
-              <span className="chip">Ejercicios: {infoRoutine.exercises.length}</span>
-              <span className="chip">Series totales: {infoRoutineTotalSeries}</span>
-              <span className="chip">Grupos trabajados: {infoRoutineSeriesByGroup.length}</span>
+            {/* El detalle de cada ejercicio vivia como pila de chips en la lista;
+                aqui, que es donde se consulta, se lee mejor. */}
+            <div className="rowList" style={{ marginTop: 10 }}>
+              {infoRoutine.exercises.map((exercise, index) => (
+                <div key={`${infoRoutine.id}_${exercise.group || ""}_${exercise.name}_${index}`} className="rowItem">
+                  <div className="rowMain">
+                    <strong>{formatExerciseNameForList(exercise.name)}</strong>
+                    <span className="small">
+                      {`${formatSetsRange(exercise.target_sets_min, exercise.target_sets_max)} x ${formatRepsRange(exercise.target_reps_min, exercise.target_reps_max)} · descanso ${formatRestSeconds(exercise.rest_seconds)}`}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {infoRoutineSeriesByGroup.length === 0 || !infoRoutineRadar ? (
-              <div className="emptyState" style={{ marginTop: 12 }}>
-                Esta rutina no tiene series suficientes para mostrar un desglose por grupos.
+              <div className="routineInfoLayout" style={{ marginTop: 14 }}>
+                <div className="emptyState">
+                  Esta rutina no tiene series suficientes para mostrar un desglose por grupos.
+                </div>
+                <div className="routineRadarWrap">
+                  <ChartPlaceholder variant="radar" height={280} caption="Aún no hay datos para esta gráfica" />
+                </div>
               </div>
             ) : (
               <div className="routineInfoLayout" style={{ marginTop: 14 }}>
@@ -1499,47 +1679,38 @@ export default function Routines() {
         </div>
       ) : null}
 
-      <section className="surface">
-        <div className="sectionHead">
-          <h3>Plantillas guardadas</h3>
-          <p>Selecciona "Editar" para modificar nombre, ejercicios, series, repeticiones y descansos.</p>
-        </div>
+      {athleteId && !showBuilder ? (
+        <section className="surface">
+          {sorted.length === 0 ? (
+            <div className="emptyState">Aún no tienes rutinas guardadas.</div>
+          ) : (
+            <div className="rowList">
+              {sorted.map((routine) => (
+                <div key={routine.id} className="rowItem">
+                  <button type="button" className="rowMain" onClick={() => setInfoRoutineId(routine.id)}>
+                    <strong>{routine.name}</strong>
+                    <span className="small">{routineSummaryLine(routine)}</span>
+                  </button>
+                  <KebabMenu
+                    ariaLabel={`Opciones de ${routine.name}`}
+                    actions={[
+                      { label: "Editar", onSelect: () => startEditRoutine(routine) },
+                      { label: "Ver detalle", onSelect: () => setInfoRoutineId(routine.id) },
+                      { label: "Eliminar", destructive: true, onSelect: () => removeRoutine(routine.id) },
+                    ]}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
-        {sorted.length === 0 ? (
-          <div className="emptyState">No hay plantillas para este sujeto.</div>
-        ) : (
-          <div className="gridCards">
-            {sorted.map((routine) => (
-              <article key={routine.id} className="surfaceButton">
-                <strong>{routine.name}</strong>
-                <div className="chipRow">
-                  <span className="chip">Ejercicios: {routine.exercises.length}</span>
-                  <span className="chip">Series totales: {totalSeries(routine.exercises)}</span>
-                </div>
-                <div className="chipRow">
-                  {routine.exercises.map((exercise) => (
-                    <span key={`${routine.id}_${exercise.group || ""}_${exercise.name}`} className="chip">
-                      {`${formatExerciseNameForList(exercise.name)} - ${exercise.target_sets}x${formatRepsRange(exercise.target_reps_min, exercise.target_reps_max)} - ${formatRestSeconds(exercise.rest_seconds)}`}
-                    </span>
-                  ))}
-                </div>
-                <div className="quickActions">
-                  <button className="btn" onClick={() => setInfoRoutineId(routine.id)}>
-                    Mas informacion
-                  </button>
-                  <button className="btn" onClick={() => startEditRoutine(routine)}>
-                    Editar
-                  </button>
-                  <button className="btn" onClick={() => removeRoutine(routine.id)}>
-                    Eliminar
-                  </button>
-                  {editingRoutineId === routine.id ? <span className="chip">En edicion</span> : null}
-                </div>
-              </article>
-            ))}
+          <div className="rowListActions">
+            <button type="button" className="linkBtn" onClick={openNewRoutineBuilder}>
+              + Nueva rutina
+            </button>
           </div>
-        )}
-      </section>
-    </div>
+        </section>
+      ) : null}
+    </>
   );
 }

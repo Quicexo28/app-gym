@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { getRunSummary } from "../api";
 import type { RunSummaryResponse } from "../api";
 import { ScenarioCard } from "../components/ScenarioCard";
+import { formatDateTime } from "../lib/locale";
+import { latentLabel, metricLabel } from "../lib/predictionLabels";
 
 function toPercent(value: number | null | undefined): string {
   if (typeof value !== "number") return "-";
@@ -40,11 +42,11 @@ export default function RunDetail() {
   return (
     <div className="container stack">
       <header className="titleBlock">
-        <h1>Run summary</h1>
-        <p>Escenarios con incertidumbre explicita. Nunca reemplaza criterio humano.</p>
+        <h1>Escenarios</h1>
+        <p>Incertidumbre explícita. Nunca reemplaza criterio humano.</p>
         <div className="quickActions">
-          <Link className="btn" to="/history">
-            Volver al historial
+          <Link className="btn" to="/predictions">
+            Volver
           </Link>
         </div>
       </header>
@@ -53,30 +55,30 @@ export default function RunDetail() {
 
       {!data ? (
         <section className="surface">
-          <div className="emptyState">Cargando run...</div>
+          <div className="emptyState">Cargando cálculo...</div>
         </section>
       ) : (
         <>
           <section className="surface">
             <div className="chipRow">
-              <span className="chip">Metric: {data.metric_key}</span>
-              <span className="chip">Confianza ultima: {toPercent(data.confidence_last)}</span>
-              <span className="chip">{new Date(data.generated_at_utc).toLocaleString()}</span>
+              <span className="chip">Métrica: {metricLabel(data.metric_key)}</span>
+              <span className="chip">Confianza última: {toPercent(data.confidence_last)}</span>
+              <span className="chip">{formatDateTime(data.generated_at_utc)}</span>
             </div>
           </section>
 
           <section className="surface">
             <div className="sectionHead">
-              <h3>Latentes recientes</h3>
-              <p>Probabilidades internas del estado del atleta.</p>
+              <h3>Estado estimado</h3>
+              <p>Probabilidades internas del modelo sobre tu estado actual.</p>
             </div>
             {latentEntries.length === 0 ? (
-              <div className="emptyState">Sin latentes.</div>
+              <div className="emptyState">Sin estimaciones para este cálculo.</div>
             ) : (
               <div className="chipRow">
                 {latentEntries.map(([key, value]) => (
                   <span key={key} className="chip">
-                    {`${key}: ${toPercent(typeof value === "number" ? value : null)}`}
+                    {`${latentLabel(key)}: ${toPercent(typeof value === "number" ? value : null)}`}
                   </span>
                 ))}
               </div>
@@ -85,11 +87,11 @@ export default function RunDetail() {
 
           <section className="surface">
             <div className="sectionHead">
-              <h3>Issues de calidad</h3>
-              <p>Conteo por codigo para revisar confianza de datos.</p>
+              <h3>Calidad de los datos</h3>
+              <p>Avisos que bajan la confianza del cálculo.</p>
             </div>
             {issueEntries.length === 0 ? (
-              <div className="emptyState">Sin issues reportados.</div>
+              <div className="emptyState">Sin avisos: los datos usados están completos.</div>
             ) : (
               <div className="chipRow">
                 {issueEntries.map(([code, count]) => (
@@ -102,7 +104,7 @@ export default function RunDetail() {
           <section className="surface">
             <div className="sectionHead">
               <h3>Top escenarios</h3>
-              <p>Prioriza riesgos y trade-offs antes de decidir cambios.</p>
+              <p>Prioriza riesgos y contras antes de decidir cambios.</p>
             </div>
             <div className="gridCards">
               {data.top3_scenarios.map((s) => (

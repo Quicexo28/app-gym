@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import type { AccessibleAthletesResponse, AccessibleSubject } from "../api";
 import { getAccessibleAthletes } from "../api";
 import { useAuth } from "./auth";
-import { useViewMode } from "./viewMode";
+import { useViewScopes } from "./viewScopes";
 
 type AthleteContextValue = {
   ready: boolean;
@@ -40,7 +40,7 @@ function persistAthleteId(value: string | null): void {
 
 export function AthleteProvider({ children }: { children: ReactNode }) {
   const { ready: authReady, isAuthenticated } = useAuth();
-  const { ready: modeReady, viewMode } = useViewMode();
+  const { ready: scopesReady, coachView } = useViewScopes();
 
   const [athleteId, setAthleteIdState] = useState<string>("");
   const [athleteIds, setAthleteIds] = useState<string[]>([]);
@@ -148,9 +148,9 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
   }, [applySelection, isAuthenticated, normalizeSubjects]);
 
   useEffect(() => {
-    if (!authReady || !modeReady) return;
+    if (!authReady || !scopesReady) return;
     void refresh();
-  }, [authReady, modeReady, refresh, viewMode]);
+  }, [authReady, coachView, refresh, scopesReady]);
 
   const setAthleteId = useCallback(
     (id: string) => {
@@ -169,7 +169,7 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AthleteContextValue>(
     () => ({
-      ready: authReady && modeReady && !loading,
+      ready: authReady && scopesReady && !loading,
       athleteId,
       athleteIds,
       subjects,
@@ -188,7 +188,7 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
       canSwitch,
       error,
       loading,
-      modeReady,
+      scopesReady,
       refresh,
       selfAthleteId,
       setAthleteId,

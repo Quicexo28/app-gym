@@ -251,7 +251,7 @@ export function parseExerciseImportFile(raw: string): ExerciseCatalogItem[] {
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
-    throw new Error("El archivo no es JSON valido.");
+    throw new Error("El archivo no es JSON válido.");
   }
 
   if (isRecord(parsed) && Array.isArray(parsed.items)) {

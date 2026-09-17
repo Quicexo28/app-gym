@@ -8,13 +8,13 @@ import { AuthProvider } from "./state/auth";
 import { ExerciseCatalogProvider } from "./state/exerciseCatalog";
 import { PreferencesProvider } from "./state/preferences";
 import { UndoProvider } from "./state/undo";
-import { ViewModeProvider } from "./state/viewMode";
+import { ViewScopesProvider } from "./state/viewScopes";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AuthProvider>
-      <ViewModeProvider>
+      <ViewScopesProvider>
         <AthleteProvider>
           <PreferencesProvider>
             <ExerciseCatalogProvider>
@@ -28,7 +28,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             </ExerciseCatalogProvider>
           </PreferencesProvider>
         </AthleteProvider>
-      </ViewModeProvider>
+      </ViewScopesProvider>
     </AuthProvider>
   </React.StrictMode>,
 );
