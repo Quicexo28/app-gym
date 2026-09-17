@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir --upgrade pip "setuptools>=68" wheel
 COPY pyproject.toml README.md ./
 COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
+COPY data ./data
 COPY src ./src
 
 RUN pip install --no-cache-dir -e .
