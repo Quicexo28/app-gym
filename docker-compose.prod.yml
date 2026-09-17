@@ -24,11 +24,15 @@ services:
     restart: unless-stopped
     env_file:
       - .env.prod
+    environment:
+      MEDIA_ROOT: /app/media
     depends_on:
       db:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    volumes:
+      - coach_ai_media:/app/media
     ports:
       - "${API_PORT:-8000}:8000"
     healthcheck:
@@ -73,3 +77,4 @@ services:
 
 volumes:
   coach_ai_pg_prod:
+  coach_ai_media:
