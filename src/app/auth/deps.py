@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable, Generator
+from collections.abc import AsyncGenerator, Callable
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -9,14 +9,16 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.auth.security import decode_token
-from app.auth.types import Plan, Role
-from app.auth.view_mode import (
-    effective_plan_for_mode,
-    effective_role_for_mode,
-    get_current_view_mode,
-    reset_current_view_mode,
-    resolve_view_mode_for_user,
-    set_current_view_mode,
+from app.auth.types import Role
+from app.auth.view_scopes import (
+    ADMIN_VIEW_HEADER,
+    COACH_VIEW_HEADER,
+    can_use_coach_view,
+    effective_role_for_scopes,
+    get_current_view_scopes,
+    reset_current_view_scopes,
+    resolve_view_scopes,
+    set_current_view_scopes,
 )
 from app.db.engine import get_db
 from app.db.models_auth import User
@@ -30,11 +32,11 @@ def _unauthorized(detail: str = "Not authenticated.") -> HTTPException:
     return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
 
 
-def get_current_user(
+async def get_current_user(
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     db: Annotated[DbSession, Depends(get_db)],
     request: Request,
-) -> Generator[User, None, None]:
+) -> AsyncGenerator[User, None]:
     if creds is None or not creds.credentials:
         raise _unauthorized()
 
@@ -57,21 +59,24 @@ def get_current_user(
     if user is None or not user.is_active:
         raise _unauthorized("User not found or inactive.")
 
-    resolved_mode = resolve_view_mode_for_user(user, request.headers.get("X-App-View-Mode"))
-    request.state.view_mode = resolved_mode.value
-    token_mode = set_current_view_mode(resolved_mode)
+    scopes = resolve_view_scopes(
+        user,
+        request.headers.get(ADMIN_VIEW_HEADER),
+        request.headers.get(COACH_VIEW_HEADER),
+    )
+    request.state.view_scopes = scopes
+    token_scopes = set_current_view_scopes(scopes)
     try:
         yield user
     finally:
-        reset_current_view_mode(token_mode)
+        reset_current_view_scopes(token_scopes)
 
 
 def require_role(min_role: Role) -> Callable[[User], User]:
     order = {Role.USER: 0, Role.COACH: 1, Role.ADMIN: 2}
 
     def dep(user: Annotated[User, Depends(get_current_user)]) -> User:
-        mode = get_current_view_mode(user)
-        effective_role = effective_role_for_mode(user, mode)
+        effective_role = effective_role_for_scopes(user, get_current_view_scopes())
         if order[effective_role] < order[min_role]:
             raise HTTPException(status_code=403, detail="Insufficient role.")
         return user
@@ -79,12 +84,12 @@ def require_role(min_role: Role) -> Callable[[User], User]:
     return dep
 
 
-def require_plan(allowed: set[Plan]) -> Callable[[User], User]:
-    def dep(user: Annotated[User, Depends(get_current_user)]) -> User:
-        mode = get_current_view_mode(user)
-        effective_plan = effective_plan_for_mode(user, mode)
-        if effective_plan not in allowed:
-            raise HTTPException(status_code=403, detail="Plan does not allow this feature.")
-        return user
+def require_coach_view(user: Annotated[User, Depends(get_current_user)]) -> User:
+    """Gate para endpoints self-service de coach (gestion de atletas/notas).
 
-    return dep
+    A diferencia de `can_switch_athlete`, no exige que el switch de vista
+    coach este encendido en este momento - solo que el plan/rol lo habilite.
+    """
+    if not can_use_coach_view(user):
+        raise HTTPException(status_code=403, detail="Requiere plan o rol coach.")
+    return user

@@ -8,7 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.auth.athlete_access import list_accessible_athlete_ids
 from app.auth.deps import get_current_user
+from app.coach.routine_index import rebuild_routine_template_exercise_index
 from app.db.engine import get_db
 from app.db.models import RoutineStore
 from app.db.models_auth import User
@@ -93,6 +95,9 @@ def put_routine_store(
     else:
         row.store = store
         row.updated_at_utc = datetime.now(UTC)
+
+    accessible_athlete_ids = set(list_accessible_athlete_ids(db, user))
+    rebuild_routine_template_exercise_index(db, user.id, store["scopes"], accessible_athlete_ids)
 
     db.commit()
     db.refresh(row)

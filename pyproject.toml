@@ -22,6 +22,10 @@ dependencies = [
   "python-jose[cryptography]>=3.3",
   "passlib[bcrypt]>=1.7",
   "email-validator>=2.2",
+  "stripe>=10.0",
+  "pillow>=10.0",
+  "python-multipart>=0.0.9",
+  "httpx>=0.24",  # cliente HTTP de `app.nutrition.off_client` (runtime, no solo tests)
 ]
 
 [project.optional-dependencies]
