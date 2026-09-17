@@ -12,7 +12,7 @@ from urllib.request import urlopen
 from email_validator import EmailNotValidError, validate_email
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -20,17 +20,22 @@ from app.auth.athlete_access import personal_athlete_id_for_user
 from app.auth.deps import get_current_user
 from app.auth.security import create_access_token, hash_password, verify_password
 from app.auth.types import Plan, Role
+from app.auth.view_scopes import can_use_admin_view, can_use_coach_view
 from app.core.config import Settings
 from app.db.engine import get_db
 from app.db.models import (
+    ActiveSessionHeartbeat,
     Athlete,
+    AthletePlan,
     BodyMeasurement,
     CoachAthleteAssignment,
+    CoachNote,
+    CoachReport,
     CycleAssignment,
     CycleTemplate,
     ExerciseCatalog,
-    GamificationConfig,
     RoutineStore,
+    RoutineTemplateExerciseIndex,
     Run,
     TrainingSession,
 )
@@ -72,6 +77,8 @@ class UserResponse(BaseModel):
     phone_number: str | None
     role: Role
     plan: Plan
+    can_admin_view: bool
+    can_coach_view: bool
 
 
 class AuthResponse(BaseModel):
@@ -115,6 +122,8 @@ def _auth_response_for_user(user: User) -> AuthResponse:
             phone_number=user.phone_number,
             role=user.role,
             plan=user.plan,
+            can_admin_view=can_use_admin_view(user),
+            can_coach_view=can_use_coach_view(user),
         ),
     )
 
@@ -367,14 +376,29 @@ def delete_my_account(
             )
         )
     )
-    db.execute(
-        update(GamificationConfig)
-        .where(GamificationConfig.updated_by_user_id == user.id)
-        .values(updated_by_user_id=None)
-    )
-
     db.execute(delete(Run).where(Run.athlete_id == personal_athlete_id))
     db.execute(delete(TrainingSession).where(TrainingSession.athlete_id == personal_athlete_id))
+    db.execute(
+        delete(CoachNote).where(
+            or_(
+                CoachNote.athlete_id == personal_athlete_id,
+                CoachNote.author_user_id == user.id,
+            )
+        )
+    )
+    db.execute(delete(CoachReport).where(CoachReport.athlete_id == personal_athlete_id))
+    db.execute(delete(AthletePlan).where(AthletePlan.athlete_id == personal_athlete_id))
+    db.execute(
+        delete(ActiveSessionHeartbeat).where(ActiveSessionHeartbeat.athlete_id == personal_athlete_id)
+    )
+    db.execute(
+        delete(RoutineTemplateExerciseIndex).where(
+            or_(
+                RoutineTemplateExerciseIndex.coach_user_id == user.id,
+                RoutineTemplateExerciseIndex.athlete_id == personal_athlete_id,
+            )
+        )
+    )
     db.execute(
         delete(CoachAthleteAssignment).where(
             or_(

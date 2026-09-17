@@ -10,6 +10,8 @@ Design principle: return *issues + parameters*, not prescriptions.
 """
 
 from .metrics import SessionMetrics, compute_session_metrics
+from .muscle_groups import MUSCLE_GROUPS, canonicalize_muscle_group
+from .naming import normalize_exercise_name
 from .normalization import NormalizerParams, fit_normalizer, normalize_series, normalize_value
 from .pipeline import AthleteSeries, PipelineResult, ProcessedSession, process_sessions
 from .schema import Session, StrengthExercise, StrengthSet
@@ -18,12 +20,15 @@ from .validation import summarize_issues, validate_session, validate_sessions
 
 __all__ = [
     "Issue",
+    "MUSCLE_GROUPS",
     "NormalizerParams",
     "Session",
     "SessionMetrics",
     "Severity",
+    "canonicalize_muscle_group",
     "compute_session_metrics",
     "fit_normalizer",
+    "normalize_exercise_name",
     "normalize_series",
     "normalize_value",
     "summarize_issues",

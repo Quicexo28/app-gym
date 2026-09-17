@@ -1,2 +1,0 @@
-app
-coach_ai
