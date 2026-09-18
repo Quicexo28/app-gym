@@ -203,6 +203,85 @@ trabajo:
 3. Sustituir la capa de latentes por un modelo entrenado y validado con estos
    mismos datos, con la barra puesta en superar la clase mayoritaria.
 
+---
+
+# Vías de mejora, medidas (2026-09-18)
+
+Se probaron cuatro de las seis vías propuestas. Tres se pudieron medir con
+datos; una no.
+
+## Vía 1 — meter RPE y wellness (`next_set_probe.py`, ablación)
+
+De los 28 logs cosechados, **solo 6 traen RPE poblado** (769 de 4346 muestras).
+`wellness_signals` no existe fuera de Alzo: ningún exportador público lo tiene.
+
+Ablación quitando las features de RPE: MAE 6.70 kg con ellas, **6.64 kg sin
+ellas**. No aporta — con esta cobertura de datos no se puede concluir otra cosa.
+La feature se puede implementar, pero **su valor está sin demostrar** hasta
+tener datos propios de usuarios de Alzo.
+
+## Vía 2 — cambiar el objetivo a "próxima serie tope" (`next_set_probe.py`)
+
+4346 muestras, 28 atletas, 4 ejercicios principales por atleta, validación
+leave-one-athlete-out.
+
+| Predictor | MAE (kg) | Dentro de ±2.5 kg |
+|---|---|---|
+| **Persistencia** (repetir el último tope) | **6.14** | **62.8 %** |
+| Media de 3 | 6.34 | — |
+| Mediana pinball + shrinkage | 6.44 | 51.2 % |
+| Ridge sobre delta relativo | 6.70 | 49.1 % |
+| Extrapolación lineal | 8.76 | — |
+
+**Persistencia gana**, y no por poco en la métrica que importa al usuario
+(±2.5 kg: 63 % contra 51 %). La razón está en la distribución del objetivo:
+**el 46 % de los deltas es exactamente 0** y el 63 % cae dentro de ±2.5 kg;
+mediana 0 kg, p90 15.9 kg. Es una distribución con un pico en cero y colas
+largas: cualquier modelo que prediga un delta distinto de cero empeora la
+mayoría de los casos para acertar unos pocos saltos.
+
+Se intentaron tres correcciones sucesivas, todas documentadas en el script:
+predecir delta relativo en vez de kg absolutos (7.21 → 6.70), regresión de
+mediana en vez de mínimos cuadrados (→ 6.45), y shrinkage hacia persistencia
+más redondeo a la rejilla de discos del propio atleta (→ 6.44). Ninguna alcanza
+el baseline.
+
+**Lectura de producto**: para "qué vas a mover hoy" lo correcto es mostrar el
+último peso con un intervalo, no una predicción de modelo.
+
+## Vía 3 — calibración (`calibrate_plateau.py`)
+
+| | Brier | Skill score | Probabilidad media |
+|---|---|---|---|
+| `plateau` crudo | 0.381 | −0.610 | 0.065 |
+| `plateau` calibrado | **0.249** | **−0.050** | 0.379 |
+| Predecir la tasa base | 0.237 | 0.000 | 0.386 |
+
+Funciona como se esperaba: calibrar cierra casi toda la brecha de Brier y hace
+que el número **signifique lo que dice** (0.379 contra una tasa real de 0.386).
+Lo que no hace es crear información: el skill sigue negativo.
+
+El diagnóstico de por qué: **`plateau` vale exactamente 0 en el 75 % de los
+casos** en logs de gimnasio (en OpenPowerlifting valía ~0.97 casi siempre), y la
+tasa real de "sin mejora" es 0.43 / 0.35 / 0.37 en los tres terciles de
+`plateau`. No separa nada.
+
+## Vía 6 — incertidumbre honesta (conformal, en `next_set_probe.py`)
+
+Conformal split, objetivo 90 %: **cobertura empírica 92.8 %**. Los intervalos
+son honestos. El problema es el ancho: mediana **35 kg**, porque la cola del
+objetivo es larga. Un intervalo honesto y ancho es más útil que un número
+puntual falso, pero hay que presentarlo bien.
+
+## Conclusión operativa
+
+1. La predicción puntual del próximo tope **es** la persistencia. Mostrar eso.
+2. `plateau` o se calibra (y entonces dice ~38 % siempre, honesto pero inútil) o
+   se quita de la UI.
+3. Antes de invertir en modelos más complejos (pooling jerárquico real,
+   fitness-fatigue, GBM) hace falta **más datos y mejores señales**: RPE real por
+   serie y wellness, que solo van a llegar de usuarios de Alzo.
+
 ## Pendiente
 
 - Más atletas de GoldenCheetah (hay 6614; aquí se usaron 25 descargas).
