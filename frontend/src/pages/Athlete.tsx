@@ -1,10 +1,34 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { MUSCLE_GROUPS, getAthleteMuscleInsights, markAthleteSeen, muscleGroupLabel, updateCoachAthlete } from "../api";
-import type { MuscleGroupState, MuscleInsightsResponse } from "../api";
+import {
+  MUSCLE_GROUPS,
+  createRun,
+  getAthleteMuscleInsights,
+  getRunSummary,
+  markAthleteSeen,
+  muscleGroupLabel,
+  updateCoachAthlete,
+} from "../api";
+import type {
+  MuscleGroupState,
+  MuscleInsightsResponse,
+  Projection,
+  TrainingSignal,
+} from "../api";
 import { Sparkline } from "../components/Charts";
 import { useAthleteAccess } from "../state/athlete";
+
+function asPct(value: number): string {
+  const rounded = Math.round(value * 1000) / 10;
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
+}
+
+function asKg(value: number | null): string {
+  if (value == null) return "-";
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded > 0 ? "+" : ""}${rounded} kg`;
+}
 
 const TREND_LABEL: Record<string, string> = {
   up: "Progresando",
@@ -40,6 +64,10 @@ export default function AthleteDetail() {
   const { subjects, setAthleteId } = useAthleteAccess();
 
   const [insights, setInsights] = useState<MuscleInsightsResponse | null>(null);
+  // Las señales con carga de referencia viven aqui, en la vista del entrenador:
+  // es quien programa. Al atleta se le muestran las lecturas, sin la carga.
+  const [signals, setSignals] = useState<TrainingSignal[]>([]);
+  const [projections, setProjections] = useState<Projection[]>([]);
   const [editingPlan, setEditingPlan] = useState(false);
   const [draftGroups, setDraftGroups] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -48,6 +76,26 @@ export default function AthleteDetail() {
   useEffect(() => {
     if (!athleteId) return;
     void markAthleteSeen(athleteId).catch(() => {});
+  }, [athleteId]);
+
+  useEffect(() => {
+    if (!athleteId) return;
+    let cancelled = false;
+    createRun(athleteId, "volume_load_kg", true)
+      .then((run) => getRunSummary(run.run_id))
+      .then((summary) => {
+        if (cancelled) return;
+        setSignals(summary.insights?.signals ?? []);
+        setProjections(summary.insights?.projections ?? []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSignals([]);
+        setProjections([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [athleteId]);
 
   useEffect(() => {
@@ -115,6 +163,85 @@ export default function AthleteDetail() {
           <span className="small">Plan nutricional.</span>
         </button>
       </div>
+
+      {projections.length > 0 ? (
+        <section className="surface">
+          <div className="sectionHead">
+            <h3>Qué cabe esperar</h3>
+            <p>
+              Proyección de las adaptaciones que ha mostrado este atleta, condicionada a que
+              sostenga el cumplimiento actual.
+            </p>
+          </div>
+          {(() => {
+            const global = projections.find((p) => p.scope === "global");
+            if (!global) return null;
+            const range =
+              global.low_change_pct != null && global.high_change_pct != null
+                ? ` (entre ${asPct(global.low_change_pct)} y ${asPct(global.high_change_pct)})`
+                : "";
+            const adherence =
+              global.adherence != null
+                ? `, manteniendo el ${Math.round(global.adherence * 100)}% de cumplimiento que lleva`
+                : "";
+            return (
+              <p className="small">
+                {`Según las adaptaciones mostradas, si sigue este plan puede esperar una mejora ` +
+                  `general de ${asPct(global.expected_change_pct)} en ${global.horizon_weeks} ` +
+                  `semanas${range}${adherence}.`}
+              </p>
+            );
+          })()}
+          <div className="rowList">
+            {projections
+              .filter((projection) => projection.scope !== "global")
+              .map((projection) => (
+                <div key={projection.scope} className="rowItem signalRow">
+                  <div className="rowMain">
+                    <strong>{projection.scope}</strong>
+                    <span className="small">
+                      {`${asKg(projection.expected_change_kg)} en ${projection.horizon_weeks} semanas` +
+                        (projection.low_change_kg != null && projection.high_change_kg != null
+                          ? ` · entre ${asKg(projection.low_change_kg)} y ${asKg(
+                              projection.high_change_kg,
+                            )}`
+                          : "")}
+                    </span>
+                  </div>
+                  {projection.current_kg != null ? (
+                    <span className="chip">{`${Math.round(projection.current_kg * 10) / 10} kg`}</span>
+                  ) : null}
+                </div>
+              ))}
+          </div>
+        </section>
+      ) : null}
+
+      {signals.length > 0 ? (
+        <section className="surface">
+          <div className="sectionHead">
+            <h3>Señales de entrenamiento</h3>
+            <p>
+              Lecturas de los datos del atleta (cumplimiento, esfuerzo y bienestar), con la carga
+              de referencia. La decisión es tuya: la app no prescribe.
+            </p>
+          </div>
+          <div className="rowList">
+            {signals.map((signal) => (
+              <div key={`${signal.kind}_${signal.exercise}`} className="rowItem signalRow">
+                <div className="rowMain">
+                  <strong>{`${signal.exercise} · ${signal.reading}`}</strong>
+                  <span className="small">{signal.evidence}</span>
+                  <span className="eventRule">{signal.rule}</span>
+                </div>
+                {signal.reference_load_kg != null ? (
+                  <span className="chip">{`${Math.round(signal.reference_load_kg * 10) / 10} kg`}</span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="surface">
         <div className="sectionHead homeHead">

@@ -27,6 +27,8 @@ from datetime import UTC, datetime, timedelta
 from coach_ai.compliance import session_compliance
 from coach_ai.training_core.schema import Session
 
+from .projections import build_projections
+from .rules import build_signals
 from .types import AthleteInsights, ExerciseState, NextSetPrediction, TrainingEvent
 
 MIN_SESSIONS_FOR_PREDICTION = 6
@@ -210,6 +212,8 @@ def build_insights(
         athlete_id=athlete_id,
         generated_at=moment,
         exercises=states,
+        signals=build_signals(sessions, [s.name for s in states], moment),
+        projections=build_projections(sessions, [s.name for s in states], moment),
         events=sorted(events, key=lambda e: e.at, reverse=True),
         predictions=predictions,
         abstained=abstained,

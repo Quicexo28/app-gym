@@ -187,12 +187,55 @@ export type NextSetPrediction = {
   method: string;
 };
 
+/**
+ * Lo que dicen los datos, no lo que hay que hacer. La app no prescribe: nombra
+ * lo que ve y deja la decision al entrenador (o al atleta con su criterio).
+ * `reference_load_kg` es contexto para quien programa, no una orden de carga, y
+ * por eso solo se muestra en la vista de coach.
+ */
+export type TrainingSignal = {
+  kind:
+    | "progression_margin"
+    | "effort_at_limit"
+    | "plan_shortfall"
+    | "fatigue_rising"
+    | "deload_suggested"
+    | "low_adherence";
+  exercise: string;
+  reading: string;
+  evidence: string;
+  rule: string;
+  reference_load_kg: number | null;
+};
+
+/**
+ * Lo que cabe esperar si el atleta sostiene lo que viene haciendo. Sale de
+ * extrapolar su propia tendencia, no de un modelo poblacional, y es condicional
+ * a la adherencia observada. Siempre con intervalo.
+ */
+export type Projection = {
+  scope: string; // "global" o el nombre del ejercicio
+  horizon_weeks: number;
+  current_kg: number | null;
+  expected_change_kg: number | null;
+  low_change_kg: number | null;
+  high_change_kg: number | null;
+  expected_change_pct: number;
+  low_change_pct: number | null;
+  high_change_pct: number | null;
+  adherence: number | null;
+  basis_sessions: number;
+  method: string;
+};
+
 export type AthleteInsights = {
   athlete_id: string;
   generated_at: string;
   exercises: ExerciseState[];
   events: TrainingEvent[];
   predictions: NextSetPrediction[];
+  signals: TrainingSignal[];
+  projections: Projection[];
   abstained: string[];
   weekly_sets_by_group: Record<string, number>;
   sessions_last_4w: number;
@@ -200,6 +243,8 @@ export type AthleteInsights = {
 
 export type PredictionTrackRecord = {
   resueltas: number;
+  senales_resueltas?: number;
+  senales_que_coincidieron?: number | null;
   mae_kg?: number | null;
   cobertura_intervalo?: number | null;
   cobertura_objetivo?: number | null;

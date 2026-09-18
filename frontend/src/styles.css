@@ -3522,6 +3522,14 @@ button.surfaceButton {
 /* La regla que detecto un evento: tiene que estar visible para poder
    auditarla, pero no competir con el dato. `smallLabel` la ponia en
    mayusculas y en negrita, y gritaba mas que el propio aviso. */
+/* Las filas de señales llevan frases largas ("Fatiga acumulandose: es esperable
+   que..."): ahi el recorte con puntos suspensivos se come justo lo que hay que
+   leer, asi que el titulo envuelve. */
+.signalRow .rowMain > strong {
+  white-space: normal;
+  overflow: visible;
+}
+
 .eventRule {
   margin: 2px 0 6px;
   font-size: 12px;

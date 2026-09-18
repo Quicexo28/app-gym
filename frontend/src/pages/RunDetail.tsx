@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getRunSummary } from "../api";
-import type { AthleteInsights, RunSummaryResponse, TrainingEvent } from "../api";
+import type {
+  AthleteInsights,
+  Projection,
+  RunSummaryResponse,
+  TrainingEvent,
+  TrainingSignal,
+} from "../api";
 import { formatDateTime } from "../lib/locale";
 
 const EVENT_LABEL: Record<TrainingEvent["kind"], string> = {
@@ -22,8 +28,74 @@ function groupEvents(events: TrainingEvent[]): [TrainingEvent["kind"], TrainingE
   return [...grouped.entries()];
 }
 
+const SIGNAL_LABEL: Record<TrainingSignal["kind"], string> = {
+  progression_margin: "Margen",
+  effort_at_limit: "Al límite",
+  plan_shortfall: "Plan incompleto",
+  fatigue_rising: "Fatiga",
+  deload_suggested: "Descarga",
+  low_adherence: "Adherencia",
+};
 function kg(value: number): string {
   return `${Math.round(value * 10) / 10} kg`;
+}
+
+function pct(value: number): string {
+  const rounded = Math.round(value * 1000) / 10;
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
+}
+
+function signed(value: number | null): string {
+  if (value == null) return "-";
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded > 0 ? "+" : ""}${rounded} kg`;
+}
+
+/**
+ * Proyección basada en la propia tendencia del atleta. El texto es condicional
+ * a propósito: si cambia el cumplimiento, deja de valer.
+ */
+function Projections({ projections }: { projections: Projection[] }) {
+  const global = projections.find((p) => p.scope === "global");
+  const byExercise = projections.filter((p) => p.scope !== "global");
+
+  return (
+    <>
+      {global ? (
+        <p className="small">
+          {`Según cómo viene adaptando, si sostiene este plan puede esperar una mejora general de ` +
+            `${pct(global.expected_change_pct)} en ${global.horizon_weeks} semanas` +
+            (global.low_change_pct != null && global.high_change_pct != null
+              ? ` (entre ${pct(global.low_change_pct)} y ${pct(global.high_change_pct)})`
+              : "") +
+            (global.adherence != null
+              ? `, manteniendo el ${Math.round(global.adherence * 100)}% de cumplimiento que lleva.`
+              : ".")}
+        </p>
+      ) : null}
+      <div className="rowList">
+        {byExercise.map((projection) => (
+          <div key={projection.scope} className="rowItem signalRow">
+            <div className="rowMain">
+              <strong>{projection.scope}</strong>
+              <span className="small">
+                {`${signed(projection.expected_change_kg)} en ${projection.horizon_weeks} semanas` +
+                  (projection.low_change_kg != null && projection.high_change_kg != null
+                    ? ` · entre ${signed(projection.low_change_kg)} y ${signed(
+                        projection.high_change_kg,
+                      )}`
+                    : "") +
+                  ` · ${projection.basis_sessions} sesiones de historial`}
+              </span>
+            </div>
+            {projection.current_kg != null ? (
+              <span className="chip">{kg(projection.current_kg)}</span>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </>
+  );
 }
 
 /**
@@ -106,6 +178,44 @@ export default function RunDetail() {
         </section>
       ) : (
         <>
+          {insights && insights.projections.length > 0 ? (
+            <section className="surface">
+              <div className="sectionHead">
+                <h3>Si sigues así</h3>
+                <p>
+                  Proyección de tu propia tendencia reciente, con el rango en el que puede caer. No
+                  es una promesa: si cambia lo que entrenas, cambia.
+                </p>
+              </div>
+              <Projections projections={insights.projections} />
+            </section>
+          ) : null}
+
+          {insights && insights.signals.length > 0 ? (
+            <section className="surface">
+              <div className="sectionHead">
+                <h3>Señales de tus datos</h3>
+                <p>
+                  Lecturas que salen de cruzar tu cumplimiento del plan, el esfuerzo que
+                  reportaste y cómo has dormido. No son indicaciones: qué hacer con ellas lo
+                  decides con tu entrenador.
+                </p>
+              </div>
+              <div className="rowList">
+                {insights.signals.map((signal) => (
+                  <div key={`${signal.kind}_${signal.exercise}`} className="rowItem signalRow">
+                    <div className="rowMain">
+                      <strong>{`${signal.exercise} · ${signal.reading}`}</strong>
+                      <span className="small">{signal.evidence}</span>
+                      <span className="eventRule">{signal.rule}</span>
+                    </div>
+                    <span className="chip">{SIGNAL_LABEL[signal.kind] || signal.kind}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <section className="surface">
             <div className="sectionHead">
               <h3>Próxima serie tope</h3>
