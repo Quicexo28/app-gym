@@ -1,18 +1,25 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 
 import { ApiError } from "../api";
 import { useAuth } from "../state/auth";
+
+const isNativeApp = Capacitor.isNativePlatform();
 
 type GoogleCredentialResponse = {
   credential?: string;
 };
 
-type GooglePromptNotification = {
-  isNotDisplayed: () => boolean;
-  isSkippedMoment: () => boolean;
-  getNotDisplayedReason?: () => string;
-  getSkippedReason?: () => string;
+type GoogleButtonOptions = {
+  type?: "standard" | "icon";
+  theme?: "outline" | "filled_blue" | "filled_black";
+  size?: "large" | "medium" | "small";
+  text?: "signin_with" | "signup_with" | "continue_with" | "signin";
+  shape?: "rectangular" | "pill" | "circle" | "square";
+  logo_alignment?: "left" | "center";
+  width?: number;
+  locale?: string;
 };
 
 declare global {
@@ -24,7 +31,7 @@ declare global {
             client_id: string;
             callback: (response: GoogleCredentialResponse) => void;
           }) => void;
-          prompt: (listener?: (notification: GooglePromptNotification) => void) => void;
+          renderButton: (parent: HTMLElement, options: GoogleButtonOptions) => void;
         };
       };
     };
@@ -62,65 +69,6 @@ function loadGoogleScript(): Promise<void> {
   return googleScriptPromise;
 }
 
-function requestGoogleCredential(clientId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const googleId = window.google?.accounts?.id;
-    if (!googleId) {
-      reject(new Error("Google no esta disponible en este navegador."));
-      return;
-    }
-
-    let settled = false;
-    const timeout = window.setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      reject(new Error("Tiempo agotado al iniciar sesion con Google."));
-    }, 20000);
-
-    const resolveOnce = (value: string) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      resolve(value);
-    };
-
-    const rejectOnce = (message: string) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      reject(new Error(message));
-    };
-
-    googleId.initialize({
-      client_id: clientId,
-      callback: (response) => {
-        const credential = response.credential?.trim();
-        if (!credential) {
-          rejectOnce("No se pudo obtener la credencial de Google.");
-          return;
-        }
-        resolveOnce(credential);
-      },
-    });
-
-    googleId.prompt((notification) => {
-      if (notification.isNotDisplayed()) {
-        const reason = notification.getNotDisplayedReason?.();
-        if (reason === "unregistered_origin") {
-          rejectOnce(`Origen no autorizado para Google (${window.location.origin}).`);
-          return;
-        }
-        rejectOnce(`No se pudo abrir el cuadro de Google${reason ? ` (${reason})` : ""}.`);
-        return;
-      }
-      if (notification.isSkippedMoment()) {
-        const reason = notification.getSkippedReason?.();
-        rejectOnce(`No se pudo abrir el cuadro de Google${reason ? ` (${reason})` : ""}.`);
-      }
-    });
-  });
-}
-
 function toFriendlyError(error: unknown): string {
   if (error instanceof ApiError) {
     const detail = error.detail;
@@ -131,13 +79,13 @@ function toFriendlyError(error: unknown): string {
       return "El correo ya existe.";
     }
     if (error.status === 409 && detail.includes("Phone already registered")) {
-      return "El numero de celular ya existe.";
+      return "El número de celular ya existe.";
     }
     if (error.status === 400 && detail.includes("Invalid email")) {
-      return "Correo invalido.";
+      return "Correo inválido.";
     }
     if (error.status === 400 && detail.includes("Invalid phone number")) {
-      return "Numero de celular invalido.";
+      return "Número de celular inválido.";
     }
     if (error.status === 503 && detail.includes("Google login is not configured")) {
       return "Inicio con Google no configurado en el servidor.";
@@ -181,7 +129,7 @@ function PasswordVisibilityIcon({ visible }: { visible: boolean }) {
 }
 
 export default function Login() {
-  const { isAuthenticated, login, register, loginWithGoogle, loginAsGuest } = useAuth();
+  const { isAuthenticated, sessionExpired, login, register, loginWithGoogle, loginAsGuest } = useAuth();
   const nav = useNavigate();
 
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -199,6 +147,109 @@ export default function Login() {
   const canGuestLogin =
     import.meta.env.DEV ||
     ((import.meta.env.VITE_ENABLE_GUEST_LOGIN as string | undefined)?.trim().toLowerCase() === "true");
+
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const [googleStatus, setGoogleStatus] = useState<"idle" | "ready" | "unavailable">(
+    googleClientId ? "idle" : "unavailable",
+  );
+
+  // Nativo (Capacitor): Google Sign-In por Credential Manager; GIS web no funciona en webview.
+  useEffect(() => {
+    if (!isNativeApp || !googleClientId || isAuthenticated) return;
+
+    let cancelled = false;
+    import("@capgo/capacitor-social-login")
+      .then(({ SocialLogin }) => SocialLogin.initialize({ google: { webClientId: googleClientId } }))
+      .then(() => {
+        if (!cancelled) setGoogleStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setGoogleStatus("unavailable");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleClientId, isAuthenticated]);
+
+  async function submitGoogleNative() {
+    setBusy(true);
+    setError("");
+    try {
+      const { SocialLogin } = await import("@capgo/capacitor-social-login");
+      const response = await SocialLogin.login({
+        provider: "google",
+        options: { scopes: ["email", "profile"] },
+      });
+      const idToken = "idToken" in response.result ? response.result.idToken?.trim() : "";
+      if (!idToken) {
+        setError("No se pudo obtener la credencial de Google.");
+        return;
+      }
+      await loginWithGoogle(idToken);
+      nav("/home", { replace: true });
+    } catch (e: unknown) {
+      // el usuario cancelo el dialogo nativo: no mostrar error
+      if (e instanceof Error && /cancel/i.test(e.message)) return;
+      setError(toFriendlyError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (isNativeApp || !googleClientId || isAuthenticated) return;
+
+    let cancelled = false;
+    loadGoogleScript()
+      .then(() => {
+        if (cancelled) return;
+        const googleId = window.google?.accounts?.id;
+        const target = googleButtonRef.current;
+        if (!googleId || !target) {
+          setGoogleStatus("unavailable");
+          return;
+        }
+
+        googleId.initialize({
+          client_id: googleClientId,
+          callback: (response) => {
+            const credential = response.credential?.trim();
+            if (!credential) {
+              setError("No se pudo obtener la credencial de Google.");
+              return;
+            }
+            setBusy(true);
+            setError("");
+            loginWithGoogle(credential)
+              .then(() => nav("/home", { replace: true }))
+              .catch((cause: unknown) => setError(toFriendlyError(cause)))
+              .finally(() => setBusy(false));
+          },
+        });
+
+        target.replaceChildren();
+        googleId.renderButton(target, {
+          type: "standard",
+          theme: "outline",
+          size: "large",
+          text: "continue_with",
+          shape: "pill",
+          logo_alignment: "left",
+          width: 320,
+          locale: "es",
+        });
+        setGoogleStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setGoogleStatus("unavailable");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleClientId, isAuthenticated]);
 
   if (isAuthenticated) {
     return <Navigate to="/home" replace />;
@@ -230,26 +281,6 @@ export default function Login() {
     }
   }
 
-  async function submitGoogle() {
-    if (!googleClientId) {
-      setError("Falta VITE_GOOGLE_CLIENT_ID en frontend.");
-      return;
-    }
-
-    setBusy(true);
-    setError("");
-    try {
-      await loadGoogleScript();
-      const credential = await requestGoogleCredential(googleClientId);
-      await loginWithGoogle(credential);
-      nav("/home", { replace: true });
-    } catch (e: unknown) {
-      setError(toFriendlyError(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function submitGuest() {
     setBusy(true);
     setError("");
@@ -272,13 +303,13 @@ export default function Login() {
     <div className="loginWrap">
       <section className="surface loginCard">
         <div className="titleBlock">
-          <h1>Coach AI Engineer</h1>
-          <p>Inicia sesion para gestionar atletas, sesiones y escenarios.</p>
+          <h1>Alzo</h1>
+          <p>Inicia sesión para gestionar atletas, sesiones y escenarios.</p>
         </div>
 
         <div className="pillGroup">
           <button type="button" className={`pill ${mode === "login" ? "active" : ""}`} onClick={() => setMode("login")}>
-            <span>Iniciar sesion</span>
+            <span>Iniciar sesión</span>
             <small>Correo o celular con contrasena</small>
           </button>
           <button
@@ -292,6 +323,9 @@ export default function Login() {
         </div>
 
         {error ? <div className="message error">{error}</div> : null}
+        {!error && sessionExpired ? (
+          <div className="message">Tu sesión expiro. Inicia sesión de nuevo.</div>
+        ) : null}
 
         <div className="stack">
           {mode === "login" ? (
@@ -313,7 +347,7 @@ export default function Login() {
               </div>
 
               <div>
-                <label className="smallLabel">Numero celular (opcional)</label>
+                <label className="smallLabel">Número celular (opcional)</label>
                 <input
                   className="input"
                   type="tel"
@@ -376,9 +410,31 @@ export default function Login() {
           <button type="button" className="btn primary" onClick={submit} disabled={busy || !canSubmit}>
             {busy ? "Procesando..." : mode === "login" ? "Entrar" : "Crear cuenta"}
           </button>
-          <button type="button" className="btn" onClick={submitGoogle} disabled={busy}>
-            Continuar con Google
-          </button>
+
+          <div className="loginDivider" role="separator">
+            <span>o</span>
+          </div>
+
+          <div className="googleSignIn" aria-busy={busy}>
+            {isNativeApp ? (
+              googleStatus === "ready" ? (
+                <button type="button" className="btn" onClick={submitGoogleNative} disabled={busy}>
+                  Continuar con Google
+                </button>
+              ) : null
+            ) : (
+              <div ref={googleButtonRef} className="googleSignInButton" />
+            )}
+            {googleStatus === "idle" ? <div className="smallLabel">Cargando Google...</div> : null}
+            {googleStatus === "unavailable" ? (
+              <div className="smallLabel">
+                {googleClientId
+                  ? "Inicio con Google no disponible (sin conexión con Google)."
+                  : "Inicio con Google no configurado."}
+              </div>
+            ) : null}
+          </div>
+
           {canGuestLogin ? (
             <button type="button" className="btn" onClick={submitGuest} disabled={busy}>
               Entrar como invitado (debug)

@@ -1,8 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
+  ApiError,
   authGuest,
   authGoogle,
   authLogin,
@@ -10,6 +11,7 @@ import {
   backendPlanToLabel,
   getMe,
   setApiToken,
+  setUnauthorizedHandler,
   type AuthResponse,
   type AuthUser,
   type PlanLabel,
@@ -27,6 +29,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isAdmin: boolean;
   planLabel: PlanLabel | null;
+  sessionExpired: boolean;
   login: (identifier: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   loginAsGuest: () => Promise<void>;
@@ -71,12 +74,28 @@ function toSession(payload: AuthResponse): AuthSession {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(() => readStoredSession());
   const [ready, setReady] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const hasSessionRef = useRef(false);
 
   const syncSession = useCallback((next: AuthSession | null) => {
     setSession(next);
     persistSession(next);
     setApiToken(next?.token ?? null);
+    hasSessionRef.current = !!next?.token;
+    if (next) setSessionExpired(false);
   }, []);
+
+  // Cualquier 401 con token vigente = sesión vencida (dura 24h y no hay refresh):
+  // se cierra sola para caer en /login en vez de dejar cada pantalla en error.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      if (!hasSessionRef.current) return;
+      hasSessionRef.current = false;
+      setSessionExpired(true);
+      syncSession(null);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [syncSession]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,9 +112,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const user = await getMe();
         if (cancelled) return;
         syncSession({ token: existing.token, user });
-      } catch {
+      } catch (err) {
         if (cancelled) return;
-        syncSession(null);
+        // Solo cerrar sesión si el token fue rechazado; en fallo de red se conserva.
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          syncSession(null);
+        }
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -155,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: !!session?.token,
       isAdmin: user?.role === "admin",
       planLabel: user ? backendPlanToLabel(user.plan) : null,
+      sessionExpired,
       login,
       loginWithGoogle,
       loginAsGuest,
@@ -162,7 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshMe,
       logout,
     };
-  }, [ready, session, login, loginWithGoogle, loginAsGuest, register, refreshMe, logout]);
+  }, [ready, session, sessionExpired, login, loginWithGoogle, loginAsGuest, register, refreshMe, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

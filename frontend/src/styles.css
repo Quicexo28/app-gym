@@ -142,11 +142,118 @@ textarea.input {
 }
 
 .input:focus,
-select.input:focus,
 textarea.input:focus,
 .btn:focus {
   outline: 2px solid color-mix(in srgb, var(--accent), transparent 70%);
   outline-offset: 1px;
+}
+
+.input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.input[type="number"]::-webkit-inner-spin-button,
+.input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.select {
+  position: relative;
+  width: 100%;
+}
+
+.selectTrigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.selectTrigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.selectTrigger:focus-visible,
+.selectTrigger[aria-expanded="true"] {
+  outline: 2px solid color-mix(in srgb, var(--accent), transparent 70%);
+  outline-offset: 1px;
+}
+
+.selectValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selectPlaceholder {
+  color: var(--text-soft);
+}
+
+.selectChevron {
+  flex: none;
+  color: var(--text-soft);
+  transition: transform 0.15s ease;
+}
+
+.selectChevron.open {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+.selectPanel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+
+.selectOption {
+  padding: 9px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.selectOption.active {
+  background: color-mix(in srgb, var(--bg-soft), transparent 20%);
+}
+
+.selectOption.selected {
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 88%);
+  font-weight: 700;
+}
+
+.selectOption.selected.active {
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 82%);
+}
+
+.selectOption.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .passwordInputWrap {
@@ -191,6 +298,69 @@ textarea.input:focus,
   stroke-width: 1.9;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.searchInputWrap {
+  position: relative;
+}
+
+.searchInput {
+  padding-right: 40px;
+}
+
+.searchInputIcon {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  color: var(--text-soft);
+  pointer-events: none;
+}
+
+.searchInputIcon .iconGlyph {
+  width: 17px;
+  height: 17px;
+}
+
+.filterMenu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.filterMenuTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.filterMenuTrigger:hover,
+.filterMenuTrigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.filterMenuPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  min-width: 190px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 22%);
 }
 
 .btn {
@@ -270,18 +440,6 @@ textarea.input:focus,
   display: block;
 }
 
-.quickGrid {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
-.homeHero {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1.2fr 1fr;
-}
-
 .statsGrid {
   display: grid;
   gap: 10px;
@@ -295,16 +453,6 @@ textarea.input:focus,
   padding: 10px;
   display: grid;
   gap: 4px;
-}
-
-.cleanList {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.statusText {
-  font-size: 15px;
-  font-weight: 700;
 }
 
 .timerValue {
@@ -477,6 +625,86 @@ textarea.input:focus,
 .exerciseCardDragArmed {
   border-color: color-mix(in srgb, var(--accent), var(--border) 35%);
   background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.cardMenu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.cardMenuTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.cardMenuTrigger:hover,
+.cardMenuTrigger[aria-expanded="true"] {
+  border-color: var(--border);
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.cardMenuPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  min-width: 208px;
+  padding: 6px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 22%);
+}
+
+.cardMenuItem {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cardMenuItem:hover:not(:disabled) {
+  background: var(--bg-soft);
+}
+
+.cardMenuItem:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cardMenuItemHint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-soft);
+  opacity: 0.75;
+}
+
+.cardMenuItemDanger {
+  color: var(--danger);
+}
+
+.cardMenuItemDanger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger-bg), var(--bg-elevated) 55%);
 }
 
 .routineSortableList {
@@ -683,6 +911,47 @@ textarea.input:focus,
   color: var(--text-soft);
 }
 
+.notepadBtn {
+  position: relative;
+  border-color: var(--border);
+  color: var(--text-soft);
+}
+
+.notepadBtn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notifyDot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--surface, transparent);
+}
+
+.exerciseNotePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.coachNoteBubble {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.coachNoteBubble p {
+  margin: 0 0 4px;
+}
+
 .completeIconBtn {
   width: 30px;
   height: 30px;
@@ -747,7 +1016,7 @@ textarea.input:focus,
 .restFloatBar {
   position: fixed;
   right: 16px;
-  bottom: 16px;
+  bottom: calc(80px + env(safe-area-inset-bottom));
   z-index: 95;
   width: min(360px, calc(100% - 24px));
   border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
@@ -783,6 +1052,10 @@ textarea.input:focus,
   font-size: 1.2rem;
 }
 
+.restFloatTimerOver {
+  color: var(--danger);
+}
+
 .restFloatTrack {
   height: 8px;
   border-radius: 999px;
@@ -807,7 +1080,7 @@ textarea.input:focus,
 .activeSessionBar {
   position: fixed;
   right: 16px;
-  bottom: 16px;
+  bottom: calc(80px + env(safe-area-inset-bottom));
   z-index: 88;
   width: min(480px, calc(100% - 24px));
   border: 1px solid color-mix(in srgb, var(--accent), var(--border) 48%);
@@ -857,9 +1130,25 @@ textarea.input:focus,
 .activeSessionActions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.activeSessionTimerBig {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.activeSessionButtonGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .activeSessionCheckBtn {
@@ -895,6 +1184,35 @@ textarea.input:focus,
   gap: 8px;
   max-height: calc(100vh - 120px);
   overflow: auto;
+}
+
+.voiceDockToggle {
+  position: fixed;
+  right: 14px;
+  bottom: 84px;
+  z-index: 92;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
+  background: color-mix(in srgb, var(--bg-elevated), var(--accent) 7%);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.voiceDockDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--text-soft);
+}
+
+.voiceDockToggle.listening .voiceDockDot {
+  background: var(--accent);
 }
 
 .voiceStatusHead {
@@ -1043,6 +1361,81 @@ textarea.input:focus,
   display: grid;
   gap: 8px;
   color: var(--text);
+}
+
+.coachPortfolioCard .input {
+  flex: 1;
+}
+
+.athleteMiniGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.athleteMiniCard {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+}
+
+.athleteMiniCard h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.activeNowChip {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notifyChip {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.coachReportFeed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reportFeedRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.muscleStateRow {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.muscleStateRow.weakest {
+  border-color: var(--danger);
+}
+
+.chipToggle {
+  cursor: pointer;
+  background: none;
+}
+
+.chipToggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .routinePickGrid {
@@ -1227,6 +1620,79 @@ textarea.input:focus,
   padding: 16px;
 }
 
+.closeRoutineModal {
+  width: min(420px, 100%);
+  z-index: 61;
+}
+
+.closeRoutineActions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.closeRoutineActions .small {
+  margin-bottom: 6px;
+  color: var(--text-soft);
+}
+
+.sessionStartText {
+  color: var(--text-soft);
+  font-size: 13px;
+  text-align: left;
+}
+
+.extrasMenu {
+  position: relative;
+}
+
+.extrasMenuBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.extrasMenuPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 41;
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+
+.extrasMenuItem {
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.extrasMenuItem:hover,
+.extrasMenuItem:focus-visible {
+  background: color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 30%);
+}
+
+.extrasMenuItem.danger {
+  color: var(--danger);
+}
+
+.extrasMenuItem.danger:hover,
+.extrasMenuItem.danger:focus-visible {
+  background: color-mix(in srgb, var(--danger), var(--bg-elevated) 88%);
+}
+
 .routineInfoLayout {
   display: grid;
   gap: 12px;
@@ -1374,37 +1840,22 @@ textarea.input:focus,
   justify-content: flex-end;
 }
 
-.toolbarGroup {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.brand2 {
-  display: grid;
-  gap: 4px;
-}
-
 .brandTitle {
   font-size: 18px;
   font-weight: 900;
 }
 
-.brandSub {
-  font-size: 12px;
-  color: var(--text-soft);
-}
-
 .content2 {
   width: 100%;
   min-width: 0;
-  padding-bottom: 0;
+  flex: 1;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
 }
 
 .undoBar {
   position: fixed;
   left: 50%;
-  bottom: 18px;
+  bottom: calc(80px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 90;
   width: min(760px, calc(100% - 24px));
@@ -1442,28 +1893,185 @@ textarea.input:focus,
   white-space: nowrap;
 }
 
-.topnav2 {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: thin;
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), transparent 6%);
+  backdrop-filter: blur(10px);
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
 }
 
-.navItem {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 9px 12px;
-  background: var(--bg-elevated);
-  font-size: 14px;
-  font-weight: 700;
+.tabItem {
+  padding: 10px 4px;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-soft);
 }
 
-.navItem.active {
+.tabItem.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 90%);
+}
+
+.hubTabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.hubTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.hubTab {
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.hubTab.active {
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--accent-contrast);
+}
+
+.btnBlock {
+  flex: 1;
+  min-width: 180px;
+}
+
+.menuBtn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.menuBtnBars,
+.menuBtnBars::before,
+.menuBtnBars::after {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.menuBtnBars {
+  position: relative;
+}
+
+.menuBtnBars::before,
+.menuBtnBars::after {
+  content: "";
+  position: absolute;
+  left: 0;
+}
+
+.menuBtnBars::before {
+  top: -6px;
+}
+
+.menuBtnBars::after {
+  top: 6px;
+}
+
+.drawerBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: color-mix(in srgb, #000, transparent 45%);
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 101;
+  width: min(300px, 84vw);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+  border-right: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.drawerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawerNav {
+  display: grid;
+  gap: 14px;
+}
+
+.drawerGroup {
+  display: grid;
+  gap: 2px;
+}
+
+.drawerLink {
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.drawerLink.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 90%);
+}
+
+.drawerFooter {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.listItemAction {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  cursor: pointer;
+}
+
+.optionRow {
+  display: grid;
+  gap: 6px;
+}
+
+.dangerZone > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text-soft);
 }
 
 .athleteInput {
@@ -1471,98 +2079,7 @@ textarea.input:focus,
   min-width: 180px;
 }
 
-@media (max-width: 720px) {
-  .topbarRow {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 
-  .homeHero {
-    grid-template-columns: 1fr;
-  }
-
-  .desktopDockOnly {
-    display: none !important;
-  }
-
-  .setRowCard {
-    padding: 6px;
-  }
-
-  .setRow {
-    gap: 6px;
-    grid-template-columns: auto minmax(84px, 1.25fr) minmax(68px, 1fr) minmax(68px, 1fr) auto auto;
-  }
-
-  .wellnessScale {
-    font-size: 10px;
-  }
-
-  .restFloatBar {
-    right: 10px;
-    bottom: 10px;
-    width: calc(100% - 20px);
-  }
-
-  .activeSessionBar {
-    right: 10px;
-    bottom: 76px;
-    width: calc(100% - 20px);
-  }
-
-  .planningEditor {
-    grid-template-columns: 1fr;
-  }
-
-  .planningConfigCard {
-    position: static;
-  }
-
-  .routineInfoLayout {
-    grid-template-columns: 1fr;
-  }
-
-  .planningMosaic {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .planningSquare {
-    min-height: 96px;
-  }
-
-  .undoBar {
-    bottom: 10px;
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .undoBarActions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .restFloatBar,
-  .activeSessionBar {
-    animation: none;
-  }
-
-  .completedSetRow::before {
-    animation: none;
-    transform: scaleX(1);
-  }
-
-  .uncheckingSetRow::after {
-    animation: none;
-    transform: scaleX(0);
-  }
-
-  .deletingSetRow::after {
-    animation: none;
-    transform: scaleX(1);
-  }
-}
 
 
 .loginWrap {
@@ -1576,6 +2093,41 @@ textarea.input:focus,
   width: min(560px, 100%);
   display: grid;
   gap: 14px;
+}
+
+.loginDivider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted, #8a8f98);
+  font-size: 12px;
+  margin: 2px 0;
+}
+
+.loginDivider::before,
+.loginDivider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border, #2a2e35);
+}
+
+.googleSignIn {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+
+.googleSignInButton {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.googleSignIn[aria-busy="true"] .googleSignInButton {
+  pointer-events: none;
+  opacity: 0.6;
 }
 
 .topbarActions .smallLabel {
@@ -1706,4 +2258,1649 @@ textarea.input:focus,
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* --- Perfil: identidad y hilo de progreso --- */
+
+.profileHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profileIdentity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.profileName {
+  font-size: 1.1rem;
+}
+
+.shareCard {
+  display: grid;
+  gap: 10px;
+}
+
+.shareThread {
+  display: grid;
+  gap: 8px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+
+.shareComment {
+  display: grid;
+  gap: 2px;
+}
+
+.shareReplyRow {
+  display: flex;
+  gap: 8px;
+}
+
+.shareReplyRow .input {
+  flex: 1;
+}
+
+/* --- Progreso: fotos privadas (solo dispositivo) --- */
+
+.privacyNote {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid var(--accent);
+}
+
+.photoGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.photoCard {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 16%);
+}
+
+.photoCard.selected {
+  border-color: var(--accent);
+}
+
+.photoThumbButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.photoThumbButton img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+}
+
+.photoCardMeta {
+  display: grid;
+  gap: 2px;
+}
+
+.photoCardActions {
+  display: flex;
+  gap: 8px;
+}
+
+.photoCardActions .btn {
+  flex: 1;
+}
+
+.photoCompare {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 12px;
+}
+
+.photoCompareItem {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.photoCompareItem img {
+  width: 100%;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.photoViewer img {
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+/* ---------- Home: dia seleccionado, entreno, dieta y pasos ---------- */
+
+.homeHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.homeDate {
+  display: grid;
+  gap: 2px;
+}
+
+.homeDateDay {
+  font-size: clamp(1.25rem, 2.4vw, 1.7rem);
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+/* "viernes, 25 de julio" -> solo la inicial en mayuscula (capitalize tocaria cada palabra). */
+.homeDateDay::first-letter {
+  text-transform: uppercase;
+}
+
+.homeDateMeta {
+  color: var(--text-soft);
+}
+
+.btnSlim {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 30%);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.switch.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.switchText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.switchLabel {
+  font-weight: 600;
+}
+
+.switchHint {
+  color: var(--text-soft);
+}
+
+.switchTrack {
+  flex: none;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  padding: 2px;
+  display: flex;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.switch.on .switchTrack {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switchKnob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+  transition: transform 0.15s ease;
+}
+
+.switch.on .switchKnob {
+  transform: translateX(18px);
+}
+
+/* Interruptores de vista (admin / coach) en la topbar: minimos, sin hint. */
+.switch.compact {
+  width: auto;
+  gap: 7px;
+  padding: 4px 6px 4px 9px;
+  border-radius: 999px;
+}
+
+.switch.compact .switchLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.switch.compact .switchTrack {
+  width: 30px;
+  height: 18px;
+  padding: 2px;
+}
+
+.switch.compact .switchKnob {
+  width: 12px;
+  height: 12px;
+}
+
+.switch.compact.on .switchKnob {
+  transform: translateX(12px);
+}
+
+.homeHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.weekPicker {
+  padding: 12px;
+}
+
+.weekPickerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-soft);
+}
+
+.weekPickerLabel {
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.weekNavBtn {
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text);
+  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.weekStrip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.dayPill {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 8px 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dayPill.today {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 45%);
+}
+
+.dayPill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.dayPillLetter {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.dayPill.active .dayPillLetter {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.dayPillNumber {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dayPillMarks {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+  align-items: center;
+}
+
+.dayMark {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  display: block;
+}
+
+.dayMark.done {
+  background: var(--accent);
+}
+
+.dayMark.planned {
+  background: transparent;
+  border: 1px solid var(--accent);
+}
+
+.dayPill.active .dayMark.done {
+  background: var(--accent-contrast);
+}
+
+.dayPill.active .dayMark.planned {
+  border-color: var(--accent-contrast);
+}
+
+.planList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.planList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+.planList li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.pickRoutineRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pickRoutineRow .input,
+.pickRoutineRow .select {
+  flex: 1 1 180px;
+}
+
+/* Tarjeta que ademas es enlace: hereda el look de .surface pero se comporta como boton. */
+.cardButton {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.cardButton:hover,
+.cardButton:focus-visible {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 40%);
+}
+
+/* Afordancia sutil de "esta tarjeta navega": chevron en la cabecera, sin texto explicativo. */
+.cardChevron {
+  color: var(--text-soft);
+  font-size: 20px;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.cardButton:hover .cardChevron,
+.cardButton:focus-visible .cardChevron {
+  transform: translateX(2px);
+  color: var(--accent);
+}
+
+/* Metrica todavia sin fuente de datos: se muestra en gris, sin cartel de "proximamente". */
+.mutedValue {
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.dietBody {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.ringWrap {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  flex: 0 0 auto;
+}
+
+.ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ringTrack,
+.ringFill {
+  fill: none;
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.ringTrack {
+  stroke: var(--bg-soft);
+}
+
+.ringFill {
+  stroke: var(--accent);
+  transition: stroke-dasharray 240ms ease;
+}
+
+.ringCenter {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+}
+
+.ringCenter .small {
+  color: var(--text-soft);
+}
+
+.macroStack {
+  flex: 1 1 200px;
+  display: grid;
+  gap: 10px;
+}
+
+.macroRow {
+  display: grid;
+  gap: 4px;
+}
+
+.macroHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-soft);
+}
+
+.barChart {
+  display: grid;
+  gap: 8px;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) minmax(80px, 2fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.barLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barValue {
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.barTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 240ms ease;
+}
+
+.barFill.macro-carbos {
+  background: color-mix(in srgb, var(--accent), var(--text) 32%);
+}
+
+.barFill.macro-grasas {
+  background: color-mix(in srgb, var(--accent), var(--text-soft) 55%);
+}
+
+/* Cuarto escalon de la misma rampa (solo en el detalle nutricional): la fibra
+   no puede quedar del mismo color que la proteina. */
+.barFill.macro-fibra {
+  background: color-mix(in srgb, var(--accent), var(--bg-soft) 45%);
+}
+
+/* Pasarse del objetivo tiene que verse: la barra se queda en 100% y no habia
+   ninguna senal de que el valor iba por encima. */
+.barFill.over {
+  background: var(--danger);
+}
+
+.macroOverValue {
+  color: var(--danger);
+}
+
+/* Dos tarjetas compactas lado a lado (pasos + peso). */
+.homeSplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.homeSplit > .cardButton {
+  min-width: 0;
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+}
+
+.cardValue {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepsChart {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  align-items: end;
+  gap: 2px;
+  height: 56px;
+}
+
+/* Historico: misma columna, muchos mas dias. */
+.stepsHistoryChart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 120px;
+  margin-top: 12px;
+}
+
+.stepsHistoryChart .stepsCol {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.stepsHistoryChart .stepsBar {
+  max-width: none;
+}
+
+.stepsCol {
+  display: grid;
+  justify-items: center;
+  align-content: end;
+  height: 100%;
+}
+
+.stepsBar {
+  width: 100%;
+  max-width: 16px;
+  height: 4px;
+  border-radius: 4px 4px 2px 2px;
+  background: var(--bg-soft);
+}
+
+.sparkline {
+  width: 100%;
+  height: 56px;
+}
+
+.sparkline polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* El dia enfocado (centro de la ventana en Home, hoy en el historico) se marca por color. */
+.stepsCol.active .stepsBar {
+  background: var(--accent);
+}
+
+/* Grafica falsa y gris: marca donde ira una grafica real mientras no hay datos. */
+.chartPlaceholder {
+  display: grid;
+  align-content: end;
+  gap: 6px;
+  width: 100%;
+}
+
+.chartPlaceholderBars {
+  display: grid;
+  grid-auto-flow: column;
+  align-items: end;
+  gap: 4px;
+  width: 100%;
+}
+
+.chartPlaceholderBar {
+  background: var(--border);
+  opacity: 0.6;
+  border-radius: 4px 4px 2px 2px;
+}
+
+.chartPlaceholderLine {
+  width: 100%;
+}
+
+.chartPlaceholderLine polyline {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.7;
+}
+
+.chartPlaceholderRadar {
+  width: 100%;
+}
+
+.chartPlaceholderRadarRing {
+  fill: none;
+  stroke: var(--border);
+  opacity: 0.5;
+}
+
+.chartPlaceholderRadarArea {
+  fill: var(--border);
+  stroke: var(--border);
+  opacity: 0.35;
+}
+
+.chartPlaceholderCaption {
+  color: var(--text-soft);
+  text-align: center;
+}
+
+/* Cards de metricas de seguimiento (medidas, cargas): article-buttons con el mismo look de surfaceButton. */
+.metricCard,
+button.surfaceButton {
+  font: inherit;
+  cursor: pointer;
+}
+
+.metricCard {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: left;
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+}
+
+.metricCardValue {
+  font-size: 1.15rem;
+}
+
+.metricCardDelta {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.metricCardDelta.up {
+  color: var(--accent);
+}
+
+.metricCardDelta.down {
+  color: var(--danger);
+}
+
+.metricCardDelta.flat {
+  color: var(--text-soft);
+  font-weight: 500;
+}
+
+.progressChartWrap {
+  display: grid;
+  gap: 6px;
+}
+
+.progressChart {
+  height: 140px;
+}
+
+.progressChartDot {
+  fill: var(--accent);
+}
+
+.progressChartCaption {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-soft);
+}
+
+/* Stepper +/- de cantidad de comidas (Objetivos > Comidas). */
+.mealCountStepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.mealCountValue {
+  min-width: 92px;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Grafica de tendencia de dieta: linea + area con degradado del acento y linea de objetivo punteada. */
+.dietTrendChartWrap {
+  display: grid;
+  gap: 8px;
+}
+
+.dietTrendChart {
+  width: 100%;
+  overflow: visible;
+}
+
+.dietTrendGradientStart {
+  stop-color: var(--accent);
+  stop-opacity: 0.32;
+}
+
+.dietTrendGradientEnd {
+  stop-color: var(--accent);
+  stop-opacity: 0;
+}
+
+.dietTrendArea {
+  stroke: none;
+}
+
+.dietTrendLine {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dietTrendTargetLine {
+  stroke: var(--text-soft);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+.dietTrendDot {
+  fill: var(--bg-elevated);
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
+.dietTrendDotLast {
+  fill: var(--accent);
+}
+
+.dietTrendCaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-soft);
+  flex-wrap: wrap;
+}
+
+.datePicker {
+  position: relative;
+}
+
+.datePickerTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+
+.datePickerIcon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--text-soft);
+}
+
+.datePickerPopover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(280px, 88vw);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.datePickerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.datePickerNavBtn {
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text);
+  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.datePickerNavBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.datePickerWeekdays,
+.datePickerGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.datePickerWeekdays span {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.datePickerDay {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 10px;
+  aspect-ratio: 1;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.datePickerDay:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-soft), transparent 10%);
+}
+
+.datePickerDay.outMonth {
+  color: var(--text-soft);
+  opacity: 0.5;
+}
+
+.datePickerDay.today {
+  border-color: var(--accent);
+}
+
+.datePickerDay.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+.datePickerDay:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.timePickerPopover {
+  width: min(220px, 88vw);
+}
+
+.timePickerColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.timePickerColumn {
+  display: grid;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: 2px;
+}
+
+.timePickerOption {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 0;
+  text-align: center;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.timePickerOption:hover {
+  background: color-mix(in srgb, var(--bg-soft), transparent 10%);
+}
+
+.timePickerOptionSelected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Modulo de dieta                                                        */
+/* ---------------------------------------------------------------------- */
+
+.microGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
+.microRow {
+  display: grid;
+  gap: 4px;
+}
+
+.microHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-soft);
+}
+
+.microTrack {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+.microFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 240ms ease;
+}
+
+.microFill.veryLow {
+  background: var(--danger);
+}
+
+.microFill.low {
+  background: color-mix(in srgb, var(--text-soft), var(--border) 40%);
+}
+
+.microFill.good {
+  background: var(--accent);
+}
+
+.microFill.over {
+  background: color-mix(in srgb, var(--danger), var(--accent) 35%);
+}
+
+.dietRangeToggle {
+  display: flex;
+  gap: 8px;
+}
+
+.mealSlotPicker {
+  display: grid;
+  gap: 8px;
+}
+
+.mealSlotCard {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.activeMealSlotCard {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 88%);
+}
+
+/* Comidas del dia: bloques dentro de una sola card, separados por una linea
+   (mismo patron que `.planList` en Home) en vez de una card por comida con
+   cajas anidadas adentro. */
+.mealGroups {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.mealGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.mealGroup + .mealGroup {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.mealGroupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+}
+
+.mealGroupHead h4 {
+  margin: 0;
+}
+
+/* Renombrar la comida se hace en el sitio, sobre el mismo titulo: el input
+   ocupa lo que ocupaba el nombre en vez de abrir otra pantalla. */
+.mealNameInput {
+  flex: 1;
+  min-width: 0;
+  max-width: 260px;
+  padding: 4px 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Cantidad = numero + unidad en una sola linea: la unidad es un selector
+   angosto pegado al input, no un segundo campo con su propia etiqueta. */
+.quantityField {
+  display: grid;
+  gap: 4px;
+}
+
+.quantityFieldRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.quantityFieldInput {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.quantityFieldUnit {
+  flex: 0 0 clamp(96px, 34%, 132px);
+}
+
+.mealFoodList {
+  display: grid;
+  /* minmax(0,1fr): sin esto el minimo automatico del grid lo fija el nombre del
+     alimento (nowrap) y un nombre largo del catalogo TCAC estira toda la pagina
+     a lo ancho en moviles. */
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mealFoodRow:not(:last-child) {
+  border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 45%);
+}
+
+.mealFoodRowInner {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+/* En pantallas angostas el nombre se recorta y la cifra nunca se parte en dos
+   lineas. */
+.mealFoodName {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mealFoodMeta {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* La fila entera abre la edicion de cantidad, asi que es un boton: se le quita
+   el aspecto de boton y se le deja solo el feedback al presionar. */
+.mealFoodRowButton {
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mealFoodRowButton:active {
+  opacity: 0.6;
+}
+
+/* Editar en el sitio: la fila se expande a un bloque con el campo de cantidad
+   y sus dos acciones, sin salir de la lista de la comida. */
+.mealFoodEdit {
+  display: grid;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+/* Emoji del alimento: ancla visual al inicio del nombre. Tamano fijo para que
+   no crezca con el peso del texto y no altere la altura de la fila. */
+.foodEmoji {
+  margin-right: 7px;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* La accion de la card entera ("agregar comida") se separa de la ultima comida
+   con la misma linea que divide los bloques, para que no se lea como parte de
+   esa comida. */
+/* Lista de filas planas separadas por hairline (rutinas, atletas, ...), mismo
+   lenguaje que la card de Comidas en /diet. Sustituye a las cards con pila de
+   chips y varios botones solidos por elemento. */
+.rowList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.rowItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.rowItem + .rowItem {
+  border-top: 1px solid color-mix(in srgb, var(--border), transparent 45%);
+}
+
+.rowMain {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 12px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rowMain > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Bloques dentro de la card del editor de rutina: una sola card con hairlines
+   en vez de tres cards apiladas. */
+.routineBuilderBlock {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.routineBuilderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* La regla que detecto un evento: tiene que estar visible para poder
+   auditarla, pero no competir con el dato. `smallLabel` la ponia en
+   mayusculas y en negrita, y gritaba mas que el propio aviso. */
+/* Las filas de señales llevan frases largas ("Fatiga acumulandose: es esperable
+   que..."): ahi el recorte con puntos suspensivos se come justo lo que hay que
+   leer, asi que el titulo envuelve. */
+.signalRow .rowMain > strong {
+  white-space: normal;
+  overflow: visible;
+}
+
+.eventRule {
+  margin: 2px 0 6px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.eventGroup + .eventGroup {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.rowListActions {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.mealsCardActions {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* Accion que se repite en cada comida: texto en acento, no un boton solido por
+   comida (evita la pila de pastillas identicas). */
+.linkBtn {
+  justify-self: start;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.linkBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mealEntryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.mealEntryInfo {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mealEntryInfo strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Buscador de alimentos: atajos que se ven antes de escribir (recientes y
+   categorias) en vez de un campo vacio esperando un nombre exacto. */
+.foodBrowseBlock {
+  display: grid;
+  gap: 8px;
+}
+
+.foodBrowseHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.foodCategoryGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+
+/* Tile compacto: el emoji hace de icono y la etiqueta va debajo, para que la
+   rejilla entera se lea de un vistazo sin ocupar la pantalla. */
+.foodCategoryTile {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  min-height: 76px;
+  padding: 10px 6px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.foodCategoryTile:hover,
+.foodCategoryTile:focus-visible {
+  border-color: var(--accent);
+}
+
+.foodCategoryEmoji {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.foodCategoryLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.foodResultCard {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.foodResultHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.foodPendingChip {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 50%);
+  color: var(--accent);
+}
+
+/* Menu de "..." (kebab): boton + popover, mismo patron de posicionamiento que .select. */
+.kebabMenu {
+  position: relative;
+}
+
+.kebabTrigger {
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kebabPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  display: grid;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 4px;
+  z-index: 20;
+}
+
+.kebabItem {
+  text-align: left;
+  font: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.kebabItem:hover,
+.kebabItem:focus-visible {
+  background: var(--bg-soft);
+}
+
+.kebabItem.destructive {
+  color: var(--danger);
+}
+
+/* Swipe/hold-to-delete tipo iPhone (`SwipeToDeleteRow.tsx`): la accion vive
+   detras, el contenido se desliza sobre ella. */
+.swipeRow {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.swipeRowAction {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.swipeRowAction.hidden {
+  visibility: hidden;
+}
+
+.swipeRowContent {
+  position: relative;
+  background: var(--bg-elevated);
+  touch-action: pan-y;
+  transition: transform 180ms ease;
+}
+
+.swipeRowContent.dragging {
+  transition: none;
+}
+
+.quantityStepRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quantityStepRow .input {
+  text-align: center;
+}
+
+.captureHookRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.barcodeScanVideo {
+  width: 100%;
+  max-height: 320px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  object-fit: cover;
+}
+
+/* ---------------------------------------------------------------------------
+   Overrides responsive y de accesibilidad.
+   Van al FINAL del archivo a proposito: al vivir a media altura pisaban solo a
+   las reglas anteriores, y toda regla declarada despues (planning, mosaico,
+   etc.) ganaba por orden y dejaba muerto el layout movil.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .topbarRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .desktopDockOnly {
+    display: none !important;
+  }
+
+  .setRowCard {
+    padding: 6px;
+  }
+
+  /* Los minimos fijos (84/68/68 + 2 botones + gaps = 327px) no caben en un
+     telefono de 360px: el boton de borrar quedaba cortado fuera de la fila.
+     Con minmax(0,...) las tres celdas se reparten lo que haya. */
+  .voiceStatusDock {
+    top: auto;
+    right: 10px;
+    left: 10px;
+    bottom: 76px;
+    width: auto;
+    max-height: 60vh;
+  }
+
+  /* Editor de rutina: Series/Reps min/Reps max caben de a dos por fila; el
+     descanso (dos inputs + unidades) ocupa la fila completa. Antes cada campo
+     ocupaba una fila entera y un ejercicio medía media pantalla. */
+  .exerciseCard .splitGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .exerciseCard .splitGrid > div:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .setRow {
+    gap: 6px;
+    grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  }
+
+  .setInputMini.input {
+    padding: 8px 4px;
+    font-size: 13px;
+  }
+
+  .wellnessScale {
+    font-size: 10px;
+  }
+
+  .restFloatBar {
+    right: 10px;
+    width: calc(100% - 20px);
+  }
+
+  .activeSessionBar {
+    right: 10px;
+    width: calc(100% - 20px);
+  }
+
+  .planningEditor {
+    grid-template-columns: 1fr;
+  }
+
+  .planningConfigCard {
+    position: static;
+  }
+
+  .routineInfoLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .planningMosaic {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .planningSquare {
+    min-height: 96px;
+  }
+
+  .undoBar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .undoBarActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .restFloatBar,
+  .activeSessionBar {
+    animation: none;
+  }
+
+  .completedSetRow::before {
+    animation: none;
+    transform: scaleX(1);
+  }
+
+  .uncheckingSetRow::after {
+    animation: none;
+    transform: scaleX(0);
+  }
+
+  .deletingSetRow::after {
+    animation: none;
+    transform: scaleX(1);
+  }
 }

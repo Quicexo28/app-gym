@@ -25,11 +25,14 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://coach:coach@db:5432/coach_ai
-      JWT_SECRET: dev-insecure-change-me
+      JWT_SECRET: ${JWT_SECRET:-dev-insecure-change-me}
+      ENV: dev
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      MEDIA_ROOT: /app/media
       PYTHONUNBUFFERED: "1"
     volumes:
       - ./:/app
+      - coach_ai_media:/app/media
     ports:
       - "8000:8000"
     healthcheck:
@@ -69,3 +72,4 @@ services:
 volumes:
   coach_ai_pg:
   coach_ai_frontend_node_modules:
+  coach_ai_media:

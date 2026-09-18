@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.auth.athlete_access import require_athlete_access
 from app.auth.deps import get_current_user
+from app.coach.reports import build_measurement_report
 from app.db.engine import get_db
-from app.db.models import Athlete, BodyMeasurement
+from app.db.models import Athlete, BodyMeasurement, CoachReport, CoachReportKind
 from app.db.models_auth import User
 
 router = APIRouter(prefix="/body-metrics", tags=["body-metrics"])
@@ -289,6 +290,17 @@ def create_body_measurement(
     measured_at = _to_utc(payload.measured_at or datetime.now(UTC))
     _ensure_athlete_row(db, athlete_id)
 
+    previous = (
+        db.execute(
+            select(BodyMeasurement)
+            .where(BodyMeasurement.athlete_id == athlete_id)
+            .order_by(BodyMeasurement.measured_at.desc(), BodyMeasurement.created_at_utc.desc())
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
+
     row = BodyMeasurement(
         athlete_id=athlete_id,
         measured_by_user_id=user.id,
@@ -311,4 +323,15 @@ def create_body_measurement(
     db.add(row)
     db.commit()
     db.refresh(row)
+
+    db.add(
+        CoachReport(
+            athlete_id=athlete_id,
+            kind=CoachReportKind.MEASUREMENT_TAKEN,
+            ref_id=str(row.id),
+            payload=build_measurement_report(row, previous),
+        )
+    )
+    db.commit()
+
     return _serialize_item(row)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -44,16 +46,52 @@ def upsert_session(db: Session, s: DomainSession) -> dict:
         db.commit()
         return {
             "inserted": True,
-            "issues": [i.model_dump() for i in issues],
+            "issues": [i.to_dict() for i in issues],
             "session_key": (s.athlete_id, s.start_time.isoformat()),
         }
     except IntegrityError:
         db.rollback()
         return {
             "inserted": False,
-            "issues": [i.model_dump() for i in issues],
+            "issues": [i.to_dict() for i in issues],
             "session_key": (s.athlete_id, s.start_time.isoformat()),
         }
+
+
+def get_session_by_key(db: Session, athlete_id: str, start_time: datetime) -> TrainingSession | None:
+    return db.execute(
+        select(TrainingSession).where(
+            TrainingSession.athlete_id == athlete_id,
+            TrainingSession.start_time == start_time,
+        )
+    ).scalar_one_or_none()
+
+
+def find_previous_session_same_routine(
+    db: Session, athlete_id: str, routine_id: str | None, before_start_time: datetime
+) -> TrainingSession | None:
+    """Sesion inmediatamente anterior de la misma rutina, para el reporte de
+    comparacion % al coach. Filtra en Python (no via operador JSON en SQL):
+    el volumen por atleta es chico y evita atarse a un dialecto especifico.
+    """
+    if not routine_id:
+        return None
+    rows = (
+        db.execute(
+            select(TrainingSession)
+            .where(
+                TrainingSession.athlete_id == athlete_id,
+                TrainingSession.start_time < before_start_time,
+            )
+            .order_by(TrainingSession.start_time.desc())
+        )
+        .scalars()
+        .all()
+    )
+    for row in rows:
+        if (row.meta or {}).get("routine_id") == routine_id:
+            return row
+    return None
 
 
 def list_sessions_for_athlete(db: Session, athlete_id: str) -> list[DomainSession]:

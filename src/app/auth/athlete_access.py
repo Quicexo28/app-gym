@@ -6,8 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.types import Role
-from app.auth.view_mode import ViewMode, get_current_view_mode
+from app.auth.view_scopes import can_use_coach_view, get_current_view_scopes
 from app.db.models import CoachAthleteAssignment
 from app.db.models_auth import User
 
@@ -18,10 +17,8 @@ def personal_athlete_id_for_user(user: User) -> str:
 
 
 def can_switch_athlete(user: User) -> bool:
-    if user.role not in {Role.COACH, Role.ADMIN}:
-        return False
-    mode = get_current_view_mode(user)
-    return mode == ViewMode.COACH
+    # Solo la vista coach abre sujetos ajenos; la vista admin ya no la apaga.
+    return can_use_coach_view(user) and get_current_view_scopes().coach
 
 
 def list_accessible_athlete_ids(db: Session, user: User) -> list[str]:

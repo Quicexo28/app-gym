@@ -24,5 +24,21 @@ dist-ssr
 *.sw?
 .env
 .env.prod
+.env.mobile
 .env.prod.local
 frontend/public/models/*.zip
+
+# Python
+.venv/
+.venv-linux/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Cache del pipeline OCR de la TCAC (paginas renderizadas + crops, ~460 MB).
+# Se regenera con scripts/tcac/build.py; no tiene por que viajar en el repo.
+scripts/tcac/cache/

@@ -1,3 +1,5 @@
+import { getRoutineStore, putRoutineStore } from "../api";
+
 export function loadJSON<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -8,8 +10,15 @@ export function loadJSON<T>(key: string, fallback: T): T {
   }
 }
 
-export function saveJSON(key: string, value: unknown): void {
-  localStorage.setItem(key, JSON.stringify(value));
+export function saveJSON(key: string, value: unknown): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (err) {
+    // QuotaExceededError u otro fallo de persistencia: no tumbar la app.
+    console.error(`No se pudo guardar "${key}" en localStorage`, err);
+    return false;
+  }
 }
 
 export type ExerciseCatalogItem = {
@@ -50,7 +59,8 @@ export type RoutineTemplate = {
 export type RoutineExerciseTemplate = {
   name: string;
   group?: string;
-  target_sets: number;
+  target_sets_min: number;
+  target_sets_max: number;
   target_reps_min: number;
   target_reps_max: number;
   rest_seconds: number;
@@ -148,6 +158,30 @@ function parseLegacyRepsRange(value: unknown): { min: number; max: number } | nu
   };
 }
 
+/** Acepta "3" o "3-4" (rango). Usado para el campo Series, editable como texto libre. */
+export function parseSetsRangeText(value: string): { min: number; max: number } | null {
+  const text = clean(value);
+  if (!text) return null;
+  const matches = text.match(/\d+/g);
+  if (!matches || matches.length === 0) return null;
+
+  const values = matches
+    .slice(0, 2)
+    .map((token) => Number(token))
+    .filter((numeric) => Number.isFinite(numeric))
+    .map((numeric) => Math.max(1, Math.min(30, Math.round(numeric))));
+
+  if (values.length === 0) return null;
+  return {
+    min: Math.min(...values),
+    max: Math.max(...values),
+  };
+}
+
+export function formatSetsRange(min: number, max: number): string {
+  return min === max ? String(min) : `${min}-${max}`;
+}
+
 function inferGroupFromRoutineExerciseName(name: string): string | null {
   if (!name.includes(">")) return null;
   const parts = name
@@ -166,7 +200,8 @@ function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null 
     return {
       name,
       group: inferredGroup || undefined,
-      target_sets: DEFAULT_TARGET_SETS,
+      target_sets_min: DEFAULT_TARGET_SETS,
+      target_sets_max: DEFAULT_TARGET_SETS,
       target_reps_min: DEFAULT_TARGET_REPS_MIN,
       target_reps_max: DEFAULT_TARGET_REPS_MAX,
       rest_seconds: DEFAULT_REST_SECONDS,
@@ -178,6 +213,10 @@ function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null 
     name?: unknown;
     target_sets?: unknown;
     sets?: unknown;
+    target_sets_min?: unknown;
+    sets_min?: unknown;
+    target_sets_max?: unknown;
+    sets_max?: unknown;
     target_reps_min?: unknown;
     reps_min?: unknown;
     target_reps_max?: unknown;
@@ -192,7 +231,13 @@ function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null 
   const name = clean(source.name);
   if (!name) return null;
 
-  const targetSets = parseBoundedInt(source.target_sets ?? source.sets, DEFAULT_TARGET_SETS, 1, 30);
+  const legacySetsSingle = parseOptionalBoundedInt(source.target_sets ?? source.sets, 1, 30);
+  const directSetsMin = parseOptionalBoundedInt(source.target_sets_min ?? source.sets_min, 1, 30);
+  const directSetsMax = parseOptionalBoundedInt(source.target_sets_max ?? source.sets_max, 1, 30);
+  const setsMin = directSetsMin ?? directSetsMax ?? legacySetsSingle ?? DEFAULT_TARGET_SETS;
+  const setsMax = directSetsMax ?? directSetsMin ?? legacySetsSingle ?? DEFAULT_TARGET_SETS;
+  const normalizedSetsMin = Math.min(setsMin, setsMax);
+  const normalizedSetsMax = Math.max(setsMin, setsMax);
   const directRepsMin = parseOptionalBoundedInt(source.target_reps_min ?? source.reps_min, 1, 100);
   const directRepsMax = parseOptionalBoundedInt(source.target_reps_max ?? source.reps_max, 1, 100);
   const legacyRepsRange = parseLegacyRepsRange(source.target_reps ?? source.reps);
@@ -208,7 +253,8 @@ function normalizeRoutineExercise(raw: unknown): RoutineExerciseTemplate | null 
   return {
     name,
     group: normalizedGroup || undefined,
-    target_sets: targetSets,
+    target_sets_min: normalizedSetsMin,
+    target_sets_max: normalizedSetsMax,
     target_reps_min: normalizedRepsMin,
     target_reps_max: normalizedRepsMax,
     rest_seconds: restSeconds,
@@ -473,6 +519,103 @@ function readRoutinesStore(): RoutinesStoreV2 {
 
 function writeRoutinesStore(store: RoutinesStoreV2): void {
   saveJSON(KEY_ROUTINES, normalizeRoutinesStore(store));
+  markRoutinesDirty();
+  scheduleRoutinesPush();
+}
+
+// --- Sync de rutinas con backend (write-through, last-write-wins) ---
+
+export const ROUTINES_HYDRATED_EVENT = "coach-ai:routines-hydrated";
+
+// Marca "hay cambios locales sin pushear". Sobrevive reloads: si el push
+// falla (offline), la próxima hidratación sube lo local en vez de pisarlo.
+const KEY_ROUTINES_DIRTY = "coach_ai_routines_dirty_v1";
+
+let routineSyncEnabled = false;
+let routinePushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function markRoutinesDirty(): void {
+  try {
+    localStorage.setItem(KEY_ROUTINES_DIRTY, "1");
+  } catch {
+    // sin persistencia del flag: el peor caso vuelve a last-write-wins
+  }
+}
+
+function clearRoutinesDirty(): void {
+  try {
+    localStorage.removeItem(KEY_ROUTINES_DIRTY);
+  } catch {
+    // ignorar
+  }
+}
+
+function routinesAreDirty(): boolean {
+  try {
+    return localStorage.getItem(KEY_ROUTINES_DIRTY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function currentScopesForBackend(): Record<string, unknown[]> {
+  const raw = loadJSON<unknown>(KEY_ROUTINES, []);
+  const normalized = normalizeRoutinesStore(raw);
+  return normalized.scopes as unknown as Record<string, unknown[]>;
+}
+
+async function pushRoutinesNow(): Promise<void> {
+  await putRoutineStore(currentScopesForBackend());
+  clearRoutinesDirty();
+}
+
+function scheduleRoutinesPush(): void {
+  if (!routineSyncEnabled) return;
+  if (routinePushTimer !== null) clearTimeout(routinePushTimer);
+  routinePushTimer = setTimeout(() => {
+    routinePushTimer = null;
+    pushRoutinesNow().catch((err) => {
+      console.warn("No se pudo sincronizar rutinas con el backend", err);
+    });
+  }, 1200);
+}
+
+function storeHasRoutines(scopes: Record<string, unknown>): boolean {
+  return Object.values(scopes).some((list) => Array.isArray(list) && list.length > 0);
+}
+
+/**
+ * Trae el store remoto y reconcilia con localStorage.
+ * Prioridad: cambios locales sin pushear (dirty) > remoto no vacío > local no vacío.
+ * El push write-through queda habilitado solo tras hidratar con éxito, para no
+ * pisar datos remotos nuevos con una copia local vieja tras un fallo de red.
+ */
+export async function hydrateRoutinesFromBackend(): Promise<void> {
+  try {
+    const localScopes = currentScopesForBackend();
+
+    if (routinesAreDirty() && storeHasRoutines(localScopes)) {
+      await pushRoutinesNow();
+      routineSyncEnabled = true;
+      return;
+    }
+
+    const remote = await getRoutineStore();
+    const remoteScopes =
+      remote && typeof remote.scopes === "object" && remote.scopes !== null ? remote.scopes : {};
+
+    if (storeHasRoutines(remoteScopes)) {
+      const normalized = normalizeRoutinesStore({ schema: ROUTINES_SCHEMA, scopes: remoteScopes });
+      saveJSON(KEY_ROUTINES, normalized);
+      clearRoutinesDirty();
+      window.dispatchEvent(new CustomEvent(ROUTINES_HYDRATED_EVENT));
+    } else if (storeHasRoutines(localScopes)) {
+      await pushRoutinesNow();
+    }
+    routineSyncEnabled = true;
+  } catch (err) {
+    console.warn("No se pudo hidratar rutinas desde el backend; modo local", err);
+  }
 }
 
 function routineMatchesByIdentity(source: RoutineTemplate, candidate: RoutineTemplate): boolean {

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String
+from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -56,8 +56,10 @@ class UserSettings(Base):
     modules_enabled: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     profile_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     profile_bio: Mapped[str | None] = mapped_column(String(280), nullable=True)
-    profile_achievements: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    profile_medals: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    profile_display_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    profile_birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    profile_gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    profile_height_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False

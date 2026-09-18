@@ -1,157 +1,196 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import ActiveSessionBar from "../components/ActiveSessionBar";
+import Select from "../components/Select";
+import SideMenu, { type MenuGroup } from "../components/SideMenu";
+import Switch from "../components/Switch";
 import UndoBar from "../components/UndoBar";
+import {
+  MEAL_OUTBOX_CHANGED_EVENT,
+  flushMealOutbox,
+  installMealOutboxAutoFlush,
+  mealOutboxCount,
+} from "../lib/nutrition/mealOutbox";
+import {
+  OUTBOX_CHANGED_EVENT,
+  flushSessionOutbox,
+  installSessionOutboxAutoFlush,
+  outboxCount,
+} from "../lib/sessionOutbox";
+import { hydrateRoutinesFromBackend } from "../lib/storage";
 import { useAthleteAccess } from "../state/athlete";
 import { useAuth } from "../state/auth";
-import { usePreferences } from "../state/preferences";
-import { useViewMode, viewModeLabel } from "../state/viewMode";
+import { useViewScopes } from "../state/viewScopes";
 
 type NavItemDef = {
   to: string;
   label: string;
 };
 
-function buildNavItems(mode: "admin" | "coach" | "user_plus" | "user_normal"): NavItemDef[] {
-  if (mode === "admin") {
-    return [
-      { to: "/home", label: "Dashboard" },
-      { to: "/users", label: "Usuarios" },
-      { to: "/session/new", label: "Nueva sesion" },
-      { to: "/measurements", label: "Medidas" },
-      { to: "/exercises", label: "Ejercicios" },
-      { to: "/planning", label: "Planificacion" },
-      { to: "/achievements", label: "Logros" },
-      { to: "/settings", label: "Ajustes" },
-    ];
-  }
-
-  if (mode === "coach") {
-    return [
-      { to: "/home", label: "Dashboard" },
-      { to: "/users", label: "Usuarios" },
-      { to: "/session/new", label: "Nueva sesion" },
-      { to: "/measurements", label: "Medidas" },
-      { to: "/exercises", label: "Ejercicios" },
-      { to: "/planning", label: "Planificacion" },
-      { to: "/history", label: "Historial" },
-      { to: "/routines", label: "Rutinas" },
-      { to: "/achievements", label: "Logros" },
-      { to: "/profile", label: "Perfil" },
-      { to: "/settings", label: "Ajustes" },
-    ];
-  }
-
-  return [
-    { to: "/home", label: "Dashboard" },
-    { to: "/session/new", label: "Nueva sesion" },
-    { to: "/history", label: "Historial" },
-    { to: "/measurements", label: "Medidas" },
-    { to: "/exercises", label: "Ejercicios" },
-    { to: "/planning", label: "Planificacion" },
-    { to: "/routines", label: "Rutinas" },
-    { to: "/achievements", label: "Logros" },
-    { to: "/profile", label: "Perfil" },
-    { to: "/settings", label: "Ajustes" },
-  ];
-}
-
-function Item({ to, label }: { to: string; label: string }) {
-  return (
-    <NavLink to={to} className={({ isActive }) => `navItem ${isActive ? "active" : ""}`} end={to === "/home"}>
-      <span className="navLabel">{label}</span>
-    </NavLink>
-  );
-}
+const NAV_ITEMS: NavItemDef[] = [
+  { to: "/home", label: "Home" },
+  { to: "/diet", label: "Dieta" },
+  { to: "/training", label: "Rutina" },
+  { to: "/predictions", label: "Predicción" },
+  { to: "/profile", label: "Perfil" },
+];
 
 export default function AppShell() {
   const { subjects, athleteId, canSwitch, ready: athleteReady, setAthleteId } = useAthleteAccess();
-  const { prefs, resolvedTheme, toggleTheme } = usePreferences();
-  const { logout } = useAuth();
-  const { viewMode, allowedModes, canSwitchMode, setViewMode } = useViewMode();
+  const { isAdmin, logout } = useAuth();
+  const { adminView, coachView, canAdminView, canCoachView, setAdminView, setCoachView } = useViewScopes();
 
-  const navItems = buildNavItems(viewMode);
-  const themeLabel =
-    prefs.theme === "system" ? `Sistema (${resolvedTheme})` : prefs.theme === "dark" ? "Oscuro" : "Claro";
-  const selectedSubjectLabel = subjects.find((subject) => subject.id === athleteId)?.label || "Sin sujeto";
-  const canSwitchSubject = canSwitch && (viewMode === "coach" || viewMode === "admin");
+  const [pendingUploads, setPendingUploads] = useState(() => outboxCount() + mealOutboxCount());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  useEffect(() => {
+    void hydrateRoutinesFromBackend();
+    installSessionOutboxAutoFlush();
+    void flushSessionOutbox();
+    installMealOutboxAutoFlush();
+    void flushMealOutbox();
+
+    const update = () => setPendingUploads(outboxCount() + mealOutboxCount());
+    window.addEventListener(OUTBOX_CHANGED_EVENT, update);
+    window.addEventListener(MEAL_OUTBOX_CHANGED_EVENT, update);
+    return () => {
+      window.removeEventListener(OUTBOX_CHANGED_EVENT, update);
+      window.removeEventListener(MEAL_OUTBOX_CHANGED_EVENT, update);
+    };
+  }, []);
+
+  const canSwitchSubject = canSwitch && coachView;
+
+  const menuGroups = useMemo<MenuGroup[]>(() => {
+    const profileLinks = [
+      { to: "/profile", label: "Cuenta", end: true },
+      { to: "/profile/progress", label: "Progreso", end: true },
+      { to: "/profile/progress/cargas", label: "Cargas" },
+      { to: "/profile/progress/photos", label: "Fotos" },
+      { to: "/profile/preferences", label: "Ajustes" },
+    ];
+    if (isAdmin && adminView) {
+      profileLinks.push({ to: "/profile/admin", label: "Admin" });
+    }
+
+    const groups: MenuGroup[] = [
+      {
+        title: "Principal",
+        links: [
+          { to: "/home", label: "Home", end: true },
+          { to: "/session/new", label: "Nueva sesión" },
+          { to: "/diet", label: "Dieta" },
+        ],
+      },
+      {
+        title: "Rutina",
+        links: [
+          { to: "/training", label: "Rutinas", end: true },
+          { to: "/training/plan", label: "Programación" },
+          { to: "/training/exercises", label: "Ejercicios" },
+        ],
+      },
+      {
+        title: "Predicción",
+        links: [{ to: "/predictions", label: "Escenarios", end: true }],
+      },
+      { title: "Perfil", links: profileLinks },
+    ];
+
+    if (coachView) {
+      groups.push({
+        title: "Coach",
+        links: [
+          { to: "/users", label: "Usuarios" },
+          { to: "/coach/invite", label: "Invitaciones y cupo" },
+        ],
+      });
+    }
+
+    return groups;
+  }, [adminView, coachView, isAdmin]);
 
   return (
     <div className="shell2">
       <header className="topbar2">
         <div className="topbarRow">
-          <div className="brand2">
-            <div className="brandTitle">Coach AI Engineer</div>
-            <div className="brandSub">seguimiento rapido para decisiones de entrenamiento</div>
+          <div className="hstack compact">
+            <button
+              type="button"
+              className="menuBtn"
+              aria-label="Abrir menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(true)}
+            >
+              <span className="menuBtnBars" aria-hidden="true" />
+            </button>
+            <div className="brandTitle">Alzo</div>
           </div>
 
           <div className="hstack compact topbarActions">
-            {canSwitchMode ? (
-              <div className="toolbarGroup">
-                <label className="smallLabel" htmlFor="view-mode-input">
-                  Vista
-                </label>
-                <select
-                  id="view-mode-input"
-                  className="input athleteInput"
-                  value={viewMode}
-                  onChange={(e) => setViewMode(e.target.value as typeof viewMode)}
-                >
-                  {allowedModes.map((mode) => (
-                    <option key={mode} value={mode}>
-                      {viewModeLabel(mode)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {canAdminView ? (
+              <Switch compact label="Admin" checked={adminView} onChange={setAdminView} />
+            ) : null}
+            {canCoachView ? (
+              <Switch compact label="Coach" checked={coachView} onChange={setCoachView} />
+            ) : null}
+
+            {pendingUploads > 0 ? (
+              <span
+                className="chip"
+                title="Sesiones y comidas guardadas sin conexión; se subirán automáticamente al reconectar."
+              >
+                {pendingUploads} por subir
+              </span>
             ) : null}
 
             {canSwitchSubject ? (
-              <div className="toolbarGroup">
-                <label className="smallLabel" htmlFor="athlete-id-input">
-                  Sujeto
-                </label>
-                <select
-                  id="athlete-id-input"
-                  className="input athleteInput"
-                  value={athleteId}
-                  onChange={(e) => setAthleteId(e.target.value)}
-                  disabled={!athleteReady || subjects.length === 0}
-                >
-                  {subjects.length === 0 ? (
-                    <option value="">Sin sujetos</option>
-                  ) : (
-                    subjects.map((subject) => (
-                      <option key={subject.id} value={subject.id}>
-                        {subject.label}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-            ) : (
-              <span className="chip">{selectedSubjectLabel}</span>
-            )}
-
-            <button type="button" className="btn" onClick={toggleTheme}>
-              Tema: {themeLabel}
-            </button>
-            <button type="button" className="btn" onClick={logout}>
-              Salir
-            </button>
+              <Select
+                ariaLabel="Sujeto"
+                className="athleteInput"
+                value={athleteId}
+                onChange={setAthleteId}
+                disabled={!athleteReady || subjects.length === 0}
+                options={
+                  subjects.length === 0
+                    ? [{ value: "", label: "Sin sujetos" }]
+                    : subjects.map((subject) => ({ value: subject.id, label: subject.label }))
+                }
+              />
+            ) : null}
           </div>
         </div>
-
-        <nav className="topnav2" aria-label="Navegacion principal">
-          {navItems.map((item) => (
-            <Item key={item.to} to={item.to} label={item.label} />
-          ))}
-        </nav>
       </header>
+
+      <SideMenu
+        open={menuOpen}
+        groups={menuGroups}
+        onClose={closeMenu}
+        footer={
+          <button type="button" className="btn ghost btnBlock" onClick={logout}>
+            Salir
+          </button>
+        }
+      />
 
       <main className="content2">
         <Outlet />
       </main>
+
+      <nav className="tabbar" aria-label="Navegacion principal">
+        {NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) => `tabItem ${isActive ? "active" : ""}`}
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
+
       <ActiveSessionBar />
       <UndoBar />
     </div>

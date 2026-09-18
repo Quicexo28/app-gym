@@ -72,7 +72,10 @@ class ExerciseExportItem(BaseModel):
 
 
 class ExerciseExportResponse(BaseModel):
-    schema: Literal["coach_ai_exercise_catalog_global_v1"]
+    # "schema" sombrea un atributo de BaseModel; se expone via alias.
+    schema_version: Literal["coach_ai_exercise_catalog_global_v1"] = Field(
+        serialization_alias="schema"
+    )
     exported_at_utc: str
     total: int
     items: list[ExerciseExportItem]
@@ -362,7 +365,7 @@ def export_global_catalog(
         for row in ordered
     ]
     return ExerciseExportResponse(
-        schema="coach_ai_exercise_catalog_global_v1",
+        schema_version="coach_ai_exercise_catalog_global_v1",
         exported_at_utc=datetime.now(UTC).isoformat(),
         total=len(items),
         items=items,
