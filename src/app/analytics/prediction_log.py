@@ -18,6 +18,7 @@ from coach_ai.insights import AthleteInsights
 from coach_ai.training_core.schema import Session
 
 KIND_NEXT_TOP_SET = "next_top_set"
+KIND_LOAD_SIGNAL = "load_signal"
 
 
 def record_predictions(db: DbSession, insights: AthleteInsights) -> int:
@@ -39,6 +40,26 @@ def record_predictions(db: DbSession, insights: AthleteInsights) -> int:
             )
         )
         written += 1
+
+    # Las señales tambien se registran: son reglas sin validar, y la unica
+    # forma de saber si dicen algo util es contrastar la carga de referencia que
+    # mostraron con lo que el atleta movio despues.
+    for signal in insights.signals:
+        if signal.reference_load_kg is None:
+            continue
+        db.add(
+            PredictionLog(
+                athlete_id=insights.athlete_id,
+                created_at_utc=insights.generated_at,
+                kind=KIND_LOAD_SIGNAL,
+                exercise_name=signal.exercise,
+                method=f"signal:{signal.kind}",
+                predicted_value=signal.reference_load_kg,
+                context={"rule": signal.rule, "evidence": signal.evidence},
+            )
+        )
+        written += 1
+
     return written
 
 
@@ -108,11 +129,18 @@ def coverage_report(db: DbSession, athlete_id: str) -> dict:
     if not rows:
         return {"resueltas": 0}
 
-    errors = [abs(r.predicted_value - r.actual_value) for r in rows if r.actual_value is not None]
-    inside = [r.inside_interval for r in rows if r.inside_interval is not None]
+    predictions = [r for r in rows if r.kind == KIND_NEXT_TOP_SET]
+    signals = [r for r in rows if r.kind == KIND_LOAD_SIGNAL and r.actual_value is not None]
+    errors = [
+        abs(r.predicted_value - r.actual_value) for r in predictions if r.actual_value is not None
+    ]
+    inside = [r.inside_interval for r in predictions if r.inside_interval is not None]
+    matched = [r for r in signals if r.actual_value >= r.predicted_value - 0.01]
 
     return {
         "resueltas": len(rows),
+        "senales_resueltas": len(signals),
+        "senales_que_coincidieron": (len(matched) / len(signals)) if signals else None,
         "mae_kg": (sum(errors) / len(errors)) if errors else None,
         "cobertura_intervalo": (sum(1 for x in inside if x) / len(inside)) if inside else None,
         "cobertura_objetivo": rows[0].coverage,
