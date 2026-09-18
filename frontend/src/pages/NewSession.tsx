@@ -1513,7 +1513,7 @@ export default function NewSession() {
             average_score_1_10: Number(((sleepScore + stressScore + sensationScore) / 3).toFixed(2)),
           },
           capture_protocol: {
-            versión: "session_capture_v2",
+            version: "session_capture_v2",
             voice_ready: ENABLE_OFFLINE_VOICE_CAPTURE,
             voice: {
               enabled: ENABLE_OFFLINE_VOICE_CAPTURE && voiceAssistDesktopEnabled,
