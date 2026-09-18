@@ -49,7 +49,7 @@ export default function Predictions() {
     <div className="container stack">
       <header className="titleBlock">
         <h1>Predicción</h1>
-        <p>Escenarios calculados sobre tus datos, con incertidumbre explicita.</p>
+        <p>Qué dice tu historial: próximas series, marcas y avisos con su regla.</p>
       </header>
 
       {error ? <section className="message error">{error}</section> : null}
@@ -57,18 +57,18 @@ export default function Predictions() {
       <section className="surface">
         <div className="quickActions">
           <button className="btn primary" onClick={runNow} disabled={busy || !athleteId}>
-            {busy ? "Calculando..." : "Calcular escenarios"}
+            {busy ? "Calculando..." : "Analizar mi historial"}
           </button>
         </div>
       </section>
 
       <section className="surface">
         <div className="sectionHead">
-          <h3>Calculos recientes</h3>
+          <h3>Análisis recientes</h3>
         </div>
 
         {runs.length === 0 ? (
-          <div className="emptyState">Sin calculos todavía.</div>
+          <div className="emptyState">Todavía no has analizado tu historial.</div>
         ) : (
           <div className="stack compactStack" style={{ marginTop: 10 }}>
             {runs.map((r) => (

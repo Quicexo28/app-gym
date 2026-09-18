@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
+from app.analytics.prediction_log import coverage_report, record_predictions, resolve_pending
 from app.auth.athlete_access import require_athlete_access
 from app.auth.deps import get_current_user
 from app.db.engine import get_db
@@ -16,6 +17,7 @@ from app.db.models_auth import User
 from app.db.repo import list_sessions_for_athlete
 from coach_ai.e2e import EndToEndConfig, run_end_to_end
 from coach_ai.e2e.versioning import ENGINE_VERSION, fingerprint_config
+from coach_ai.insights import build_insights
 
 DbSession = Annotated[Session, Depends(get_db)]
 
@@ -47,6 +49,13 @@ def run_pipeline_for_athlete(
 
     res = run_end_to_end(sessions, config=cfg)
 
+    # Capa nueva: descripcion + eventos con su regla + prediccion con intervalo.
+    # Se registra cada prediccion y se cierran las que ya tienen respuesta, para
+    # poder medir el motor contra lo que el usuario vio y no solo en backtest.
+    insights = build_insights(sessions, athlete_id=athlete_id)
+    resolve_pending(db, athlete_id, sessions)
+    record_predictions(db, insights)
+
     cfg_dict = asdict(cfg)
     fp = fingerprint_config(cfg_dict)
 
@@ -62,6 +71,7 @@ def run_pipeline_for_athlete(
         latents=jsonable_encoder(res.latents),
         suggestions=jsonable_encoder(res.suggestions),
         issues=jsonable_encoder([i.to_dict() for i in res.issues]),
+        insights=jsonable_encoder(insights),
     )
     db.add(row)
     db.commit()
@@ -98,6 +108,7 @@ def get_run(
         "latents": row.latents,
         "suggestions": row.suggestions,
         "issues": row.issues,
+        "insights": row.insights,
     }
 
 
@@ -157,4 +168,6 @@ def get_run_summary(
         "confidence_last": last_point.get("confidence"),
         "issues_by_code": issues_by_code,
         "summary": row.summary,
+        "insights": row.insights,
+        "prediction_track_record": coverage_report(db, row.athlete_id),
     }

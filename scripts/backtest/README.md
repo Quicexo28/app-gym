@@ -282,6 +282,47 @@ puntual falso, pero hay que presentarlo bien.
    fitness-fatigue, GBM) hace falta **más datos y mejores señales**: RPE real por
    serie y wellness, que solo van a llegar de usuarios de Alzo.
 
+---
+
+# Dosis-respuesta: ¿cuánta fuerza gano según lo que entreno? (`dose_response.py`)
+
+El objetivo que pidió el producto. No es pronóstico de una serie temporal: es
+**respuesta condicionada a la dosis**, donde la variable explicativa (cuánto
+entrenas) es una acción del usuario.
+
+Unidad: bloques de 4 semanas. `X` = dosis del bloque *k* (series duras/semana,
+frecuencia, esfuerzo, nivel de partida), `y` = cambio de e1RM (%) del ejercicio
+principal entre el bloque *k* y el *k+1*. Modelo multinivel: efecto poblacional
+(ridge) + intercepto por atleta encogido `n/(n+k)`.
+
+## Resultado (291 bloques, 29 atletas)
+
+| Escenario | Modelo | Predecir 0 | Media poblacional | Media del atleta |
+|---|---|---|---|---|
+| Cold start (atleta nuevo) | 8.46 % | 8.38 % | **8.30 %** | — |
+| Personalizado (último bloque) | 7.94 % | **7.18 %** | — | 9.82 % |
+
+**Coeficiente dosis → ganancia: +0.019, IC95 % bootstrap [−0.011, +0.057].
+Correlación simple: 0.065.**
+
+El intervalo cruza el cero. El signo es el que dice la literatura (más series →
+más ganancia) y la magnitud es plausible, pero **con 29 atletas no hay potencia
+para afirmarlo**: el cambio de e1RM por bloque tiene σ = 17.9 %, y el efecto
+buscado es de pocos puntos porcentuales.
+
+Se probaron dos correcciones de análisis, ambas peores: e1RM robusto (mediana de
+los tres mejores, σ subió a 19.1 %) y bloques de 8 semanas (σ 27.4 %).
+
+Para que el IC no cruce cero haría falta reducir el error estándar a la mitad:
+**del orden de 120 atletas con ~10 bloques cada uno**. El bootstrap es por
+atleta, no por fila, porque los bloques de una misma persona no son
+independientes.
+
+**Por eso el modelo no se enchufó como predictor.** Lo que sí se aplicó es la
+capa honesta (`coach_ai.insights`) y el registro de predicciones, que es lo que
+permitirá repetir esta medición con datos propios y prescripción real — que los
+logs públicos no tienen.
+
 ## Pendiente
 
 - Más atletas de GoldenCheetah (hay 6614; aquí se usaron 25 descargas).
