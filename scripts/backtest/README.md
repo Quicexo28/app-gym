@@ -6,6 +6,7 @@ Dos datasets, dos regímenes:
 |---|---|---|---|
 | `opl_backtest.py` | OpenPowerlifting | Competencias separadas por meses | Fuera del dominio del motor |
 | `gc_backtest.py` + `gc_fetch.py` | GoldenCheetah OpenData | Sesiones diarias durante años | **Dentro** del dominio del motor |
+| `gym_backtest.py` + `gym_fetch.py` | Logs de Strong/FitNotes publicados en GitHub | Gimnasio, sesión a sesión | **Dominio exacto de Alzo** |
 
 Sembrar datos sintéticos solo prueba que el pipeline corre. Para saber si el
 motor **predice** hay que darle un prefijo de una historia real y comparar lo que
@@ -135,10 +136,77 @@ para el rendimiento futuro.
 - El 20mCP de una ventana depende de que el atleta haya hecho un esfuerzo duro
   en esos 28 días; es una medida ruidosa de forma.
 
-## Siguiente paso
+---
 
-- Fuerza con logs por sesión: [721 Weight Training Workouts](https://www.kaggle.com/datasets/joep89/weightlifting)
+# Logs reales de gimnasio (Strong / FitNotes)
+
+No existe —a septiembre de 2026— un dataset público grande de entrenamiento de
+fuerza sesión a sesión. Lo que sí hay son **exports personales que sus dueños
+subieron a repos públicos**. `gym_fetch.py` los busca por la cabecera exacta de
+cada exportador, descarta plantillas de ejemplo y se queda con los historiales
+de ≥ 40 días distintos.
+
+```bash
+python scripts/backtest/gym_fetch.py --out /tmp/gymlogs   # necesita `gh` autenticado
+python scripts/backtest/gym_backtest.py /tmp/gymlogs
+```
+
+Cosecha de 2026-09-18: **28 logs útiles**, de 41 a 256 días de entreno cada uno.
+Los CSV son de terceros: se descargan al vuelo, **no** se guardan en este repo.
+
+Este es el test que de verdad importa para Alzo: mismos datos que registra la
+app (fecha, ejercicio, series, repeticiones, peso) y la misma métrica que muestra
+(`volume_load_kg`).
+
+- **E1 — volumen futuro**: dirección de tendencia contra el volumen real de las 4
+  semanas siguientes.
+- **E2 — fuerza futura**: 1RM estimado (Epley) del ejercicio principal del atleta
+  en los 28 días siguientes contra los 28 anteriores.
+
+## Resultado (27 atletas, 343 evaluaciones)
+
+| | Motor (todas) | Motor (comprometido) | Clase mayoritaria | Persistencia |
+|---|---|---|---|---|
+| E1 volumen | 30.9 % | 31.6 % | **42.0 %** | — |
+| E2 fuerza (1RM est.) | 35.9 % | 36.7 % (n=335) | **53.4 %** | 38.2 % |
+
+`plateau` contra "no hubo mejora": Brier **0.375** frente a **0.235** de predecir
+la prevalencia; **AUC 0.460**, por debajo del azar.
+
+Aquí el motor sí reparte sus etiquetas (up 81 / stable 171 / down 83 / volatile
+8), o sea que el problema no es que se quede mudo: es que **cuando habla, acierta
+menos que decir siempre "va a subir"**, que es lo que pasa el 53 % de las veces.
+
+## Los tres experimentos, juntos
+
+| Dataset | Régimen | Motor | Mejor baseline trivial |
+|---|---|---|---|
+| OpenPowerlifting | Competencias, meses aparte | 44.3 % | 44.1 % (constante) |
+| GoldenCheetah | Ciclismo, diario | 33.9 % | 40.3 % |
+| Strong/FitNotes | **Gimnasio, sesión a sesión** | 36.7 % | 53.4 % |
+
+En los tres, la probabilidad de estancamiento tiene AUC entre 0.46 y 0.59 (azar
+= 0.50) y un Brier peor que predecir la tasa base. El patrón se repite fuera y
+dentro del dominio, con dos deportes y tres fuentes independientes.
+
+## Qué hacer con esto
+
+No es que el pipeline esté roto: corre, no explota y las cuentas son las que
+dice el código. Es que **no informa una decisión**. Opciones, de menos a más
+trabajo:
+
+1. Dejar de presentar `plateau`/`fatiga`/`disposición` como porcentajes con
+   pinta de predicción y describirlos como lo que son: descriptores del pasado
+   reciente.
+2. Calibrar los umbrales y la sigmoide contra estos backtests (hay 6614 atletas
+   en GoldenCheetah y 28 logs de gimnasio ya descargables) y volver a medir.
+3. Sustituir la capa de latentes por un modelo entrenado y validado con estos
+   mismos datos, con la barra puesta en superar la clase mayoritaria.
+
+## Pendiente
+
+- Más atletas de GoldenCheetah (hay 6614; aquí se usaron 25 descargas).
+- [721 Weight Training Workouts](https://www.kaggle.com/datasets/joep89/weightlifting)
   (Kaggle, 3 años de un sujeto) — necesita credenciales de Kaggle.
 - Datos individuales abiertos de estudios en OSF, p. ej. el ensayo replicado
   intra-sujeto de volumen ([osf.io/aw5zx](https://osf.io/aw5zx)).
-- Más atletas de GoldenCheetah (hay 6614; aquí se usaron 25 descargas).
