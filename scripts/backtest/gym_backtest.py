@@ -52,6 +52,9 @@ class SetRow:
     exercise: str
     weight_kg: float
     reps: int
+    # Strong exporta una columna RPE que casi nadie llena; cuando esta, es la
+    # unica senal subjetiva disponible en estos logs.
+    rpe: float | None = None
 
 
 def _num(value: str | None) -> float | None:
@@ -75,6 +78,7 @@ def parse_log(path: Path) -> list[SetRow]:
     date_col = fields.get("Date")
     reps_col = fields.get("Reps")
     weight_col = fields.get("Weight") or fields.get("Weight (kgs)") or fields.get("Weight (lbs)")
+    rpe_col = fields.get("RPE") or fields.get("RIR")
     if not (exercise_col and date_col and reps_col and weight_col):
         return []
     to_kg = LB_TO_KG if weight_col.endswith("(lbs)") else 1.0
@@ -89,7 +93,8 @@ def parse_log(path: Path) -> list[SetRow]:
             continue
         if reps <= 0 or weight < 0:
             continue
-        rows.append(SetRow(day, exercise, weight * to_kg, int(reps)))
+        rpe = _num(raw.get(rpe_col)) if rpe_col else None
+        rows.append(SetRow(day, exercise, weight * to_kg, int(reps), rpe if rpe else None))
     rows.sort(key=lambda r: (r.day, r.exercise))
     return rows
 
