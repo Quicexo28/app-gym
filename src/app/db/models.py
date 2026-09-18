@@ -377,6 +377,52 @@ class Run(Base):
     latents: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     suggestions: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     issues: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Capa nueva: descripcion + eventos con su regla + prediccion con intervalo.
+    # Convive con las anteriores mientras se migra la UI.
+    insights: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class PredictionLog(Base):
+    """Cada prediccion que la app muestra, con lo que paso despues.
+
+    Sin esto no hay forma de saber si el motor sirve: los backtests miden el
+    pasado, este registro mide lo que el usuario realmente vio. `resolved_at_utc`
+    y `actual_value` se llenan cuando llega la sesion que la contesta.
+    """
+
+    __tablename__ = "prediction_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    athlete_id: Mapped[str] = mapped_column(
+        ForeignKey("athletes.athlete_id"), index=True, nullable=False
+    )
+    created_at_utc: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    exercise_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    method: Mapped[str] = mapped_column(String(80), nullable=False)
+
+    predicted_value: Mapped[float] = mapped_column(Float, nullable=False)
+    interval_low: Mapped[float | None] = mapped_column(Float, nullable=True)
+    interval_high: Mapped[float | None] = mapped_column(Float, nullable=True)
+    coverage: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    resolved_at_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    actual_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    inside_interval: Mapped[bool | None] = mapped_column(nullable=True)
+
+    __table_args__ = (
+        Index("ix_prediction_logs_athlete_kind", "athlete_id", "kind"),
+        Index("ix_prediction_logs_pending", "athlete_id", "resolved_at_utc"),
+    )
 
 
 class ExerciseCatalog(Base):

@@ -150,6 +150,61 @@ export type RunScenario = {
   levers: JsonObject;
 };
 
+/** Estado descriptivo de un ejercicio: hechos, sin modelo. */
+export type ExerciseState = {
+  name: string;
+  sessions: number;
+  last_top_load_kg: number;
+  best_top_load_kg: number;
+  e1rm_kg: number;
+  best_e1rm_kg: number;
+  last_session_at: string;
+  days_since_last: number;
+  sets_last_4w: number;
+};
+
+/** Evento detectado, con la regla que lo detecto (auditable por el atleta). */
+export type TrainingEvent = {
+  kind: "personal_record" | "stall" | "dropped_exercise" | "volume_drop";
+  exercise: string | null;
+  at: string;
+  detail: string;
+  rule: string;
+};
+
+/**
+ * Proxima serie tope. El valor puntual es el ultimo tope: ningun modelo ajustado
+ * le gano en los backtests (6.14 kg de error contra 6.44 kg del mejor). Lo que
+ * aporta el motor es el intervalo, medido con 92.8% de cobertura real.
+ */
+export type NextSetPrediction = {
+  exercise: string;
+  point_kg: number;
+  low_kg: number;
+  high_kg: number;
+  coverage: number;
+  basis_sessions: number;
+  method: string;
+};
+
+export type AthleteInsights = {
+  athlete_id: string;
+  generated_at: string;
+  exercises: ExerciseState[];
+  events: TrainingEvent[];
+  predictions: NextSetPrediction[];
+  abstained: string[];
+  weekly_sets_by_group: Record<string, number>;
+  sessions_last_4w: number;
+};
+
+export type PredictionTrackRecord = {
+  resueltas: number;
+  mae_kg?: number | null;
+  cobertura_intervalo?: number | null;
+  cobertura_objetivo?: number | null;
+};
+
 export type RunSummaryResponse = {
   run_id: string;
   athlete_id: string;
@@ -160,6 +215,8 @@ export type RunSummaryResponse = {
   confidence_last: number | null;
   issues_by_code: Record<string, number>;
   summary: JsonObject;
+  insights?: AthleteInsights | null;
+  prediction_track_record?: PredictionTrackRecord | null;
 };
 
 export type AccessibleSubject = {
