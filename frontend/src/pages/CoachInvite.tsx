@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -13,6 +14,9 @@ import {
   type CoachInvite as CoachInviteData,
 } from "../api";
 import { useViewScopes } from "../state/viewScopes";
+
+// Nativo: la suscripcion no se gestiona desde la app (Apple 3.1.1 / Google Play Payments).
+const isNativeApp = Capacitor.isNativePlatform();
 
 export default function CoachInvite() {
   const { coachView } = useViewScopes();
@@ -44,6 +48,12 @@ export default function CoachInvite() {
   useEffect(() => {
     const checkout = searchParams.get("checkout");
     if (!checkout) return;
+    if (isNativeApp) {
+      const cleaned = new URLSearchParams(searchParams);
+      cleaned.delete("checkout");
+      setSearchParams(cleaned, { replace: true });
+      return;
+    }
     setInfo(checkout === "success" ? "Pago confirmado." : "Pago cancelado.");
     void refresh();
     const next = new URLSearchParams(searchParams);
@@ -54,10 +64,13 @@ export default function CoachInvite() {
 
   async function copyInviteLink() {
     if (!invite) return;
-    const link = `${window.location.origin}/coach/invite?code=${encodeURIComponent(invite.invite_code)}`;
+    // Nativo: el origin es https://localhost o capacitor://localhost; un link asi no sirve fuera de la app.
+    const link = isNativeApp
+      ? invite.invite_code
+      : `${window.location.origin}/coach/invite?code=${encodeURIComponent(invite.invite_code)}`;
     try {
       await navigator.clipboard.writeText(link);
-      setInfo("Link copiado.");
+      setInfo(isNativeApp ? "Código copiado." : "Link copiado.");
     } catch {
       setInfo(`Código: ${invite.invite_code}`);
     }
@@ -172,7 +185,7 @@ export default function CoachInvite() {
             </div>
             <div className="quickActions">
               <button className="btn" onClick={() => void copyInviteLink()} disabled={busy}>
-                Copiar link
+                {isNativeApp ? "Copiar código" : "Copiar link"}
               </button>
               <button className="btn" onClick={() => void rotateCode()} disabled={busy}>
                 Regenerar código
@@ -188,7 +201,9 @@ export default function CoachInvite() {
               <h3>Plan coach</h3>
               <p>Estado: {billing?.status === "active" ? "activo" : billing?.status === "past_due" ? "pago pendiente" : "sin activar"}</p>
             </div>
-            {!billing?.has_subscription ? (
+            {isNativeApp ? (
+              <p className="small">La suscripción no se gestiona desde la app.</p>
+            ) : !billing?.has_subscription ? (
               <div className="quickActions">
                 <button className="btn primary" onClick={() => void activatePlan()} disabled={busy}>
                   Activar plan coach

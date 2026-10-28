@@ -50,6 +50,10 @@ export default function Predictions() {
       <header className="titleBlock">
         <h1>Predicción</h1>
         <p>Qué dice tu historial: próximas series, marcas y avisos con su regla.</p>
+        <p className="small">
+          Son estimaciones con incertidumbre, no consejo médico. Ante dolor, lesión o una condición de salud,
+          consulta a un profesional.
+        </p>
       </header>
 
       {error ? <section className="message error">{error}</section> : null}

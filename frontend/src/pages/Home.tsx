@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -31,6 +32,8 @@ import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import { useViewScopes } from "../state/viewScopes";
 import { APP_LOCALE, formatDateTime } from "../lib/locale";
+
+const isNativeApp = Capacitor.isNativePlatform();
 
 const REPORT_KIND_LABEL: Record<CoachReportItem["kind"], string> = {
   session_completed: "completó una sesión",
@@ -601,7 +604,8 @@ export default function Home() {
       ) : null}
 
       {!coachView ? (
-        <div className="homeSplit">
+        <div className="homeSplit" style={isNativeApp ? { gridTemplateColumns: "1fr" } : undefined}>
+          {!isNativeApp ? (
           <button type="button" className="surface cardButton stepsCard" onClick={() => nav("/steps")}>
             <div className="sectionHead homeHead">
               <h3>Pasos</h3>
@@ -614,6 +618,7 @@ export default function Home() {
             </div>
             <ChartPlaceholder variant="bars" height={56} caption={null} />
           </button>
+          ) : null}
 
           <button type="button" className="surface cardButton weightCard" onClick={() => nav("/profile/progress")}>
             <div className="sectionHead homeHead">

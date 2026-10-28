@@ -2,6 +2,7 @@
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { installAndroidBackButton } from "./lib/nativeBackButton";
 import { ActiveSessionProvider } from "./state/activeSession";
 import { AthleteProvider } from "./state/athlete";
@@ -16,23 +17,25 @@ installAndroidBackButton();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <AuthProvider>
-      <ViewScopesProvider>
-        <AthleteProvider>
-          <PreferencesProvider>
-            <ExerciseCatalogProvider>
-              <UndoProvider>
-                <ActiveSessionProvider>
-                  <BrowserRouter>
-                    <App />
-                  </BrowserRouter>
-                </ActiveSessionProvider>
-              </UndoProvider>
-            </ExerciseCatalogProvider>
-          </PreferencesProvider>
-        </AthleteProvider>
-      </ViewScopesProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ViewScopesProvider>
+          <AthleteProvider>
+            <PreferencesProvider>
+              <ExerciseCatalogProvider>
+                <UndoProvider>
+                  <ActiveSessionProvider>
+                    <BrowserRouter>
+                      <App />
+                    </BrowserRouter>
+                  </ActiveSessionProvider>
+                </UndoProvider>
+              </ExerciseCatalogProvider>
+            </PreferencesProvider>
+          </AthleteProvider>
+        </ViewScopesProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 );
 
