@@ -248,14 +248,14 @@ def join_mineral_rows(
 
     result: dict[str, MineralRow] = {}
     leftover_codigos: list[str] = []
-    for codigo, num in zip(page_codigos, expected_nums):
+    for codigo, num in zip(page_codigos, expected_nums, strict=False):
         if num in by_num:
             result[codigo] = by_num[num]
         else:
             leftover_codigos.append(codigo)
     # Positional fallback, in order, only for what neither side could
     # confidently match by code.
-    for codigo, m in zip(leftover_codigos, unmatched):
+    for codigo, m in zip(leftover_codigos, unmatched, strict=False):
         result[codigo] = m
     return result
 
@@ -379,7 +379,7 @@ def run() -> dict[str, object]:
             page_rejected = 0
             page_reasons: Counter[str] = Counter()
 
-            for prow, codigo in zip(proximal_rows, page_codigos):
+            for prow, codigo in zip(proximal_rows, page_codigos, strict=False):
                 stats["extracted"] += 1
 
                 override = overrides.get(codigo)
