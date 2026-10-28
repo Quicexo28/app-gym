@@ -20,6 +20,17 @@ class Settings(BaseSettings):
         r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?"
     )
     google_client_id: str | None = None
+    # Client ID OAuth tipo "iOS": en la app iOS el idToken de Google trae este `aud`.
+    google_ios_client_id: str | None = None
+
+    # Sign in with Apple: `aud` aceptados en el identity token (bundle ID de la app iOS
+    # y, si algun dia hay login web, el Services ID). En env va como JSON.
+    apple_client_ids: list[str] = ["com.santiagoquiceno.alzo"]
+    # Opcionales: canjear el authorization_code por refresh_token y revocarlo al borrar
+    # la cuenta (exigido por Apple). APPLE_PRIVATE_KEY es el .p8 (PEM; admite "\n").
+    apple_team_id: str | None = None
+    apple_key_id: str | None = None
+    apple_private_key: str | None = None
 
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None

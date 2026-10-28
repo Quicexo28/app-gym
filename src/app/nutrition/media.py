@@ -15,6 +15,9 @@ Reglas de seguridad (sección 5/7 de docs/modulo-dieta.md):
 from __future__ import annotations
 
 import io
+import shutil
+import uuid
+from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
@@ -72,3 +75,15 @@ def validate_and_reencode(data: bytes, content_type: str | None) -> bytes:
     buffer = io.BytesIO()
     rgb_image.save(buffer, format="JPEG", quality=JPEG_QUALITY)
     return buffer.getvalue()
+
+
+def remove_food_photos(media_root: str | Path, product_id: uuid.UUID) -> None:
+    """Borra la carpeta de fotos de un alimento (`<media_root>/food/<uuid>/`).
+
+    Mismo layout que `diet._media_food_dir`; la ruta sale de un UUID, nunca de
+    texto del cliente. Si la carpeta no existe no hace nada; otros `OSError` suben.
+    """
+    try:
+        shutil.rmtree(Path(media_root) / "food" / str(product_id))
+    except FileNotFoundError:
+        return

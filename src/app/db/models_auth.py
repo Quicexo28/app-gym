@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, String
+from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,6 +22,9 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
     phone_number: Mapped[str | None] = mapped_column(String(24), unique=True, index=True, nullable=True)
     google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    apple_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    # Refresh token de Sign in with Apple: solo sirve para revocarlo al borrar la cuenta.
+    apple_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
 
     role: Mapped[Role] = mapped_column(
@@ -32,6 +35,11 @@ class User(Base):
     )
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Consentimiento al crear la cuenta (Ley 1581): version de Terminos/Politica aceptada y
+    # cuando (hora del servidor). NULL = cuenta creada sin registro de consentimiento.
+    legal_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    legal_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False

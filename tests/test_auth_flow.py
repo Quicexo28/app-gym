@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 import app.api.v1.endpoints.auth as auth_endpoint
 from app.api.v1.endpoints.auth import GoogleLoginRequest, LoginRequest, RegisterRequest
@@ -193,3 +195,50 @@ def test_guest_login_is_disabled_in_prod(monkeypatch: pytest.MonkeyPatch) -> Non
 
     assert exc.value.status_code == 403
     assert exc.value.detail == "Guest login is disabled in production."
+
+
+def test_register_records_legal_consent_with_server_time() -> None:
+    db = FakeDb()
+    before = datetime.now(UTC)
+
+    auth_endpoint.register(
+        RegisterRequest(email="new@example.com", password="Password123", accepted_legal_version="2026-10-28"),
+        db,
+    )
+
+    [user] = db.users
+    assert user.legal_version == "2026-10-28"
+    assert before <= user.legal_accepted_at <= datetime.now(UTC)
+
+
+def test_register_from_old_client_without_legal_version_records_no_consent() -> None:
+    db = FakeDb()
+
+    auth_endpoint.register(RegisterRequest(email="old@example.com", password="Password123"), db)
+
+    [user] = db.users
+    assert user.legal_version is None
+    assert user.legal_accepted_at is None
+
+
+def test_register_rejects_malformed_legal_version() -> None:
+    with pytest.raises(ValidationError):
+        RegisterRequest(email="x@example.com", password="Password123", accepted_legal_version="<b>2026</b>")
+
+
+def test_google_records_legal_consent_only_when_creating_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    existing = _make_user(email="old@example.com")
+    db = FakeDb(users=[existing])
+    identities = iter([("new@example.com", "g-sub-new"), ("old@example.com", "g-sub-old")])
+    monkeypatch.setattr(auth_endpoint, "_validate_google_identity", lambda _token: next(identities))
+
+    auth_endpoint.google_login(GoogleLoginRequest(id_token="x" * 32, accepted_legal_version="2026-10-28"), db)
+    auth_endpoint.google_login(GoogleLoginRequest(id_token="x" * 32, accepted_legal_version="2026-10-28"), db)
+
+    created = next(u for u in db.users if u.email == "new@example.com")
+    assert created.legal_version == "2026-10-28"
+    assert created.legal_accepted_at is not None
+    # Vincular Google a una cuenta existente no inventa un consentimiento que no se dio al crearla.
+    assert existing.google_sub == "g-sub-old"
+    assert existing.legal_version is None
+    assert existing.legal_accepted_at is None
