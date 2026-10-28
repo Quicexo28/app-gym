@@ -50,5 +50,7 @@ cd frontend && npm test
 
 - [docs/docker-production.md](docs/docker-production.md) — despliegue en producción.
 - [docs/publicacion-android.md](docs/publicacion-android.md) — publicación en Google Play.
+- [docs/publicacion-ios.md](docs/publicacion-ios.md) — publicación en App Store (cuentas, firma, privacidad, App Review).
+- [docs/ficha-tiendas.md](docs/ficha-tiendas.md) — textos de la ficha para App Store y Google Play.
 - [docs/modulo-dieta.md](docs/modulo-dieta.md) — módulo de dieta y pipeline TCAC.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — principios no negociables.
