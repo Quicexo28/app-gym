@@ -51,7 +51,11 @@ class CoachBilling(Base):
     stripe_seat_item_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     extra_seats: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[CoachBillingStatus] = mapped_column(
-        Enum(CoachBillingStatus, name="coach_billing_status_enum"),
+        Enum(
+            CoachBillingStatus,
+            name="coach_billing_status_enum",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
         nullable=False,
         default=CoachBillingStatus.NONE,
     )
