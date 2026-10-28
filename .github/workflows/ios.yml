@@ -1,0 +1,83 @@
+# Compila un .ipa SIN FIRMAR para pruebas en iPhone.
+# La firma e instalacion se hacen en Linux con xtool: `xtool install Alzo-unsigned.ipa`.
+#
+# Variables del repo (Settings > Secrets and variables > Actions > Variables):
+#   VITE_API_BASE_URL       URL publica HTTPS del backend (obligatoria)
+#   VITE_GOOGLE_CLIENT_ID   OAuth client ID web de Google
+#   VITE_GOOGLE_IOS_CLIENT_ID OAuth client ID iOS de Google (xxx.apps.googleusercontent.com)
+#   GOOGLE_IOS_URL_SCHEME   client ID iOS invertido (com.googleusercontent.apps.xxx);
+#                           va al CFBundleURLTypes del Info.plist, sin el Google Sign-In nativo falla
+#   VITE_ENABLE_GUEST_LOGIN true/false (opcional, por defecto false)
+#   VITE_LEGAL_CONTACT_EMAIL, VITE_LEGAL_OWNER_NAME  contacto y responsable de /legal/*
+name: iOS (ipa sin firmar)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["ios-v*"]
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+      VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+      VITE_GOOGLE_IOS_CLIENT_ID: ${{ vars.VITE_GOOGLE_IOS_CLIENT_ID }}
+      VITE_ENABLE_GUEST_LOGIN: ${{ vars.VITE_ENABLE_GUEST_LOGIN || 'false' }}
+      VITE_ENABLE_OFFLINE_VOICE_CAPTURE: "true"
+      VITE_LEGAL_CONTACT_EMAIL: ${{ vars.VITE_LEGAL_CONTACT_EMAIL }}
+      VITE_LEGAL_OWNER_NAME: ${{ vars.VITE_LEGAL_OWNER_NAME }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Comprobar variables
+        run: |
+          if [ -z "$VITE_API_BASE_URL" ]; then
+            echo "::error::Falta la variable VITE_API_BASE_URL: sin ella la app no tiene red."
+            exit 1
+          fi
+          if [ -z "${{ vars.GOOGLE_IOS_URL_SCHEME }}" ] || [ -z "$VITE_GOOGLE_IOS_CLIENT_ID" ]; then
+            echo "::warning::Faltan GOOGLE_IOS_URL_SCHEME o VITE_GOOGLE_IOS_CLIENT_ID: el login con Google en iOS no funcionara."
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      # tsc -b frontend/tsconfig.json tambien compila los *.test.ts: necesita vitest de frontend/.
+      - run: npm ci
+      - run: npm ci --prefix frontend
+
+      # Web en modo mobile + cap sync ios (incluye pod install).
+      - run: npm run build:mobile:ios
+
+      - name: xcodebuild (sin firma)
+        run: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            GOOGLE_IOS_URL_SCHEME="${{ vars.GOOGLE_IOS_URL_SCHEME }}" \
+            build
+
+      - name: Empaquetar ipa
+        run: |
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/App.app" "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/Alzo-unsigned.ipa" Payload)
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ipa
+          path: Alzo-unsigned.ipa
+          retention-days: 14

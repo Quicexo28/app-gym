@@ -2,6 +2,7 @@
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { installAndroidBackButton } from "./lib/nativeBackButton";
 import { ActiveSessionProvider } from "./state/activeSession";
 import { AthleteProvider } from "./state/athlete";
 import { AuthProvider } from "./state/auth";
@@ -10,6 +11,8 @@ import { PreferencesProvider } from "./state/preferences";
 import { UndoProvider } from "./state/undo";
 import { ViewScopesProvider } from "./state/viewScopes";
 import "./styles.css";
+
+installAndroidBackButton();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
