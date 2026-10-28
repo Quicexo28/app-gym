@@ -1,11 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import type { CSSProperties } from "react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
 
 import { ApiError } from "../api";
+import { LEGAL_ROUTES, LEGAL_VERSION } from "../lib/legal";
 import { useAuth } from "../state/auth";
 
 const isNativeApp = Capacitor.isNativePlatform();
+// Sign in with Apple solo en la app iOS (App Store 4.8: si hay Google, debe haber Apple).
+const isIosApp = isNativeApp && Capacitor.getPlatform() === "ios";
+const APPLE_CLIENT_ID = "com.santiagoquiceno.alzo";
+
+// Apple y Google con el mismo tamano y prominencia (HIG + guideline 4.8).
+const nativeSocialButtonStyle: CSSProperties = {
+  width: "100%",
+  minWidth: 260,
+  minHeight: 44,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+};
 
 type GoogleCredentialResponse = {
   credential?: string;
@@ -99,13 +115,49 @@ function toFriendlyError(error: unknown): string {
     if (error.status === 401 && detail.includes("Google")) {
       return "No se pudo validar tu cuenta de Google.";
     }
+    if (error.status === 503 && detail.includes("Apple login is not configured")) {
+      return "Inicio con Apple no configurado en el servidor.";
+    }
+    if (error.status === 401 && detail.includes("Apple token has no email")) {
+      return "Apple no compartió tu correo. Quita Alzo de \"Iniciar sesión con Apple\" en Ajustes e inténtalo de nuevo.";
+    }
+    if (error.status === 409 && detail.includes("Apple account already linked")) {
+      return "Ese correo ya está vinculado a otra cuenta de Apple.";
+    }
+    if (error.status === 502 && detail.includes("Apple")) {
+      return "No se pudo contactar con Apple. Inténtalo de nuevo.";
+    }
+    if (error.status === 401 && detail.includes("Apple")) {
+      return "No se pudo validar tu cuenta de Apple.";
+    }
     return detail;
   }
 
+  // Errores nativos de AuthenticationServices ("...AuthorizationError error 1000.").
+  if (error instanceof Error && error.message.includes("AuthorizationError")) {
+    return "No se pudo iniciar sesión con Apple.";
+  }
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
   return "No se pudo completar la autenticacion.";
+}
+
+// El plugin rechaza con code "USER_CANCELLED" al cerrar el dialogo nativo; en iOS el
+// mensaje de Apple no dice "cancel" ("...error 1001."), por eso se mira el code.
+function isUserCancelled(error: unknown): boolean {
+  if (typeof error === "object" && error !== null && (error as { code?: unknown }).code === "USER_CANCELLED") {
+    return true;
+  }
+  return error instanceof Error && /cancel/i.test(error.message);
+}
+
+function AppleLogoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+      <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
+    </svg>
+  );
 }
 
 function PasswordVisibilityIcon({ visible }: { visible: boolean }) {
@@ -129,7 +181,8 @@ function PasswordVisibilityIcon({ visible }: { visible: boolean }) {
 }
 
 export default function Login() {
-  const { isAuthenticated, sessionExpired, login, register, loginWithGoogle, loginAsGuest } = useAuth();
+  const { isAuthenticated, sessionExpired, login, register, loginWithGoogle, loginWithApple, loginAsGuest } =
+    useAuth();
   const nav = useNavigate();
 
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -140,26 +193,38 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ?? "";
+  // iOS necesita su propio client ID (tipo "iOS" en Google Cloud); sin el, el SDK no arranca.
+  const googleIosClientId = (import.meta.env.VITE_GOOGLE_IOS_CLIENT_ID as string | undefined)?.trim() ?? "";
+  const googleConfigured = !!googleClientId && (!isIosApp || !!googleIosClientId);
   const canGuestLogin =
     import.meta.env.DEV ||
     ((import.meta.env.VITE_ENABLE_GUEST_LOGIN as string | undefined)?.trim().toLowerCase() === "true");
 
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const [googleStatus, setGoogleStatus] = useState<"idle" | "ready" | "unavailable">(
-    googleClientId ? "idle" : "unavailable",
+    googleConfigured ? "idle" : "unavailable",
   );
+  const [appleStatus, setAppleStatus] = useState<"idle" | "ready" | "unavailable">(isIosApp ? "idle" : "unavailable");
 
-  // Nativo (Capacitor): Google Sign-In por Credential Manager; GIS web no funciona en webview.
+  // Nativo (Capacitor): Google Sign-In por Credential Manager (Android) o GoogleSignIn SDK (iOS);
+  // GIS web no funciona en webview.
   useEffect(() => {
-    if (!isNativeApp || !googleClientId || isAuthenticated) return;
+    if (!isNativeApp || !googleConfigured || isAuthenticated) return;
 
     let cancelled = false;
     import("@capgo/capacitor-social-login")
-      .then(({ SocialLogin }) => SocialLogin.initialize({ google: { webClientId: googleClientId } }))
+      .then(({ SocialLogin }) =>
+        SocialLogin.initialize({
+          google: isIosApp
+            ? { webClientId: googleClientId, iOSClientId: googleIosClientId, iOSServerClientId: googleClientId }
+            : { webClientId: googleClientId },
+        }),
+      )
       .then(() => {
         if (!cancelled) setGoogleStatus("ready");
       })
@@ -170,7 +235,60 @@ export default function Login() {
     return () => {
       cancelled = true;
     };
-  }, [googleClientId, isAuthenticated]);
+  }, [googleClientId, googleIosClientId, googleConfigured, isAuthenticated]);
+
+  // Apple por separado: si falla su init, Google sigue disponible (y viceversa).
+  useEffect(() => {
+    if (!isIosApp || isAuthenticated) return;
+
+    let cancelled = false;
+    import("@capgo/capacitor-social-login")
+      // useProperTokenExchange: el resultado trae `authorizationCode` para que el backend
+      // obtenga el refresh token (necesario para revocarlo al borrar la cuenta).
+      .then(({ SocialLogin }) =>
+        SocialLogin.initialize({ apple: { clientId: APPLE_CLIENT_ID, useProperTokenExchange: true } }),
+      )
+      .then(() => {
+        if (!cancelled) setAppleStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setAppleStatus("unavailable");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
+
+  async function submitAppleNative() {
+    setBusy(true);
+    setError("");
+    try {
+      const { SocialLogin } = await import("@capgo/capacitor-social-login");
+      const response = await SocialLogin.login({
+        provider: "apple",
+        options: { scopes: ["email", "name"] },
+      });
+      const { idToken, authorizationCode, profile } = response.result;
+      const identityToken = idToken?.trim();
+      if (!identityToken) {
+        setError("No se pudo obtener la credencial de Apple.");
+        return;
+      }
+      const fullName = [profile?.givenName, profile?.familyName]
+        .map((part) => part?.trim())
+        .filter(Boolean)
+        .join(" ");
+      await loginWithApple(identityToken, { authorizationCode, fullName, acceptedLegalVersion: LEGAL_VERSION });
+      nav("/home", { replace: true });
+    } catch (e: unknown) {
+      // el usuario cancelo el dialogo nativo: no mostrar error
+      if (isUserCancelled(e)) return;
+      setError(toFriendlyError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submitGoogleNative() {
     setBusy(true);
@@ -186,11 +304,11 @@ export default function Login() {
         setError("No se pudo obtener la credencial de Google.");
         return;
       }
-      await loginWithGoogle(idToken);
+      await loginWithGoogle(idToken, LEGAL_VERSION);
       nav("/home", { replace: true });
     } catch (e: unknown) {
       // el usuario cancelo el dialogo nativo: no mostrar error
-      if (e instanceof Error && /cancel/i.test(e.message)) return;
+      if (isUserCancelled(e)) return;
       setError(toFriendlyError(e));
     } finally {
       setBusy(false);
@@ -221,7 +339,7 @@ export default function Login() {
             }
             setBusy(true);
             setError("");
-            loginWithGoogle(credential)
+            loginWithGoogle(credential, LEGAL_VERSION)
               .then(() => nav("/home", { replace: true }))
               .catch((cause: unknown) => setError(toFriendlyError(cause)))
               .finally(() => setBusy(false));
@@ -271,7 +389,7 @@ export default function Login() {
       if (mode === "login") {
         await login(cleanIdentifier, password);
       } else {
-        await register(cleanEmail, password, cleanPhone || undefined);
+        await register(cleanEmail, password, cleanPhone || undefined, LEGAL_VERSION);
       }
       nav("/home", { replace: true });
     } catch (e: unknown) {
@@ -297,7 +415,11 @@ export default function Login() {
   const canSubmit =
     mode === "login"
       ? identifier.trim().length > 0 && password.length > 0
-      : email.trim().length > 0 && password.length > 0 && confirmPassword.length > 0 && password === confirmPassword;
+      : email.trim().length > 0 &&
+        password.length > 0 &&
+        confirmPassword.length > 0 &&
+        password === confirmPassword &&
+        acceptedLegal;
 
   return (
     <div className="loginWrap">
@@ -404,6 +526,23 @@ export default function Login() {
               </div>
             </div>
           ) : null}
+
+          {mode === "register" ? (
+            <label
+              style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "var(--text-soft)" }}
+            >
+              <input
+                type="checkbox"
+                checked={acceptedLegal}
+                onChange={(e) => setAcceptedLegal(e.target.checked)}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              <span>
+                Acepto los <Link to={LEGAL_ROUTES.terms}>Términos</Link> y autorizo el tratamiento de mis datos,
+                incluidos datos de salud, según la <Link to={LEGAL_ROUTES.privacy}>Política de privacidad</Link>.
+              </span>
+            </label>
+          ) : null}
         </div>
 
         <div className="quickActions">
@@ -416,9 +555,33 @@ export default function Login() {
           </div>
 
           <div className="googleSignIn" aria-busy={busy}>
+            {appleStatus === "ready" ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={submitAppleNative}
+                disabled={busy}
+                style={{
+                  ...nativeSocialButtonStyle,
+                  // HIG: negro sobre fondo claro, blanco sobre fondo oscuro.
+                  ...(document.documentElement.dataset.theme === "dark"
+                    ? { background: "#fff", color: "#000", borderColor: "#fff" }
+                    : { background: "#000", color: "#fff", borderColor: "#000" }),
+                }}
+              >
+                <AppleLogoIcon />
+                Continuar con Apple
+              </button>
+            ) : null}
             {isNativeApp ? (
               googleStatus === "ready" ? (
-                <button type="button" className="btn" onClick={submitGoogleNative} disabled={busy}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={submitGoogleNative}
+                  disabled={busy}
+                  style={nativeSocialButtonStyle}
+                >
                   Continuar con Google
                 </button>
               ) : null
@@ -428,10 +591,13 @@ export default function Login() {
             {googleStatus === "idle" ? <div className="smallLabel">Cargando Google...</div> : null}
             {googleStatus === "unavailable" ? (
               <div className="smallLabel">
-                {googleClientId
+                {googleConfigured
                   ? "Inicio con Google no disponible (sin conexión con Google)."
                   : "Inicio con Google no configurado."}
               </div>
+            ) : null}
+            {appleStatus === "unavailable" && isIosApp ? (
+              <div className="smallLabel">Inicio con Apple no disponible.</div>
             ) : null}
           </div>
 
@@ -441,6 +607,11 @@ export default function Login() {
             </button>
           ) : null}
         </div>
+
+        <p className="smallLabel" style={{ margin: 0, textAlign: "center" }}>
+          Al continuar aceptas los <Link to={LEGAL_ROUTES.terms}>Términos</Link> y autorizas el tratamiento de tus
+          datos, incluidos datos de salud, según la <Link to={LEGAL_ROUTES.privacy}>Política de privacidad</Link>.
+        </p>
       </section>
     </div>
   );

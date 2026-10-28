@@ -703,10 +703,20 @@ export function apiPing(): Promise<{ pong: boolean }> {
   return http("/api/v1/meta/ping");
 }
 
-export function authRegister(email: string, password: string, phoneNumber?: string): Promise<AuthResponse> {
+export function authRegister(
+  email: string,
+  password: string,
+  phoneNumber?: string,
+  acceptedLegalVersion?: string,
+): Promise<AuthResponse> {
   return http("/api/v1/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password, phone_number: phoneNumber || null }),
+    body: JSON.stringify({
+      email,
+      password,
+      phone_number: phoneNumber || null,
+      accepted_legal_version: acceptedLegalVersion || null,
+    }),
   });
 }
 
@@ -717,10 +727,31 @@ export function authLogin(identifier: string, password: string): Promise<AuthRes
   });
 }
 
-export function authGoogle(idToken: string): Promise<AuthResponse> {
+// `acceptedLegalVersion`: el backend solo la guarda si la cuenta se crea en este login.
+export function authGoogle(idToken: string, acceptedLegalVersion?: string): Promise<AuthResponse> {
   return http("/api/v1/auth/google", {
     method: "POST",
-    body: JSON.stringify({ id_token: idToken }),
+    body: JSON.stringify({ id_token: idToken, accepted_legal_version: acceptedLegalVersion || null }),
+  });
+}
+
+export type AppleLoginExtras = {
+  authorizationCode?: string | null;
+  // Apple solo manda el nombre la primera vez que el usuario autoriza la app.
+  fullName?: string | null;
+  // El backend solo la guarda si la cuenta se crea en este login.
+  acceptedLegalVersion?: string | null;
+};
+
+export function authApple(identityToken: string, extras: AppleLoginExtras = {}): Promise<AuthResponse> {
+  return http("/api/v1/auth/apple", {
+    method: "POST",
+    body: JSON.stringify({
+      identity_token: identityToken,
+      authorization_code: extras.authorizationCode || null,
+      full_name: extras.fullName || null,
+      accepted_legal_version: extras.acceptedLegalVersion || null,
+    }),
   });
 }
 

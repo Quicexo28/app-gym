@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import {
   ApiError,
+  authApple,
   authGuest,
   authGoogle,
   authLogin,
@@ -12,6 +13,7 @@ import {
   getMe,
   setApiToken,
   setUnauthorizedHandler,
+  type AppleLoginExtras,
   type AuthResponse,
   type AuthUser,
   type PlanLabel,
@@ -31,9 +33,10 @@ type AuthContextValue = {
   planLabel: PlanLabel | null;
   sessionExpired: boolean;
   login: (identifier: string, password: string) => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<void>;
+  loginWithGoogle: (idToken: string, acceptedLegalVersion?: string) => Promise<void>;
+  loginWithApple: (identityToken: string, extras?: AppleLoginExtras) => Promise<void>;
   loginAsGuest: () => Promise<void>;
-  register: (email: string, password: string, phoneNumber?: string) => Promise<void>;
+  register: (email: string, password: string, phoneNumber?: string, acceptedLegalVersion?: string) => Promise<void>;
   refreshMe: () => Promise<void>;
   logout: () => void;
 };
@@ -138,8 +141,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const loginWithGoogle = useCallback(
-    async (idToken: string) => {
-      const payload = await authGoogle(idToken);
+    async (idToken: string, acceptedLegalVersion?: string) => {
+      const payload = await authGoogle(idToken, acceptedLegalVersion);
+      syncSession(toSession(payload));
+    },
+    [syncSession],
+  );
+
+  const loginWithApple = useCallback(
+    async (identityToken: string, extras?: AppleLoginExtras) => {
+      const payload = await authApple(identityToken, extras);
       syncSession(toSession(payload));
     },
     [syncSession],
@@ -151,8 +162,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [syncSession]);
 
   const register = useCallback(
-    async (email: string, password: string, phoneNumber?: string) => {
-      const payload = await authRegister(email, password, phoneNumber);
+    async (email: string, password: string, phoneNumber?: string, acceptedLegalVersion?: string) => {
+      const payload = await authRegister(email, password, phoneNumber, acceptedLegalVersion);
       syncSession(toSession(payload));
     },
     [syncSession],
@@ -180,12 +191,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionExpired,
       login,
       loginWithGoogle,
+      loginWithApple,
       loginAsGuest,
       register,
       refreshMe,
       logout,
     };
-  }, [ready, session, sessionExpired, login, loginWithGoogle, loginAsGuest, register, refreshMe, logout]);
+  }, [ready, session, sessionExpired, login, loginWithGoogle, loginWithApple, loginAsGuest, register, refreshMe, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
