@@ -9,8 +9,8 @@ exactly for the seeder to map TCAC data onto MICRONUTRIENTS_BY_KEY.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_FILE = REPO_ROOT / "src" / "app" / "nutrition" / "micronutrients.py"
