@@ -1,19 +1,11 @@
-# Comandos utiles (PowerShell)
+# Comandos utiles (Linux, fish)
 
-Ejecuta todo desde la raiz del proyecto: `c:\proyecto gym\coach-ai-engineer-boilerplate`
+Ejecuta todo desde la raiz del proyecto: `~/Projects/app-gym`
 
-## 1) Backend API
+## 1) Docker (dev)
 
-```powershell
-.\run_api.ps1
-.\run_api.ps1 -Port 8001
-.\run_api.ps1 -NoReload
-```
-
-## 2) Docker (dev)
-
-```powershell
-docker compose up --build
+```fish
+docker compose up -d --build
 docker compose down
 docker compose logs -f api
 docker compose logs -f frontend
@@ -24,9 +16,24 @@ Servicios:
 - API: `http://localhost:8000`
 - Postgres: `localhost:5432`
 
+## 2) Backend API sin Docker
+
+Requiere Postgres arriba (`docker compose up -d db`).
+
+```fish
+.venv-linux/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir src
+```
+
+Crear la venv desde cero:
+
+```fish
+python -m venv .venv-linux
+.venv-linux/bin/python -m pip install -e '.[dev]'
+```
+
 ## 3) Frontend
 
-```powershell
+```fish
 npm run dev
 npm run voice:model:sync
 npm run build
@@ -35,134 +42,100 @@ npm run preview
 
 `voice:model:sync` descarga el modelo offline de voz en `frontend/public/models/vosk-model-small-es-0.42.zip`.
 
-## 4) Migraciones DB (Alembic)
+## 4) Android
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-alembic upgrade head
-alembic revision --autogenerate -m "descripcion_del_cambio"
+```fish
+npm run build:mobile
+npm run android:apk
+npm run android:aab
 ```
 
-## 5) Calidad (tests + lint)
+Detalle en `docs/publicacion-android.md`.
 
-```powershell
-pytest -q
-ruff check . --fix
-ruff format .
+## 5) Migraciones DB (Alembic)
+
+```fish
+.venv-linux/bin/alembic upgrade head
+.venv-linux/bin/alembic revision --autogenerate -m "descripcion_del_cambio"
 ```
 
-## 6) Admin
+## 6) Calidad (tests + lint)
 
-### 6.0 Comando corto para volver admin
-
-```powershell
-.\make_admin.ps1
-.\make_admin.ps1 -Email "usuario@dominio.com"
-.\make_admin.ps1 -Email "usuario@dominio.com" -Plan coach
+```fish
+.venv-linux/bin/python -m pytest -q
+.venv-linux/bin/ruff check . --fix
+npm run lint
+npx tsc -b frontend/tsconfig.json
+cd frontend; and npm test
 ```
 
-### 6.1 Recuperar admin directo en DB (si te quedaste sin permisos)
+## 7) Admin
 
-Este bloque deja a `santiagoquicenoqp@gmail.com` con `role=admin` y `plan=coach`.
+### 7.1 Volver admin a un usuario directo en DB
 
-```powershell
-@'
-import sys
-from pathlib import Path
+Deja al usuario con `role=admin` y el plan indicado (`free` | `pro` | `coach`).
+
+```fish
+set -x MAKE_ADMIN_EMAIL usuario@dominio.com
+set -x MAKE_ADMIN_PLAN coach
+echo '
+import os
 from sqlalchemy import select
-
-sys.path.insert(0, str(Path.cwd() / "src"))
-
 from app.auth.types import Plan, Role
 from app.db.engine import SessionLocal
 from app.db.models_auth import User
 
-EMAIL = "santiagoquicenoqp@gmail.com"
+email = os.environ["MAKE_ADMIN_EMAIL"].strip().lower()
+plan = Plan(os.environ["MAKE_ADMIN_PLAN"].strip().lower())
 
 with SessionLocal() as db:
-    user = db.execute(select(User).where(User.email == EMAIL)).scalar_one_or_none()
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if user is None:
-        raise SystemExit(f"Usuario no encontrado: {EMAIL}")
-
+        raise SystemExit(f"Usuario no encontrado: {email}")
     user.role = Role.ADMIN
-    user.plan = Plan.COACH
+    user.plan = plan
     db.commit()
     print({"ok": True, "email": user.email, "role": user.role, "plan": user.plan})
-'@ | python -
+' | docker compose exec -T -e MAKE_ADMIN_EMAIL -e MAKE_ADMIN_PLAN api python -
 ```
 
-### 6.2 Login para obtener token
+### 7.2 Login para obtener token
 
-```powershell
-$authBody = @{
-  identifier = "santiagoquicenoqp@gmail.com"
-  password   = "TU_PASSWORD"
-} | ConvertTo-Json
-
-$auth = Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/auth/login" `
-  -ContentType "application/json" `
-  -Body $authBody
-
-$token = $auth.access_token
-$headers = @{ Authorization = "Bearer $token" }
+```fish
+set TOKEN (curl -s http://127.0.0.1:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier": "usuario@dominio.com", "password": "TU_PASSWORD"}' | jq -r .access_token)
 ```
 
-### 6.3 Cambiar plan/rol de cualquier usuario (requiere token admin)
+### 7.3 Cambiar plan/rol de cualquier usuario (requiere token admin)
 
-```powershell
-$payload = @{
-  email = "usuario@dominio.com"
-  plan  = "coach"   # free | pro | coach
-  role  = "coach"   # user | coach | admin
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/admin/dev/switch-plan" `
-  -Headers $headers `
-  -ContentType "application/json" `
-  -Body $payload
+```fish
+curl -s -X POST http://127.0.0.1:8000/api/v1/admin/dev/switch-plan \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"email": "usuario@dominio.com", "plan": "coach", "role": "coach"}'
 ```
 
-### 6.4 Asignar atleta a coach (requiere token admin)
+`plan`: `free` | `pro` | `coach`. `role`: `user` | `coach` | `admin`.
 
-```powershell
-$assign = @{
-  coach_email = "coach@dominio.com"
-  athlete_id  = "user_xxx"
-} | ConvertTo-Json
+### 7.4 Asignar atleta a coach (requiere token admin)
 
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/admin/dev/coach-athletes/assign" `
-  -Headers $headers `
-  -ContentType "application/json" `
-  -Body $assign
+```fish
+curl -s -X POST http://127.0.0.1:8000/api/v1/admin/dev/coach-athletes/assign \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"coach_email": "coach@dominio.com", "athlete_id": "user_xxx"}'
 ```
 
-### 6.5 Ver atletas asignados a un coach (requiere token admin)
+### 7.5 Ver atletas asignados a un coach (requiere token admin)
 
-```powershell
-Invoke-RestMethod `
-  -Method Get `
-  -Uri "http://127.0.0.1:8000/api/v1/admin/dev/coach-athletes/coach@dominio.com" `
-  -Headers $headers
+```fish
+curl -s http://127.0.0.1:8000/api/v1/admin/dev/coach-athletes/coach@dominio.com \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-### 6.6 Remover asignacion coach-atleta (requiere token admin)
+### 7.6 Remover asignacion coach-atleta (requiere token admin)
 
-```powershell
-$remove = @{
-  coach_email = "coach@dominio.com"
-  athlete_id  = "user_xxx"
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-  -Method Delete `
-  -Uri "http://127.0.0.1:8000/api/v1/admin/dev/coach-athletes/assign" `
-  -Headers $headers `
-  -ContentType "application/json" `
-  -Body $remove
+```fish
+curl -s -X DELETE http://127.0.0.1:8000/api/v1/admin/dev/coach-athletes/assign \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"coach_email": "coach@dominio.com", "athlete_id": "user_xxx"}'
 ```

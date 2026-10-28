@@ -1,73 +1,54 @@
-# React + TypeScript + Vite
+# Alzo
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Plataforma de apoyo a decisiones de entrenamiento y dieta. La app **no decide**: muestra
+señales y proyecciones con incertidumbre explícita; el atleta o el coach tienen la última palabra.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Backend**: Python 3.11+, FastAPI, SQLAlchemy 2, Alembic, PostgreSQL 16.
+- **Motor**: `src/coach_ai/` (training_core, trends, latents, suggestions, insights, compliance, e2e, validation).
+- **Frontend**: React 19 + TypeScript + Vite, PWA con modo offline (`frontend/`).
+- **Android**: Capacitor 8 (`android/`, appId `com.santiagoquiceno.alzo`).
 
-## React Compiler
+## Estructura
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Ruta | Contenido |
+|------|-----------|
+| `src/app/` | API: auth, coach, nutrition, planning, profile, analytics, db |
+| `src/coach_ai/` | Lógica científica del motor |
+| `frontend/` | App web / PWA |
+| `android/` | Proyecto nativo Capacitor |
+| `migrations/` | Migraciones Alembic |
+| `scripts/backtest/` | Backtests del motor contra datos reales |
+| `scripts/tcac/` | Pipeline del catálogo de alimentos TCAC |
+| `tests/` | pytest (backend y motor) |
+| `deploy/`, `docker-compose.prod.yml` | Despliegue de producción |
 
-## Expanding the ESLint configuration
+## Desarrollo
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+docker compose up -d --build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+- Frontend: <http://localhost:5173>
+- API: <http://localhost:8000> (`/health`, docs en `/docs`)
+- Postgres: `localhost:5432`
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+La API aplica `alembic upgrade head` al arrancar. El resto de comandos está en [COMMANDS.md](COMMANDS.md).
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Calidad
+
+```bash
+.venv-linux/bin/python -m pytest -q
+.venv-linux/bin/ruff check .
+npm run lint
+npx tsc -b frontend/tsconfig.json
+cd frontend && npm test
 ```
+
+## Documentación
+
+- [docs/docker-production.md](docs/docker-production.md) — despliegue en producción.
+- [docs/publicacion-android.md](docs/publicacion-android.md) — publicación en Google Play.
+- [docs/modulo-dieta.md](docs/modulo-dieta.md) — módulo de dieta y pipeline TCAC.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — principios no negociables.
