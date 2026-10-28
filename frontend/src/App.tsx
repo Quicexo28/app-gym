@@ -19,6 +19,9 @@ import DietNutrition from "./pages/DietNutrition";
 import DietToday from "./pages/DietToday";
 import Exercises from "./pages/Exercises";
 import Home from "./pages/Home";
+import DeleteAccount from "./pages/legal/DeleteAccount";
+import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
+import Terms from "./pages/legal/Terms";
 import Login from "./pages/Login";
 import MeasurementLog from "./pages/MeasurementLog";
 import MetricDetail from "./pages/MetricDetail";
@@ -35,6 +38,7 @@ import RunDetail from "./pages/RunDetail";
 import Steps from "./pages/Steps";
 import Training from "./pages/Training";
 import UsersHub from "./pages/UsersHub";
+import { LEGAL_ROUTES } from "./lib/legal";
 import { useAuth } from "./state/auth";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -60,6 +64,11 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+
+      {/* Paginas legales: publicas (sin login) porque las tiendas las enlazan por URL directa. */}
+      <Route path={LEGAL_ROUTES.privacy} element={<PrivacyPolicy />} />
+      <Route path={LEGAL_ROUTES.terms} element={<Terms />} />
+      <Route path={LEGAL_ROUTES.deleteAccount} element={<DeleteAccount />} />
 
       <Route
         path="/"

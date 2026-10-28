@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { deleteMyAccount } from "../api";
+import { LEGAL_ROUTES } from "../lib/legal";
 import { loadRoutines, saveRoutines } from "../lib/storage";
 import { useAthleteAccess } from "../state/athlete";
 import { useAuth } from "../state/auth";
@@ -230,6 +231,27 @@ export default function Preferences() {
             { label: "Millas", value: "mi", hint: "" },
           ]}
         />
+      </section>
+
+      <section className="surface stack compactStack">
+        <div className="sectionHead">
+          <h3>Legal</h3>
+          <p>
+            Alzo no es un dispositivo médico ni reemplaza a tu médico o nutricionista. Consulta con un profesional
+            antes de cambiar tu dieta o tu entrenamiento.
+          </p>
+        </div>
+        <div className="quickActions">
+          <Link className="btn" to={LEGAL_ROUTES.privacy}>
+            Política de privacidad
+          </Link>
+          <Link className="btn" to={LEGAL_ROUTES.terms}>
+            Términos de uso
+          </Link>
+          <Link className="btn" to={LEGAL_ROUTES.deleteAccount}>
+            Cómo eliminar tu cuenta
+          </Link>
+        </div>
       </section>
 
       <details className="surface dangerZone">
