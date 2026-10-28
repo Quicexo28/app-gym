@@ -40,6 +40,17 @@ import Training from "./pages/Training";
 import UsersHub from "./pages/UsersHub";
 import { LEGAL_ROUTES } from "./lib/legal";
 import { useAuth } from "./state/auth";
+import { useViewScopes } from "./state/viewScopes";
+
+// El backend ya exige rol admin; esto solo evita mostrar la UI por URL directa.
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const { ready, canAdminView } = useViewScopes();
+  if (!ready) return null;
+  if (!canAdminView) {
+    return <Navigate to="/home" replace />;
+  }
+  return <>{children}</>;
+}
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { ready, isAuthenticated } = useAuth();
@@ -118,7 +129,14 @@ export default function App() {
           </Route>
           <Route path="measurements" element={<Navigate to="/profile/progress" replace />} />
           <Route path="preferences" element={<Preferences />} />
-          <Route path="admin" element={<AdminTools />} />
+          <Route
+            path="admin"
+            element={
+              <RequireAdmin>
+                <AdminTools />
+              </RequireAdmin>
+            }
+          />
         </Route>
 
         <Route path="session/new" element={<NewSession />} />

@@ -7,11 +7,13 @@ import { VitePWA } from "vite-plugin-pwa";
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const apiProxyTarget = process.env.VITE_PROXY_TARGET?.trim() || "http://127.0.0.1:8000";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   root: rootDir,
   plugins: [
     react(),
     VitePWA({
+      // build nativo (Capacitor): sin service worker, el webview ya empaqueta los assets
+      disable: mode === "mobile",
       registerType: "autoUpdate",
       injectRegister: "auto",
       includeAssets: ["icons/pwa-192.png", "icons/pwa-512.png", "icons/pwa-maskable-512.png"],
@@ -89,4 +91,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
