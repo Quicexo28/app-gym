@@ -139,7 +139,7 @@ class DeleteAccountRequest(BaseModel):
 def _normalize_email(raw: str) -> str:
     try:
         validated = validate_email(raw, check_deliverability=False)
-        return validated.normalized
+        return validated.normalized.lower()
     except EmailNotValidError as err:
         raise HTTPException(status_code=400, detail="Invalid email.") from err
 
