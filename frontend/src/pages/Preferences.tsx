@@ -1,4 +1,6 @@
 import { useState } from "react";
+
+import "../styles.ajustes.css";
 import { Link, useNavigate } from "react-router-dom";
 
 import { deleteMyAccount } from "../api";
@@ -241,14 +243,14 @@ export default function Preferences() {
             antes de cambiar tu dieta o tu entrenamiento.
           </p>
         </div>
-        <div className="quickActions">
-          <Link className="btn" to={LEGAL_ROUTES.privacy}>
+        <div className="legalLinks">
+          <Link to={LEGAL_ROUTES.privacy}>
             Política de privacidad
           </Link>
-          <Link className="btn" to={LEGAL_ROUTES.terms}>
+          <Link to={LEGAL_ROUTES.terms}>
             Términos de uso
           </Link>
-          <Link className="btn" to={LEGAL_ROUTES.deleteAccount}>
+          <Link to={LEGAL_ROUTES.deleteAccount}>
             Cómo eliminar tu cuenta
           </Link>
         </div>
@@ -257,13 +259,13 @@ export default function Preferences() {
       <details className="surface dangerZone">
         <summary>Zona peligrosa</summary>
         <div className="quickActions" style={{ marginTop: 12 }}>
-          <button className="btn" style={dangerBtnStyle} onClick={clearAllRoutines} disabled={dangerBusy}>
+          <button type="button" className="btn" style={dangerBtnStyle} onClick={clearAllRoutines} disabled={dangerBusy}>
             {dangerBusy ? "Procesando..." : "Borrar todas mis rutinas"}
           </button>
-          <button className="btn" style={dangerBtnStyle} onClick={clearAllCustomExercises} disabled={dangerBusy}>
+          <button type="button" className="btn" style={dangerBtnStyle} onClick={clearAllCustomExercises} disabled={dangerBusy}>
             {dangerBusy ? "Procesando..." : "Borrar mis ejercicios personalizados"}
           </button>
-          <button className="btn" style={dangerBtnStyle} onClick={deleteAccount} disabled={dangerBusy}>
+          <button type="button" className="btn" style={dangerBtnStyle} onClick={deleteAccount} disabled={dangerBusy}>
             {dangerBusy ? "Procesando..." : "Eliminar mi cuenta"}
           </button>
         </div>

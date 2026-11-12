@@ -21,7 +21,7 @@ import {
 } from "../lib/dates";
 import { formatSetsRange, ROUTINES_HYDRATED_EVENT, loadRoutines } from "../lib/storage";
 import { formatWeight } from "../lib/units";
-import { BarChart, ChartPlaceholder, Sparkline } from "../components/Charts";
+import { BarChart, Sparkline } from "../components/Charts";
 import type { ChartBar } from "../components/Charts";
 import { MacroBar, ProgressRing } from "../components/NutritionCharts";
 import Select from "../components/Select";
@@ -450,8 +450,7 @@ export default function Home() {
         <div className="homeDate">
           <span className="homeDateDay">{formatDayLong(selectedDate)}</span>
           <span className="homeDateMeta small">
-            {relativeLabel ? `${relativeLabel} - ` : ""}
-            {selectedDate.getFullYear()}
+            {relativeLabel || selectedDate.getFullYear()}
           </span>
         </div>
 
@@ -575,6 +574,11 @@ export default function Home() {
             </span>
           </div>
 
+          {dietEnergyValue <= 0 && !(dietTotals?.protein_g || dietTotals?.carbs_g || dietTotals?.fat_g) ? (
+            <div className="small" style={{ marginTop: 8 }}>
+              Sin comidas registradas. <span style={{ color: "var(--accent)" }}>Registrar comida</span>
+            </div>
+          ) : (
           <div className="dietBody">
             <ProgressRing pct={dietEnergyPct} center={dietEnergyValue > 0 ? String(Math.round(dietEnergyValue)) : "—"} caption="kcal" />
             <div className="macroStack">
@@ -583,6 +587,7 @@ export default function Home() {
               <MacroBar label="Grasas" value={dietTotals?.fat_g || 0} target={dietTargets?.fat_g || 0} unit="g" />
             </div>
           </div>
+          )}
         </button>
       ) : null}
 
@@ -590,11 +595,17 @@ export default function Home() {
         <section className="surface">
           <div className="sectionHead homeHead">
             <h3>Sesión del día</h3>
-            <span className="chip">{trainingChartTitle}</span>
+            {trainingBars.length > 0 ? <span className="chip">{trainingChartTitle}</span> : null}
           </div>
-          <div style={{ marginTop: 12 }}>
-            <BarChart bars={trainingBars} />
-          </div>
+          {trainingBars.length > 0 ? (
+            <div style={{ marginTop: 12 }}>
+              <BarChart bars={trainingBars} />
+            </div>
+          ) : (
+            <div className="small" style={{ marginTop: 8 }}>
+              Sin sesión registrada ni planeada.
+            </div>
+          )}
         </section>
       ) : null}
 
@@ -611,7 +622,6 @@ export default function Home() {
                 </span>
               </div>
             </div>
-            <ChartPlaceholder variant="bars" height={56} caption={null} />
           </button>
           ) : null}
 
@@ -627,7 +637,7 @@ export default function Home() {
                 </span>
               </div>
             </div>
-            <Sparkline values={weights} />
+            {weights.length >= 2 ? <Sparkline values={weights} /> : null}
           </button>
         </div>
       ) : null}

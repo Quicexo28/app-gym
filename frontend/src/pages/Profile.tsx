@@ -78,6 +78,7 @@ export default function Profile() {
   const [coachCode, setCoachCode] = useState("");
 
   const threadAthleteId = athleteId || data?.network.athlete_id || "";
+  const hasCoach = Boolean(data && data.network.coaches.length > 0);
   const isCoachOfThread = Boolean(data && threadAthleteId !== data.network.athlete_id);
 
   const applyProfile = useCallback((res: ProfileResponse) => {
@@ -351,13 +352,7 @@ export default function Profile() {
         ) : (
           <div className="chipRow">
             <span className="chip">{data?.email || "-"}</span>
-            <span className="chip">Rol: {data?.role === "admin" ? "Admin" : data?.role === "coach" ? "Coach" : "Usuario"}</span>
             <span className="chip">Plan: {data?.plan === "free" || !data?.plan ? "Gratis" : data.plan}</span>
-            <span className="chip">Sesiones: {data?.training_stats.sessions_total ?? 0}</span>
-            <span className="chip">{`Última: ${formatDate(data?.training_stats.last_session_at)}`}</span>
-            {data?.profile.height_cm ? (
-              <span className="chip">{`Altura: ${data.profile.height_cm} cm`}</span>
-            ) : null}
           </div>
         )}
       </section>
@@ -365,14 +360,20 @@ export default function Profile() {
       <section className="surface stack compactStack">
         <div className="sectionHead">
           <h3>Coach</h3>
-          <p>Con quien intercambias progreso y feedback.</p>
+          {hasCoach ? (
+            <p>
+              {isCoachOfThread
+                ? `Publicas en el hilo de ${activeSubject?.label || "el atleta"}.`
+                : "Con quien intercambias progreso y feedback."}
+            </p>
+          ) : null}
         </div>
 
-        {data && data.network.coaches.length > 0 ? (
+        {hasCoach ? (
           <>
             <div className="chipRow">
-              {data.network.coaches.map((coach) => (
-                <span key={coach.user_id} className="chip">{`Coach: ${coach.label}`}</span>
+              {data?.network.coaches.map((coach) => (
+                <span key={coach.user_id} className="chip">{coach.label}</span>
               ))}
             </div>
             <div className="quickActions">
@@ -382,19 +383,16 @@ export default function Profile() {
             </div>
           </>
         ) : (
-          <div className="stack compactStack">
-            <div className="small">Sin coach asignado todavía.</div>
-            <div className="quickActions">
-              <input
-                className="input"
-                value={coachCode}
-                onChange={(e) => setCoachCode(e.target.value)}
-                placeholder="Código de invitación (ej. K7QX-9MFP)"
-              />
-              <button className="btn primary" onClick={joinCoach} disabled={busy}>
-                {busy ? "Uniendo..." : "Unirme"}
-              </button>
-            </div>
+          <div className="quickActions">
+            <input
+              className="input"
+              value={coachCode}
+              onChange={(e) => setCoachCode(e.target.value)}
+              placeholder="Código de invitación (ej. K7QX-9MFP)"
+            />
+            <button className="btn primary" onClick={joinCoach} disabled={busy}>
+              {busy ? "Uniendo..." : "Unirme"}
+            </button>
           </div>
         )}
 
@@ -406,111 +404,90 @@ export default function Profile() {
             </button>
           </div>
         ) : null}
-      </section>
 
-      <section className="surface stack compactStack">
-        <div className="sectionHead">
-          <h3>Compartir progreso</h3>
-          <p>
-            {isCoachOfThread
-              ? `Publicas en el hilo de ${activeSubject?.label || "el atleta"}.`
-              : "Envía un reporte con tus últimas medidas y entrenamientos a tu coach."}
-          </p>
-        </div>
+        {hasCoach || isCoachOfThread ? (
+          <>
+            <textarea
+              className="input compactTextarea"
+              rows={3}
+              style={{ minHeight: 0 }}
+              value={shareNote}
+              onChange={(e) => setShareNote(e.target.value)}
+              placeholder="Cómo te sentiste, dudas, ajustes que pides..."
+            />
+            <div className="quickActions">
+              <button className="btn primary" onClick={publishShare} disabled={busy || !threadAthleteId}>
+                {busy ? "Enviando..." : "Compartir progreso"}
+              </button>
+            </div>
+            <div className="small">
+              Solo se comparten medidas y datos de entrenamiento. Tus fotos quedan en tu dispositivo.
+            </div>
 
-        <textarea
-          className="input compactTextarea"
-          value={shareNote}
-          onChange={(e) => setShareNote(e.target.value)}
-          placeholder="Como te sentiste, dudas, ajustes que pides..."
-        />
-
-        <div className="quickActions">
-          <button className="btn primary" onClick={publishShare} disabled={busy || !threadAthleteId}>
-            {busy ? "Enviando..." : "Compartir progreso"}
-          </button>
-          <button className="btn" onClick={() => nav("/profile/progress")}>
-            Ver medidas
-          </button>
-        </div>
-
-        <div className="small">
-          Solo se comparten medidas y datos de entrenamiento. Tus fotos de progreso quedan en tu dispositivo y nadie
-          más las ve.
-        </div>
-      </section>
-
-      <section className="surface">
-        <div className="sectionHead">
-          <h3>Hilo de progreso</h3>
-          <p>{activeSubject ? `Sujeto: ${activeSubject.label}` : "Reportes y respuestas."}</p>
-        </div>
-
-        {sharesLoading ? (
-          <div className="emptyState" style={{ marginTop: 12 }}>
-            Cargando hilo...
-          </div>
-        ) : shares.length === 0 ? (
-          <div className="emptyState" style={{ marginTop: 12 }}>
-            Aún no hay reportes compartidos.
-          </div>
-        ) : (
-          <div className="stack compactStack" style={{ marginTop: 12 }}>
+            <h4>Hilo de progreso</h4>
+            {sharesLoading ? (
+              <div className="emptyState">Cargando hilo...</div>
+            ) : shares.length === 0 ? (
+              <div className="emptyState">Aún no hay reportes compartidos.</div>
+            ) : (
+              <div className="stack compactStack">
             {shares.map((item) => (
-              <article key={item.id} className="listItem shareCard">
-                <div className="listMain">
-                  <strong>{`${item.author.label} | ${formatDate(item.created_at_utc)}`}</strong>
-                  {item.note ? <span className="small">{item.note}</span> : null}
-                </div>
-
-                <div className="chipRow">
-                  {item.metrics.map((metric) => (
-                    <span key={metric.key} className="chip">
-                      {`${metric.label}: ${metric.value} ${metric.unit}${formatDelta(metric.delta, metric.unit)}`}
-                    </span>
-                  ))}
-                  <span className="chip">{`Sesiones 30d: ${item.sessions_recent}`}</span>
-                </div>
-
-                {item.comments.length > 0 ? (
-                  <div className="shareThread">
-                    {item.comments.map((comment) => (
-                      <div key={comment.id} className="shareComment">
-                        <strong className="small">{`${comment.author.label}${
-                          comment.author.role === "coach" || comment.author.role === "admin" ? " (coach)" : ""
-                        }`}</strong>
-                        <span className="small">{comment.body}</span>
-                      </div>
-                    ))}
+                <article key={item.id} className="listItem shareCard">
+                  <div className="listMain">
+                    <strong>{`${item.author.label} | ${formatDate(item.created_at_utc)}`}</strong>
+                    {item.note ? <span className="small">{item.note}</span> : null}
                   </div>
-                ) : null}
-
-                <div className="shareReplyRow">
-                  <input
-                    className="input"
-                    value={replyDrafts[item.id] || ""}
-                    onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                    placeholder="Responder..."
-                  />
-                  <button className="btn" onClick={() => void sendReply(item.id)} disabled={busy}>
-                    Enviar
-                  </button>
-                </div>
-
-                <div className="quickActions">
-                  <button className="btn" onClick={() => void shareOutside(item)}>
-                    Compartir fuera
-                  </button>
-                  {user?.id === item.author.user_id ? (
-                    <button className="btn" onClick={() => void removeShare(item.id)} disabled={busy}>
-                      Borrar
-                    </button>
+  
+                  <div className="chipRow">
+                    {item.metrics.map((metric) => (
+                      <span key={metric.key} className="chip">
+                        {`${metric.label}: ${metric.value} ${metric.unit}${formatDelta(metric.delta, metric.unit)}`}
+                      </span>
+                    ))}
+                    <span className="chip">{`Sesiones 30d: ${item.sessions_recent}`}</span>
+                  </div>
+  
+                  {item.comments.length > 0 ? (
+                    <div className="shareThread">
+                      {item.comments.map((comment) => (
+                        <div key={comment.id} className="shareComment">
+                          <strong className="small">{`${comment.author.label}${
+                            comment.author.role === "coach" || comment.author.role === "admin" ? " (coach)" : ""
+                          }`}</strong>
+                          <span className="small">{comment.body}</span>
+                        </div>
+                      ))}
+                    </div>
                   ) : null}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
+  
+                  <div className="shareReplyRow">
+                    <input
+                      className="input"
+                      value={replyDrafts[item.id] || ""}
+                      onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                      placeholder="Responder..."
+                    />
+                    <button className="btn" onClick={() => void sendReply(item.id)} disabled={busy}>
+                      Enviar
+                    </button>
+                  </div>
+  
+                  <div className="quickActions">
+                    <button className="btn" onClick={() => void shareOutside(item)}>
+                      Compartir fuera
+                    </button>
+                    {user?.id === item.author.user_id ? (
+                      <button className="btn" onClick={() => void removeShare(item.id)} disabled={busy}>
+                        Borrar
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+              </div>
+            )}
+          </>
+        ) : null}
       </section>
     </>
   );

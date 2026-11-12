@@ -17,6 +17,7 @@ import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import { useUndo } from "../state/undo";
 import { APP_LOCALE } from "../lib/locale";
+import "../styles.rutinas.css";
 type SetRow = { reps: string; load: string; completed: boolean; effort: string };
 type RoutineExerciseDraft = {
   name: string;
@@ -1558,11 +1559,18 @@ export default function NewSession() {
     return (
       <div className="container stack">
         <header className="titleBlock">
-          <h1>Nueva sesión</h1>
-          <p>Paso 1/2. Selecciona una rutina para iniciar el registro.</p>
+          <div className="pickHead">
+            <h1>Nueva sesión</h1>
+            {hasRoutines ? (
+              <button type="button" className="pickEditLink" onClick={() => nav("/training")}>
+                Editar rutinas
+              </button>
+            ) : null}
+          </div>
+          <p>Elige una rutina para empezar.</p>
         </header>
 
-        <section className="surface">
+        <section className="surface pickSurface">
           {requestedDayKey ? (
             <div className="chipRow">
               <span className="chip">Día: {requestedDayKey}</span>
@@ -1589,7 +1597,7 @@ export default function NewSession() {
               No tienes atletas asignados. Pide a un admin que te asigne al menos uno para poder registrar sesiones.
             </div>
           ) : (
-            <div className="routinePickGrid" style={{ marginTop: 12 }}>
+            <div className="routinePickGrid">
               {sortedRoutines.map((routine) => {
                 const totalSetsMin = routine.exercises.reduce(
                   (acc, exercise) => acc + Math.max(1, Math.round(exercise.target_sets_min || 1)),
@@ -1614,37 +1622,27 @@ export default function NewSession() {
                 const hiddenCount = Math.max(0, routine.exercises.length - 3);
 
                 return (
-                  <article key={routine.id} className={`routinePickCard ${routine.id === routineId ? "active" : ""}`.trim()}>
-                    <div className="hstack" style={{ justifyContent: "space-between" }}>
-                      <strong>{routine.name}</strong>
-                      <span className="chip">{`${routine.exercises.length} ejercicio${routine.exercises.length === 1 ? "" : "s"}`}</span>
-                    </div>
-                    <div className="chipRow">
-                      <span className="chip">{`${formatSetsRange(totalSetsMin, totalSetsMax)} series objetivo`}</span>
-                      <span className="chip">{`Descanso prom: ${formatRestRecommendation(averageRestSeconds)}`}</span>
-                    </div>
-                    <div className="small">
+                  <button
+                    type="button"
+                    key={routine.id}
+                    className={`routinePickCard routinePickBtn ${routine.id === routineId ? "active" : ""}`.trim()}
+                    onClick={() => startSessionStep(routine.id)}
+                    disabled={!hasActiveAthlete}
+                  >
+                    <strong>{routine.name}</strong>
+                    <span className="small">
+                      {`${routine.exercises.length} ejercicio${routine.exercises.length === 1 ? "" : "s"} · ${formatSetsRange(totalSetsMin, totalSetsMax)} series · ~${formatRestRecommendation(averageRestSeconds)}`}
+                    </span>
+                    <span className="small">
                       {previewNames || "Sin ejercicios"}
                       {hiddenCount > 0 ? ` (+${hiddenCount})` : ""}
-                    </div>
-                    <div className="routinePickActions">
-                      <button className="btn primary routineStartBtn" onClick={() => startSessionStep(routine.id)} disabled={!hasActiveAthlete}>
-                        Iniciar rutina
-                      </button>
-                    </div>
-                  </article>
+                    </span>
+                  </button>
                 );
               })}
             </div>
           )}
 
-          {hasRoutines ? (
-            <div className="quickActions" style={{ marginTop: 12 }}>
-              <button className="btn ghost" onClick={() => nav("/training")}>
-                Editar rutinas
-              </button>
-            </div>
-          ) : null}
         </section>
       </div>
     );

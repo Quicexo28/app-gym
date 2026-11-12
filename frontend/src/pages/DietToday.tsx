@@ -39,6 +39,7 @@ import {
   toBaseQuantity,
   type QuantityUnitKey,
 } from "../lib/nutrition/units";
+import "../styles.ajustes.css";
 import { useAthleteId } from "../state/athlete";
 import { useUndo } from "../state/undo";
 
@@ -357,7 +358,14 @@ export default function DietToday() {
           {!loading && energyTarget > 0 ? (
             <span className="chip">{energyLeft >= 0 ? `Faltan ${energyLeft} kcal` : `+${Math.abs(energyLeft)} kcal`}</span>
           ) : (
-            <span className="small">{loading ? "Cargando..." : "Sin objetivo de kcal"}</span>
+            <>
+              <h3>Calorías</h3>
+              {loading ? (
+                <span className="small" style={{ marginLeft: "auto" }}>Cargando...</span>
+              ) : (
+                <span className="linkBtn" style={{ marginLeft: "auto" }}>Definir objetivo</span>
+              )}
+            </>
           )}
           <span className="cardChevron" aria-hidden="true">
             ›
@@ -414,6 +422,17 @@ export default function DietToday() {
                     )}
                     <div className="hstack compact">
                       {slotEntries.length > 0 ? <span className="chip">{`${slotKcal} kcal`}</span> : null}
+                      {slotEntries.length === 0 ? (
+                        <button
+                          type="button"
+                          className="mealAddBtn"
+                          onClick={() => goToAddFood(slot.key)}
+                          disabled={!athleteId}
+                          aria-label={`Agregar alimento a ${slot.label}`}
+                        >
+                          +
+                        </button>
+                      ) : null}
                       <KebabMenu
                         ariaLabel={`Opciones de ${slot.label}`}
                         actions={[
@@ -505,13 +524,13 @@ export default function DietToday() {
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <span className="small">Sin alimentos aún.</span>
-                  )}
+                  ) : null}
 
-                  <button type="button" className="linkBtn" onClick={() => goToAddFood(slot.key)} disabled={!athleteId}>
-                    + Agregar alimento
-                  </button>
+                  {slotEntries.length > 0 ? (
+                    <button type="button" className="linkBtn" onClick={() => goToAddFood(slot.key)} disabled={!athleteId}>
+                      + Agregar alimento
+                    </button>
+                  ) : null}
                 </div>
               );
             })}
@@ -531,6 +550,7 @@ export default function DietToday() {
 
       {/* Mismo patron que las cards de Pasos/Peso en Home: valor en la cabecera,
           gráfica sin ejes debajo. */}
+      {weekTrend.loading || weekTrend.loggedCount > 0 ? (
       <button
         type="button"
         className="surface cardButton"
@@ -564,6 +584,7 @@ export default function DietToday() {
           </>
         )}
       </button>
+      ) : null}
     </>
   );
 }

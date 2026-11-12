@@ -1,0 +1,53 @@
+/* Navegación secundaria (nivel 2 y 3): control segmentado discreto. */
+.hubSub .hubTabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--bg-soft);
+  max-width: 100%;
+}
+
+.hubSub .hubTab {
+  min-height: 34px;
+  padding: 4px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.hubSub .hubTab.active {
+  background: var(--bg-elevated);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 14%);
+}
+
+/* Cargas > Rutinas: controles del periodo y de la vista alineados a la izquierda. */
+.zonasCard .bodyMapFigure > .chipRow {
+  justify-self: start;
+  width: 100%;
+}
+
+/* Medidas: unidad como sufijo dentro del input. */
+.inputSuffix {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.inputSuffix .input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.inputSuffix .suffix {
+  position: absolute;
+  right: 12px;
+  font-size: 12px;
+  color: var(--text-soft);
+  pointer-events: none;
+}
+
+.textarea2 {
+  min-height: 0;
+}

@@ -122,7 +122,7 @@ export default function DietHistory() {
           </div>
         </div>
         <div className="quickActions" style={{ marginTop: 10 }}>
-          <button className="btn" onClick={() => nav("/diet")}>
+          <button type="button" className="btn" onClick={() => nav("/diet")}>
             Volver a Hoy
           </button>
         </div>

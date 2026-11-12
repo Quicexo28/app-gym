@@ -1187,6 +1187,23 @@ export default function Routines() {
     setFeedback("Rutina guardada.");
   }
 
+  function duplicateRoutine(routine: RoutineTemplate) {
+    if (!athleteId) return;
+    const timestamp = new Date().toISOString();
+    const copy: RoutineTemplate = {
+      ...cloneRoutine(routine),
+      id: uid("rt"),
+      name: `${routine.name} (copia)`,
+      created_at_utc: timestamp,
+      updated_at_utc: timestamp,
+      shared_routine_id: uid("srt"),
+    };
+    const next = [...items, copy];
+    setItems(next);
+    saveRoutines(next, athleteId);
+    setFeedback("Rutina duplicada.");
+  }
+
   function removeRoutine(id: string) {
     if (!athleteId) return;
     const sourceAthleteId = athleteId;
@@ -1703,6 +1720,7 @@ export default function Routines() {
                   actions={[
                     { label: "Ver detalle", onSelect: () => setInfoRoutineId(routine.id) },
                     { label: "Editar", onSelect: () => startEditRoutine(routine) },
+                    { label: "Duplicar", onSelect: () => duplicateRoutine(routine) },
                     { label: "Eliminar", destructive: true, onSelect: () => removeRoutine(routine.id) },
                   ]}
                 />

@@ -204,6 +204,8 @@ export default function CargasExercises() {
     return tree.some((node) => node.label === selectedGroup) ? selectedGroup : null;
   }, [selectedGroup, tree]);
 
+  const hasFilters = selectedGroup !== ALL || selectedZone !== ALL_EXERCISE_ZONE_FILTER || search.trim() !== "";
+
   function clearFilters() {
     setSelectedGroup(ALL);
     setSelectedZone(ALL_EXERCISE_ZONE_FILTER);
@@ -251,13 +253,13 @@ export default function CargasExercises() {
         />
       </div>
 
-      <div className="chipRow" style={{ marginTop: 10 }}>
-        <span className="chip">Resultados: {filteredEntries.length}</span>
-        <span className="chip">Grupo: {selectedGroup === ALL ? "Todos" : selectedGroup}</span>
-        <button type="button" className="btn" onClick={clearFilters}>
-          Limpiar filtros
-        </button>
-      </div>
+      {hasFilters ? (
+        <div className="chipRow" style={{ marginTop: 10 }}>
+          <button type="button" className="btn" onClick={clearFilters}>
+            Limpiar filtros
+          </button>
+        </div>
+      ) : null}
 
       {filteredEntries.length === 0 ? (
         <div className="emptyState" style={{ marginTop: 12 }}>

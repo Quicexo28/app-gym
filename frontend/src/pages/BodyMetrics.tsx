@@ -44,6 +44,8 @@ export default function BodyMetrics() {
     }));
   }, [definitionByKey, latest, prefs.weightUnit, previous]);
 
+  const viewing = activeSubject && activeSubject.kind !== "self" ? `Viendo: ${activeSubject.label}` : "";
+
   return (
     <>
       {error ? <section className="message error">{error}</section> : null}
@@ -51,24 +53,28 @@ export default function BodyMetrics() {
       <section className="surface">
         <div className="sectionHead">
           <h3>Progreso en medidas</h3>
-          <p>{`Viendo: ${activeSubject?.label || "Sin sujeto"}${latest ? ` | Último control: ${new Date(latest.measured_at).toLocaleDateString(APP_LOCALE)}` : ""}`}</p>
+          {viewing || latest ? (
+            <p>
+              {[viewing, latest ? `Último control: ${new Date(latest.measured_at).toLocaleDateString(APP_LOCALE)}` : ""]
+                .filter(Boolean)
+                .join(" | ")}
+            </p>
+          ) : null}
         </div>
-        <div className="quickActions" style={{ marginTop: 12 }}>
-          <button className="btn primary" onClick={() => navigate("/profile/progress/medida/nueva")} disabled={!athleteId}>
-            Registrar medidas
-          </button>
-        </div>
+        {loading || !latest ? (
+          <div className="emptyState" style={{ marginTop: 12 }}>
+            {loading ? "Cargando histórico..." : "Aún no hay mediciones registradas para este sujeto."}
+          </div>
+        ) : null}
       </section>
 
-      {loading ? (
-        <section className="surface">
-          <div className="emptyState">Cargando histórico...</div>
-        </section>
-      ) : !latest ? (
-        <section className="surface">
-          <div className="emptyState">Aún no hay mediciones registradas para este sujeto.</div>
-        </section>
-      ) : (
+      <div className="quickActions">
+        <button className="btn primary" onClick={() => navigate("/profile/progress/medida/nueva")} disabled={!athleteId}>
+          Registrar medidas
+        </button>
+      </div>
+
+      {loading || !latest ? null : (
         cards.map((group) => (
           <section key={group.title} className="surface">
             <div className="sectionHead">

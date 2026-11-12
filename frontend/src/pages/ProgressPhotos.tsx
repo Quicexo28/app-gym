@@ -18,6 +18,7 @@ import { formatWeight } from "../lib/units";
 import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
 import { APP_LOCALE } from "../lib/locale";
+import "../styles.ajustes.css";
 
 function todayInputValue(): string {
   const now = new Date();
@@ -29,6 +30,10 @@ function toIsoFromDateInput(value: string): string {
   const parsed = new Date(`${value}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return new Date().toISOString();
   return parsed.toISOString();
+}
+
+function poseLabel(pose: string): string {
+  return pose.charAt(0).toUpperCase() + pose.slice(1);
 }
 
 function formatTakenAt(iso: string): string {
@@ -52,6 +57,7 @@ export default function ProgressPhotos() {
 
   const [takenAt, setTakenAt] = useState<string>(() => todayInputValue());
   const [pose, setPose] = useState<ProgressPhotoPose>("frente");
+  const [showForm, setShowForm] = useState(false);
   const [note, setNote] = useState("");
   const [weight, setWeight] = useState("");
 
@@ -128,6 +134,7 @@ export default function ProgressPhotos() {
       setNote("");
       setWeight("");
       setMsg("Foto guardada solo en este dispositivo.");
+      setShowForm(false);
       await refresh();
     } catch (cause: unknown) {
       setError(String((cause as { message?: string })?.message || cause));
@@ -209,19 +216,30 @@ export default function ProgressPhotos() {
       {error ? <section className="message error">{error}</section> : null}
       {msg ? <section className="message">{msg}</section> : null}
 
-      <section className="surface privacyNote">
-        <strong>Fotos privadas</strong>
-        <span className="small">
-          Se guardan solo en el almacenamiento privado de la app en este dispositivo. No se suben al servidor, no
-          se sincronizan y tu coach no las ve. Si desinstalas la app o borras sus datos, se pierden.
-        </span>
-        {usageMb !== null ? <span className="small">{`Espacio usado por la app: ${usageMb.toFixed(1)} MB`}</span> : null}
-      </section>
+      <p className="small privacyLine">
+        Las fotos se guardan solo en este dispositivo: no se suben ni las ve tu coach.
+        {usageMb !== null ? ` Espacio usado: ${usageMb.toFixed(1)} MB.` : ""}
+      </p>
 
+      {!showForm ? (
+        <div className="quickActions">
+          <button type="button" className="btn primary" onClick={() => setShowForm(true)}>
+            + Nueva foto
+          </button>
+          {photos.length > 0 ? (
+            <button type="button" className="btn" onClick={() => void removeAll()} disabled={busy}>
+              Borrar todas
+            </button>
+          ) : null}
+        </div>
+      ) : (
       <section className="surface stack compactStack">
         <div className="sectionHead">
           <h3>Nueva foto</h3>
           <p>Misma pose, misma luz y misma distancia hacen comparable el progreso.</p>
+          <button type="button" className="btn btnSlim" onClick={() => setShowForm(false)}>
+            Cerrar
+          </button>
         </div>
 
         <div className="splitGrid">
@@ -232,7 +250,7 @@ export default function ProgressPhotos() {
               ariaLabel="Pose"
               value={pose}
               onChange={(v) => setPose(v as ProgressPhotoPose)}
-              options={PROGRESS_PHOTO_POSES.map((item) => ({ value: item, label: item }))}
+              options={PROGRESS_PHOTO_POSES.map((item) => ({ value: item, label: poseLabel(item) }))}
             />
           </div>
           <label>
@@ -267,16 +285,12 @@ export default function ProgressPhotos() {
         />
 
         <div className="quickActions">
-          <button className="btn primary" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+          <button type="button" className="btn primary" onClick={() => fileInputRef.current?.click()} disabled={busy}>
             {busy ? "Guardando..." : "Agregar foto"}
           </button>
-          {photos.length > 0 ? (
-            <button className="btn" onClick={() => void removeAll()} disabled={busy}>
-              Borrar todas
-            </button>
-          ) : null}
         </div>
       </section>
+      )}
 
       {comparePair.length === 2 ? (
         <section className="surface">
@@ -289,14 +303,14 @@ export default function ProgressPhotos() {
               <figure key={item.id} className="photoCompareItem">
                 <img src={urls[item.id]} alt={`Progreso ${formatTakenAt(item.takenAt)}`} />
                 <figcaption className="small">
-                  {`${formatTakenAt(item.takenAt)} | ${item.pose}`}
+                  {`${formatTakenAt(item.takenAt)} | ${poseLabel(item.pose)}`}
                   {typeof item.weightKg === "number" ? ` | ${formatWeight(item.weightKg, prefs.weightUnit)}` : ""}
                 </figcaption>
               </figure>
             ))}
           </div>
           <div className="quickActions" style={{ marginTop: 10 }}>
-            <button className="btn" onClick={() => setCompareIds([])}>
+            <button type="button" className="btn" onClick={() => setCompareIds([])}>
               Limpiar comparación
             </button>
           </div>
@@ -321,18 +335,18 @@ export default function ProgressPhotos() {
           <div className="photoGrid" style={{ marginTop: 12 }}>
             {photos.map((item) => (
               <article key={item.id} className={`photoCard ${compareIds.includes(item.id) ? "selected" : ""}`}>
-                <button className="photoThumbButton" onClick={() => setViewerId(item.id)}>
+                <button type="button" className="photoThumbButton" onClick={() => setViewerId(item.id)}>
                   <img src={urls[item.id]} alt={`Progreso ${formatTakenAt(item.takenAt)}`} loading="lazy" />
                 </button>
                 <div className="photoCardMeta">
                   <strong className="small">{formatTakenAt(item.takenAt)}</strong>
                   <span className="small">
-                    {item.pose}
+                    {poseLabel(item.pose)}
                     {typeof item.weightKg === "number" ? ` | ${formatWeight(item.weightKg, prefs.weightUnit)}` : ""}
                   </span>
                 </div>
                 <div className="photoCardActions">
-                  <button className="btn" onClick={() => toggleCompare(item.id)}>
+                  <button type="button" className="btn" onClick={() => toggleCompare(item.id)}>
                     {compareIds.includes(item.id) ? "Quitar" : "Comparar"}
                   </button>
                 </div>
@@ -349,18 +363,18 @@ export default function ProgressPhotos() {
             <div className="stack compactStack" style={{ marginTop: 10 }}>
               <strong>{formatTakenAt(viewer.takenAt)}</strong>
               <span className="small">
-                {viewer.pose}
+                {poseLabel(viewer.pose)}
                 {typeof viewer.weightKg === "number" ? ` | ${formatWeight(viewer.weightKg, prefs.weightUnit)}` : ""}
               </span>
               {viewer.note ? <span className="small">{viewer.note}</span> : null}
               <div className="quickActions">
-                <button className="btn" onClick={() => downloadPhoto(viewer)}>
+                <button type="button" className="btn" onClick={() => downloadPhoto(viewer)}>
                   Guardar copia
                 </button>
-                <button className="btn" onClick={() => void removePhoto(viewer.id)} disabled={busy}>
+                <button type="button" className="btn" onClick={() => void removePhoto(viewer.id)} disabled={busy}>
                   Borrar
                 </button>
-                <button className="btn primary" onClick={() => setViewerId(null)}>
+                <button type="button" className="btn primary" onClick={() => setViewerId(null)}>
                   Cerrar
                 </button>
               </div>
