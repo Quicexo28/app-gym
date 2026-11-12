@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { getSessions, type SessionRecord } from "../api";
 import BodyMap from "../components/BodyMap";
 import { aggregateSetsByBodyGroup } from "../lib/bodyMap";
 import { formatSetsRange, loadRoutines, ROUTINES_HYDRATED_EVENT, type RoutineTemplate } from "../lib/storage";
 import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
+import { useAthleteSessions } from "../lib/useAthleteSessions";
 import "../styles.perfil.css";
 
 const BODY_PERIODS: Array<{ label: string; days: number | null }> = [
@@ -26,9 +26,7 @@ export default function CargasRoutines() {
   const [athleteId] = useAthleteId();
   const { activeSubject } = useAthleteAccess();
   const [routines, setRoutines] = useState<RoutineTemplate[]>(() => (athleteId ? loadRoutines(athleteId) : []));
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const { sessions, loading, error } = useAthleteSessions(athleteId);
   const { entries } = useExerciseCatalog();
   const [periodDays, setPeriodDays] = useState<number | null>(28);
 
@@ -43,30 +41,6 @@ export default function CargasRoutines() {
     const onHydrated = () => setRoutines(athleteId ? loadRoutines(athleteId) : []);
     window.addEventListener(ROUTINES_HYDRATED_EVENT, onHydrated);
     return () => window.removeEventListener(ROUTINES_HYDRATED_EVENT, onHydrated);
-  }, [athleteId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (!athleteId) {
-        setSessions([]);
-        return;
-      }
-      setLoading(true);
-      setError("");
-      try {
-        const items = await getSessions(athleteId);
-        if (!cancelled) setSessions(items);
-      } catch (cause: unknown) {
-        if (!cancelled) setError(String((cause as { message?: string })?.message || cause));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
   }, [athleteId]);
 
   const bodyAgg = useMemo(

@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { getSessions, type SessionRecord } from "../api";
 import { ChartPlaceholder, ProgressChart } from "../components/Charts";
 import { formatPercentDelta } from "../lib/bodyMetrics";
 import { buildExerciseHistory, type ExerciseLogPoint } from "../lib/loadHistory";
@@ -9,6 +8,7 @@ import { formatWeight } from "../lib/units";
 import { useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import { APP_LOCALE } from "../lib/locale";
+import { useAthleteSessions } from "../lib/useAthleteSessions";
 
 function formatExerciseNameForDisplay(name: string): string {
   return name.replace(/\s*>\s*/g, " - ").trim();
@@ -35,34 +35,8 @@ export default function CargasExerciseDetail() {
   const exerciseName = decodeURIComponent(params.exerciseKey || "");
   const [athleteId] = useAthleteId();
   const { prefs } = usePreferences();
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const { sessions, loading, error } = useAthleteSessions(athleteId);
   const [compareDates, setCompareDates] = useState<string[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (!athleteId) {
-        setSessions([]);
-        return;
-      }
-      setLoading(true);
-      setError("");
-      try {
-        const items = await getSessions(athleteId);
-        if (!cancelled) setSessions(items);
-      } catch (cause: unknown) {
-        if (!cancelled) setError(String((cause as { message?: string })?.message || cause));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId]);
 
   const history = useMemo(() => buildExerciseHistory(sessions, exerciseName), [sessions, exerciseName]);
   const latest = history[history.length - 1] || null;

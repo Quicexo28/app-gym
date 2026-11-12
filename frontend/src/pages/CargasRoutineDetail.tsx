@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { getSessions, type SessionRecord } from "../api";
 import { Sparkline } from "../components/Charts";
 import { formatPercentDelta } from "../lib/bodyMetrics";
 import { buildExerciseHistory } from "../lib/loadHistory";
@@ -9,6 +8,7 @@ import { loadRoutines, ROUTINES_HYDRATED_EVENT } from "../lib/storage";
 import { formatWeight } from "../lib/units";
 import { useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
+import { useAthleteSessions } from "../lib/useAthleteSessions";
 
 function formatExerciseNameForDisplay(name: string): string {
   return name.replace(/\s*>\s*/g, " - ").trim();
@@ -25,9 +25,7 @@ export default function CargasRoutineDetail() {
   const routineId = params.routineId || "";
   const [athleteId] = useAthleteId();
   const { prefs } = usePreferences();
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const { sessions, loading, error } = useAthleteSessions(athleteId);
   const [routinesVersion, setRoutinesVersion] = useState(0);
 
   useEffect(() => {
@@ -42,30 +40,6 @@ export default function CargasRoutineDetail() {
     // routinesVersion fuerza recalculo cuando el storage local se hidrata desde el backend.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [athleteId, routineId, routinesVersion]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (!athleteId) {
-        setSessions([]);
-        return;
-      }
-      setLoading(true);
-      setError("");
-      try {
-        const items = await getSessions(athleteId);
-        if (!cancelled) setSessions(items);
-      } catch (cause: unknown) {
-        if (!cancelled) setError(String((cause as { message?: string })?.message || cause));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId]);
 
   const exerciseCards = useMemo(() => {
     if (!routine) return [];
