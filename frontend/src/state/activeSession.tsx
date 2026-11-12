@@ -2,6 +2,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { cancelRestNotification, scheduleRestNotification } from "../lib/restNotification";
+import { endSessionLiveActivity, syncSessionLiveActivity } from "../lib/sessionLiveActivity";
+import type { SessionLiveActivityState } from "../lib/sessionLiveActivity";
+
 export type ActiveSessionStep = "pick_routine" | "capture_session";
 
 export type ActiveSessionSetRow = {
@@ -272,12 +276,59 @@ function findFirstPendingSet(exercises: ActiveSessionExerciseDraft[]): { exercis
   return null;
 }
 
+function buildLiveActivityState(draft: ActiveSessionDraft | null): SessionLiveActivityState | null {
+  if (!draft || draft.step !== "capture_session" || draft.sessionTimer.completed_at_ms !== null) return null;
+  const pending = findFirstPendingSet(draft.routineExercises);
+  const current = draft.routineExercises[pending?.exerciseIndex ?? draft.routineExercises.length - 1];
+  const setsAll = draft.routineExercises.reduce((acc, ex) => acc + ex.sets.length, 0);
+  const setsDone = draft.routineExercises.reduce((acc, ex) => acc + ex.sets.filter((s) => s.completed).length, 0);
+  const timer = draft.sessionTimer;
+  const running = timer.running_since_ms !== null;
+  const rest = draft.restTimer;
+  return {
+    routineName: draft.routineName,
+    exerciseName: pending ? (current?.name ?? "") : "Sesión completa",
+    setNumber: pending ? pending.setIndex + 1 : (current?.sets.length ?? 0),
+    setTotal: current?.sets.length ?? 0,
+    setsDone,
+    setsAll,
+    elapsedAnchorMs: timer.running_since_ms === null ? null : timer.running_since_ms - timer.accumulated_ms,
+    elapsedPausedMs: running ? 0 : timer.accumulated_ms,
+    // Puede estar en el pasado (descanso ya terminado): la vista nativa lo trata como "sin descanso".
+    restEndsAtMs: rest ? rest.ends_at_ms : null,
+  };
+}
+
 export function ActiveSessionProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState<ActiveSessionDraft | null>(() => readStoredDraft());
 
   useEffect(() => {
     writeStoredDraft(draft);
   }, [draft]);
+
+  // Efectos nativos de la sesion (aviso de fin de descanso y Live Activity).
+  // Viven aqui y no en NewSession: ActiveSessionBar completa series con esa pantalla
+  // desmontada. Sin cleanup a proposito: al salir de la pantalla deben seguir vivos.
+  const restEndsAtMs = draft?.restTimer?.ends_at_ms ?? null;
+  const restExerciseName = draft?.restTimer?.exercise_name ?? "";
+  useEffect(() => {
+    if (restEndsAtMs === null) {
+      void cancelRestNotification();
+      return;
+    }
+    void scheduleRestNotification(restEndsAtMs, restExerciseName);
+  }, [restEndsAtMs, restExerciseName]);
+
+  // Solo eventos discretos (serie, descanso, pausa): la clave cambia ahi y no en cada tick.
+  const liveState = useMemo(() => buildLiveActivityState(draft), [draft]);
+  const liveKey = liveState ? JSON.stringify(liveState) : "";
+  useEffect(() => {
+    if (!liveKey) {
+      void endSessionLiveActivity();
+      return;
+    }
+    void syncSessionLiveActivity(JSON.parse(liveKey) as SessionLiveActivityState);
+  }, [liveKey]);
 
   const saveDraft = useCallback((nextDraft: ActiveSessionDraft) => {
     setDraft({ ...nextDraft, updatedAtMs: Date.now() });

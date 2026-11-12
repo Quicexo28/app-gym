@@ -15,6 +15,7 @@ def capacitor_pods
   pod 'CapacitorMlkitTextRecognition', :path => '../../node_modules/@capacitor-mlkit/text-recognition'
   pod 'CapacitorApp', :path => '../../node_modules/@capacitor/app'
   pod 'CapacitorCamera', :path => '../../node_modules/@capacitor/camera'
+  pod 'CapacitorLocalNotifications', :path => '../../node_modules/@capacitor/local-notifications'
   pod 'CapgoCapacitorSocialLogin', :path => '../../node_modules/@capgo/capacitor-social-login'
 end
 
