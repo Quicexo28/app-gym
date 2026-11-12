@@ -12,11 +12,13 @@ def create_app() -> FastAPI:
     configure_logging(settings.log_level)
     assert_secret_is_safe(settings.env)
 
+    is_dev = settings.env.strip().lower() != "prod"
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url="/docs" if is_dev else None,
+        redoc_url="/redoc" if is_dev else None,
+        openapi_url="/openapi.json" if is_dev else None,
     )
 
     app.add_middleware(
@@ -24,8 +26,8 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_origin_regex=settings.cors_origin_regex,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-App-Admin-View", "X-App-Coach-View"],
     )
 
     app.include_router(api_router, prefix="/api/v1")

@@ -29,6 +29,7 @@ from app.auth.security import create_access_token, hash_password, verify_passwor
 from app.auth.types import Plan, Role
 from app.auth.view_scopes import can_use_admin_view, can_use_coach_view
 from app.core.config import Settings
+from app.core.rate_limit import SlidingWindowRateLimiter, rate_limit_dependency
 from app.db.engine import get_db
 from app.db.models import (
     ActiveSessionHeartbeat,
@@ -61,6 +62,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 DbSession = Session
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+_LOGIN_LIMITER = SlidingWindowRateLimiter(max_requests=10, window_seconds=60)
+_REGISTER_LIMITER = SlidingWindowRateLimiter(max_requests=5, window_seconds=60)
+login_rate_limit = rate_limit_dependency(_LOGIN_LIMITER, "login")
+register_rate_limit = rate_limit_dependency(_REGISTER_LIMITER, "register")
 
 PHONE_MIN_DIGITS = 8
 PHONE_MAX_DIGITS = 15
@@ -451,7 +457,7 @@ def _add_social_user(
     return user
 
 
-@router.post("/register", response_model=AuthResponse)
+@router.post("/register", response_model=AuthResponse, dependencies=[Depends(register_rate_limit)])
 def register(
     payload: RegisterRequest,
     db: Annotated[DbSession, Depends(get_db)],
@@ -497,7 +503,7 @@ def register(
     return _auth_response_for_user(user)
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post("/login", response_model=AuthResponse, dependencies=[Depends(login_rate_limit)])
 def login(
     payload: LoginRequest,
     db: Annotated[DbSession, Depends(get_db)],
@@ -517,7 +523,7 @@ def login(
     return _auth_response_for_user(user)
 
 
-@router.post("/guest", response_model=AuthResponse)
+@router.post("/guest", response_model=AuthResponse, dependencies=[Depends(login_rate_limit)])
 def guest_login(
     db: Annotated[DbSession, Depends(get_db)],
 ) -> AuthResponse:
@@ -566,7 +572,7 @@ def guest_login(
     return _auth_response_for_user(user)
 
 
-@router.post("/google", response_model=AuthResponse)
+@router.post("/google", response_model=AuthResponse, dependencies=[Depends(login_rate_limit)])
 def google_login(
     payload: GoogleLoginRequest,
     db: Annotated[DbSession, Depends(get_db)],
