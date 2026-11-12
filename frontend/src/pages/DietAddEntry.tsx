@@ -1,17 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
 
 import {
   ApiError,
   createDietEntry,
   createDietFood,
   getDietFoodByBarcode,
-  getDietFoodCategories,
-  getRecentDietFoods,
-  searchDietFoods,
   uploadDietFoodPhoto,
-  type FoodBasis,
   type FoodProduct,
   type FoodProductCreatePayload,
   type MealEntryCreatePayload,
@@ -21,91 +16,26 @@ import {
   consumedAtForDay,
   mealSlotKey,
   parseOptionalNumber,
-  scalePer100g,
   todayKey,
   useMealSlots,
 } from "../lib/nutrition/dietApi";
-import QuantityField from "../components/QuantityField";
 import { formatDayLong, parseDayKey } from "../lib/dates";
 import { currentBarcodeCapability, scanBarcode, type BarcodeCapability, type BarcodeScanResult } from "../lib/nutrition/barcode";
-import {
-  buildLabelPrefill,
-  classifyBarcodeLookup,
-  CONFIDENCE_LABEL_ES,
-  decideFoodOwnership,
-  nextCaptureStep,
-  PHOTO_FORM_MACRO_KEYS,
-  type PhotoFormMacroKey,
-} from "../lib/nutrition/capture";
-import {
-  foodCategoryGroup,
-  visibleFoodCategoryGroups,
-  type FoodCategoryGroup,
-} from "../lib/nutrition/foodCategories";
-import { foodEmoji } from "../lib/nutrition/foodEmoji";
-import { parseNutritionLabel } from "../lib/nutrition/labelParser";
-import {
-  baseUnitLabel,
-  defaultUnitForBasis,
-  toBaseQuantity,
-  type QuantityUnitKey,
-} from "../lib/nutrition/units";
+import { classifyBarcodeLookup, nextCaptureStep, PHOTO_FORM_MACRO_KEYS } from "../lib/nutrition/capture";
+import type { FoodCategoryGroup } from "../lib/nutrition/foodCategories";
+import { defaultQuantityFor, errorMessage, type CaptureMode, type ScanStatus } from "../lib/nutrition/addEntryForm";
+import { baseUnitLabel, toBaseQuantity, type QuantityUnitKey } from "../lib/nutrition/units";
 import { enqueueMealEntry } from "../lib/nutrition/mealOutbox";
-import { currentOcrProvider } from "../lib/nutrition/ocr";
-import { captureNativePhoto } from "../lib/nutrition/photoCapture";
-import type { ConfidenceLevel } from "../lib/nutrition/types";
 import { isNetworkError } from "../lib/sessionOutbox";
 import { useAthleteId } from "../state/athlete";
+import FoodBrowser from "./dietAddEntry/FoodBrowser";
+import MealSlotField from "./dietAddEntry/MealSlotField";
+import PhotoPanel from "./dietAddEntry/PhotoPanel";
+import ScanPanel from "./dietAddEntry/ScanPanel";
+import SelectedFoodCard from "./dietAddEntry/SelectedFoodCard";
+import { useFoodSearch } from "./dietAddEntry/useFoodSearch";
+import { usePhotoCapture } from "./dietAddEntry/usePhotoCapture";
 import "../styles.ajustes.css";
-
-// Se lee una sola vez fuera del render (mismo patron que `Login.tsx`): leer la
-// plataforma es una operacion pura, pero conviene no repetirla en cada pintado.
-const isNativeApp = Capacitor.isNativePlatform();
-
-type CaptureMode = "search" | "scan" | "photo";
-type ScanStatus = "idle" | "scanning" | "looking-up" | "error";
-
-const PHOTO_MACRO_LABELS: Record<PhotoFormMacroKey, string> = {
-  energy_kcal: "Energía (kcal)",
-  protein_g: "Proteína (g)",
-  carbs_g: "Carbohidratos (g)",
-  sugars_g: "Azucares (g)",
-  fiber_g: "Fibra (g)",
-  fat_g: "Grasas (g)",
-  sat_fat_g: "Grasa saturada (g)",
-  sodium_mg: "Sodio (mg)",
-};
-
-type PhotoMacroFieldState = { text: string; suggested: boolean; confidence?: ConfidenceLevel };
-type PhotoMacroForm = Record<PhotoFormMacroKey, PhotoMacroFieldState>;
-
-function emptyPhotoMacroForm(): PhotoMacroForm {
-  const form = {} as PhotoMacroForm;
-  for (const key of PHOTO_FORM_MACRO_KEYS) {
-    form[key] = { text: "", suggested: false };
-  }
-  return form;
-}
-
-type CapturedPhotoState = { blob: Blob; previewUrl: string; ocrPath: string | null };
-
-function errorMessage(cause: unknown): string {
-  return String((cause as { message?: string })?.message || cause);
-}
-
-/**
- * Cantidad con la que arranca el formulario para un alimento.
- *
- * Con tamano de porcion conocido, "1 porcion" es la respuesta correcta casi
- * siempre y ahorra que el usuario traduzca a gramos. Sin el, 100 de la unidad
- * base es el default de toda la vida (los macros del catálogo vienen por 100).
- */
-function defaultQuantityFor(food: FoodProduct | null): { value: string; unit: QuantityUnitKey } {
-  if (food?.serving_size_g && food.serving_size_g > 0) {
-    return { value: "1", unit: "porcion" };
-  }
-  return { value: "100", unit: defaultUnitForBasis(food?.basis) };
-}
 
 export default function DietAddEntry() {
   const nav = useNavigate();
@@ -129,16 +59,7 @@ export default function DietAddEntry() {
   const [mode, setMode] = useState<CaptureMode>("search");
   const [notes, setNotes] = useState("");
 
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<FoodProduct[]>([]);
-  const [searching, setSearching] = useState(false);
   const [selectedFood, setSelectedFood] = useState<FoodProduct | null>(preselected);
-  // Explorar sin escribir: el buscador arranca en los atajos (recientes +
-  // categorias) y solo cae a la lista de resultados cuando hay termino o
-  // categoria elegida. Ver `lib/nutrition/foodCategories.ts`.
-  const [categoryKey, setCategoryKey] = useState<string | null>(null);
-  const [catalogCategories, setCatalogCategories] = useState<string[]>([]);
-  const [recentFoods, setRecentFoods] = useState<FoodProduct[]>([]);
   // La cantidad se escribe en la unidad que el usuario prefiera y el backend la
   // convierte (ver `lib/nutrition/units.ts`). Si el alimento sabe cuanto pesa
   // una porcion se arranca en "1 porcion", que es como la gente piensa la
@@ -163,23 +84,6 @@ export default function DietAddEntry() {
   const [manualBarcodeInput, setManualBarcodeInput] = useState("");
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // --- Registro por foto ---
-  const [photoBarcodeInput, setPhotoBarcodeInput] = useState("");
-  const [photoName, setPhotoName] = useState("");
-  const [photoBrand, setPhotoBrand] = useState("");
-  const [photoBasis, setPhotoBasis] = useState<FoodBasis>("per_100g");
-  const [photoServingSizeG, setPhotoServingSizeG] = useState("");
-  const [photoServingLabel, setPhotoServingLabel] = useState<string | null>(null);
-  const [photoQuantity, setPhotoQuantity] = useState("100");
-  const [photoQuantityUnit, setPhotoQuantityUnit] = useState<QuantityUnitKey>("g");
-  const [photoMacros, setPhotoMacros] = useState<PhotoMacroForm>(() => emptyPhotoMacroForm());
-  const [frontPhoto, setFrontPhoto] = useState<CapturedPhotoState | null>(null);
-  const [nutritionPhoto, setNutritionPhoto] = useState<CapturedPhotoState | null>(null);
-  const [ocrRunning, setOcrRunning] = useState(false);
-  const [ocrWarning, setOcrWarning] = useState("");
-  const frontFileInputRef = useRef<HTMLInputElement | null>(null);
-  const nutritionFileInputRef = useRef<HTMLInputElement | null>(null);
-
   // Preselecciona la primera comida configurada del atleta en cuanto carga, mientras no la haya tocado a mano.
   useEffect(() => {
     if (mealSlotTouchedRef.current || mealSlots.length === 0) return;
@@ -192,63 +96,17 @@ export default function DietAddEntry() {
     setSlotPickerOpen(false);
   }
 
-  const activeCategory = useMemo(() => foodCategoryGroup(categoryKey), [categoryKey]);
-
-  // Las categorias del catálogo se piden una vez: solo sirven para no ofrecer
-  // grupos que abririan vacios.
-  useEffect(() => {
-    getDietFoodCategories()
-      .then(setCatalogCategories)
-      .catch(() => setCatalogCategories([]));
-  }, []);
-
-  useEffect(() => {
-    if (!athleteId) return;
-    let cancelled = false;
-    getRecentDietFoods(athleteId, 8)
-      .then((rows) => {
-        if (!cancelled) setRecentFoods(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setRecentFoods([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId]);
-
-  // Con categoria elegida el termino vacio es válido: lista el grupo entero
-  // (el backend admite `q=""`), y escribir filtra dentro de ese grupo.
-  useEffect(() => {
-    const term = query.trim();
-    if (selectedFood || (!term && !activeCategory)) {
-      setResults([]);
-      return;
-    }
-    let cancelled = false;
-    const timeoutId = window.setTimeout(() => {
-      setSearching(true);
-      searchDietFoods({
-        q: term,
-        scope: "all",
-        category: activeCategory ? activeCategory.tcac : undefined,
-        limit: activeCategory ? 60 : undefined,
-      })
-        .then((rows) => {
-          if (!cancelled) setResults(rows);
-        })
-        .catch(() => {
-          if (!cancelled) setResults([]);
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false);
-        });
-    }, term ? 300 : 0);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [query, selectedFood, activeCategory]);
+  const {
+    query,
+    setQuery,
+    results,
+    setResults,
+    searching,
+    setCategoryKey,
+    activeCategory,
+    recentFoods,
+    categoryGroups,
+  } = useFoodSearch(athleteId, selectedFood);
 
   // El escaneo con BarcodeDetector web necesita el <video> ya montado en el
   // DOM (mode === "scan"), así que arranca desde un efecto en vez de desde el
@@ -276,14 +134,7 @@ export default function DietAddEntry() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, scanCapability]);
 
-  // Libera los object URLs de las fotos capturadas al desmontar la pantalla.
-  useEffect(() => {
-    return () => {
-      if (frontPhoto) URL.revokeObjectURL(frontPhoto.previewUrl);
-      if (nutritionPhoto) URL.revokeObjectURL(nutritionPhoto.previewUrl);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const photo = usePhotoCapture(setError);
 
   function pickFood(food: FoodProduct) {
     const next = defaultQuantityFor(food);
@@ -391,116 +242,27 @@ export default function DietAddEntry() {
     setScanMessage("");
   }
 
-  // -------------------------------------------------------------------------
-  // Flujo de registro por foto (doc modulo-dieta.md #6.5)
-  // -------------------------------------------------------------------------
-
   function openPhotoFlow(barcode: string | null) {
-    if (frontPhoto) URL.revokeObjectURL(frontPhoto.previewUrl);
-    if (nutritionPhoto) URL.revokeObjectURL(nutritionPhoto.previewUrl);
-
-    setPhotoBarcodeInput(barcode ?? "");
-    setPhotoName("");
-    setPhotoBrand("");
-    setPhotoBasis("per_100g");
-    setPhotoServingSizeG("");
-    setPhotoServingLabel(null);
-    setPhotoQuantity("100");
-    setPhotoMacros(emptyPhotoMacroForm());
-    setFrontPhoto(null);
-    setNutritionPhoto(null);
-    setOcrWarning("");
+    photo.resetPhotoForm(barcode);
     setScanStatus("idle");
     setError("");
     setMode("photo");
   }
 
-  async function handleCapturePhoto(kind: "front" | "nutrition") {
-    setError("");
-    if (isNativeApp) {
-      const result = await captureNativePhoto();
-      if (result.status === "captured") {
-        applyCapturedPhoto(kind, result.photo.blob, result.photo.ocrPath);
-      } else if (result.status !== "cancelled") {
-        setError(result.message);
-      }
-      return;
-    }
-    (kind === "front" ? frontFileInputRef : nutritionFileInputRef).current?.click();
-  }
-
-  function handleFileInputChange(kind: "front" | "nutrition", file: File | null) {
-    if (!file) return;
-    applyCapturedPhoto(kind, file, null);
-  }
-
-  function applyCapturedPhoto(kind: "front" | "nutrition", blob: Blob, ocrPath: string | null) {
-    const previewUrl = URL.createObjectURL(blob);
-    if (kind === "front") {
-      setFrontPhoto((prev) => {
-        if (prev) URL.revokeObjectURL(prev.previewUrl);
-        return { blob, previewUrl, ocrPath };
-      });
-      return;
-    }
-    setNutritionPhoto((prev) => {
-      if (prev) URL.revokeObjectURL(prev.previewUrl);
-      return { blob, previewUrl, ocrPath };
-    });
-    void runOcr(blob, ocrPath);
-  }
-
-  async function runOcr(blob: Blob, ocrPath: string | null) {
-    const provider = currentOcrProvider();
-    if (!provider) return; // web sin proveedor: se cae al formulario manual, sin aviso de error
-
-    setOcrRunning(true);
-    setOcrWarning("");
-    try {
-      const lines = await provider.recognize({ path: ocrPath ?? undefined, blob });
-      const parsed = parseNutritionLabel(lines);
-      const prefill = buildLabelPrefill(parsed);
-
-      setPhotoBasis(prefill.basis);
-      const nextForm = emptyPhotoMacroForm();
-      for (const key of PHOTO_FORM_MACRO_KEYS) {
-        const field = prefill.values[key];
-        if (field) nextForm[key] = { text: String(field.value), suggested: true, confidence: field.confidence };
-      }
-      setPhotoMacros(nextForm);
-
-      if (parsed.servingSizeG) {
-        setPhotoServingSizeG(String(parsed.servingSizeG));
-        setPhotoQuantity(String(parsed.servingSizeG));
-      }
-      if (parsed.servingSizeRaw) setPhotoServingLabel(parsed.servingSizeRaw);
-
-      setOcrWarning(
-        prefill.needsServingSize
-          ? "No se pudo determinar el tamano de porcion en gramos. Completa los valores por 100 g manualmente."
-          : "",
-      );
-    } catch {
-      setOcrWarning("No se pudo leer el texto de la etiqueta. Completa los valores manualmente.");
-    } finally {
-      setOcrRunning(false);
-    }
-  }
-
-  function updatePhotoMacro(key: PhotoFormMacroKey, text: string) {
-    setPhotoMacros((prev) => ({ ...prev, [key]: { text, suggested: false } }));
-  }
+  // -------------------------------------------------------------------------
+  // Flujo de registro por foto (doc modulo-dieta.md #6.5)
+  // -------------------------------------------------------------------------
 
   async function savePhotoCapture() {
     if (!athleteId) return;
-    const name = photoName.trim();
+    const name = photo.photoName.trim();
     if (!name) {
       setError("El nombre del alimento es obligatorio.");
       return;
     }
-    const qty = parseOptionalNumber(photoQuantity);
-    const photoServingG = parseOptionalNumber(photoServingSizeG);
-    if (!qty || toBaseQuantity(qty, photoQuantityUnit, photoServingG) === null) {
+    const qty = parseOptionalNumber(photo.photoQuantity);
+    const photoServingG = parseOptionalNumber(photo.photoServingSizeG);
+    if (!qty || toBaseQuantity(qty, photo.photoQuantityUnit, photoServingG) === null) {
       setError("Ingresa una cantidad válida.");
       return;
     }
@@ -510,24 +272,24 @@ export default function DietAddEntry() {
     setMsg("");
     try {
       const payload: FoodProductCreatePayload = {
-        barcode: photoBarcodeInput.trim() || null,
+        barcode: photo.photoBarcodeInput.trim() || null,
         name,
-        brand: photoBrand.trim() || null,
-        basis: photoBasis,
+        brand: photo.photoBrand.trim() || null,
+        basis: photo.photoBasis,
         serving_size_g: photoServingG,
-        serving_label: photoServingLabel,
+        serving_label: photo.photoServingLabel,
       };
       for (const key of PHOTO_FORM_MACRO_KEYS) {
-        payload[key] = parseOptionalNumber(photoMacros[key].text);
+        payload[key] = parseOptionalNumber(photo.photoMacros[key].text);
       }
 
       const food = await createDietFood(payload);
 
-      if (frontPhoto) {
-        await uploadDietFoodPhoto(food.id, "front", frontPhoto.blob);
+      if (photo.frontPhoto) {
+        await uploadDietFoodPhoto(food.id, "front", photo.frontPhoto.blob);
       }
-      if (nutritionPhoto) {
-        await uploadDietFoodPhoto(food.id, "nutrition", nutritionPhoto.blob);
+      if (photo.nutritionPhoto) {
+        await uploadDietFoodPhoto(food.id, "nutrition", photo.nutritionPhoto.blob);
       }
 
       await createDietEntry({
@@ -536,7 +298,7 @@ export default function DietAddEntry() {
         meal_slot: mealSlot,
         food_product_id: food.id,
         quantity_value: qty,
-        quantity_unit: photoQuantityUnit,
+        quantity_unit: photo.photoQuantityUnit,
         notes: notes.trim() || null,
       });
 
@@ -631,61 +393,17 @@ export default function DietAddEntry() {
       : undefined;
   const showCaptureHooks = mode === "search";
   const activeSlotLabel = mealSlots.find((slot) => slot.key === mealSlot)?.label || "Comida";
-  const categoryGroups = useMemo(
-    () => visibleFoodCategoryGroups(catalogCategories),
-    [catalogCategories],
+
+  const mealSlotField = (
+    <MealSlotField
+      mealSlots={mealSlots}
+      mealSlot={mealSlot}
+      activeSlotLabel={activeSlotLabel}
+      open={slotPickerOpen}
+      onOpen={() => setSlotPickerOpen(true)}
+      onPick={pickMealSlot}
+    />
   );
-  // Los atajos (recientes + categorias) son la vista por defecto del buscador:
-  // se van en cuanto hay algo que listar, para no apilar dos listas de comida.
-  const showBrowse = !query.trim() && !activeCategory;
-
-  function renderFoodRow(food: FoodProduct) {
-    return (
-      <button key={food.id} type="button" className="surfaceButton" onClick={() => pickFood(food)}>
-        <strong>
-          <span className="foodEmoji" aria-hidden="true">
-            {foodEmoji(food.name, food.category)}
-          </span>
-          {food.name}
-        </strong>
-        <span className="small">
-          {food.brand ? `${food.brand} | ` : ""}
-          {food.energy_kcal !== null ? `${Math.round(food.energy_kcal)} kcal / 100 g` : "Sin datos"}
-        </span>
-      </button>
-    );
-  }
-
-  // Un solo campo para la comida destino, compartido por el modo busqueda y el
-  // modo foto: cerrado muestra a cual se registra, abierto deja cambiarla.
-  function renderMealSlotField() {
-    if (!slotPickerOpen) {
-      return (
-        <div className="sectionHead">
-          <h3>{activeSlotLabel}</h3>
-          {mealSlots.length > 1 ? (
-            <button type="button" className="btn btnSlim" onClick={() => setSlotPickerOpen(true)}>
-              Cambiar
-            </button>
-          ) : null}
-        </div>
-      );
-    }
-    return (
-      <div className="mealSlotPicker">
-        {mealSlots.map((slot) => (
-          <button
-            key={slot.key}
-            type="button"
-            className={`mealSlotCard ${mealSlot === slot.key ? "activeMealSlotCard" : ""}`}
-            onClick={() => pickMealSlot(slot.key)}
-          >
-            {slot.label}
-          </button>
-        ))}
-      </div>
-    );
-  }
 
   return (
     <div className="container stack">
@@ -698,358 +416,98 @@ export default function DietAddEntry() {
       {msg ? <section className="message">{msg}</section> : null}
 
       {mode === "scan" ? (
-        <section className="surface stack compactStack">
-          <div className="sectionHead">
-            <h3>Escanear código de barras</h3>
-            <button type="button" className="btn btnSlim" onClick={cancelScan}>
-              Cancelar
-            </button>
-          </div>
-
-          {scanCapability === "web-detector" ? (
-            <video ref={videoRef} className="barcodeScanVideo" muted playsInline />
-          ) : null}
-
-          {scanStatus === "scanning" && scanCapability === "native" ? (
-            <div className="emptyState">Abriendo camara...</div>
-          ) : null}
-          {scanStatus === "scanning" && scanCapability === "web-detector" ? (
-            <div className="emptyState">Apunta la camara al código de barras.</div>
-          ) : null}
-          {scanStatus === "looking-up" ? <div className="emptyState">Buscando el producto...</div> : null}
-
-          {scanStatus === "error" ? <div className="message error">{scanMessage}</div> : null}
-
-          {scanCapability === "manual" || scanStatus === "error" ? (
-            <div className="stack compactStack">
-              <label>
-                <span className="smallLabel">Código de barras</span>
-                <input
-                  className="input"
-                  inputMode="numeric"
-                  value={manualBarcodeInput}
-                  onChange={(e) => setManualBarcodeInput(e.target.value)}
-                />
-              </label>
-              <button type="button" className="btn primary" onClick={submitManualBarcode} disabled={!manualBarcodeInput.trim()}>
-                Buscar
-              </button>
-            </div>
-          ) : null}
-        </section>
+        <ScanPanel
+          scanCapability={scanCapability}
+          scanStatus={scanStatus}
+          scanMessage={scanMessage}
+          manualBarcodeInput={manualBarcodeInput}
+          onManualBarcodeChange={setManualBarcodeInput}
+          onSubmitManual={submitManualBarcode}
+          onCancel={cancelScan}
+          videoRef={videoRef}
+        />
       ) : null}
 
       {mode === "photo" ? (
-        <section className="surface stack compactStack">
-          <div className="sectionHead">
-            <h3>Registro por foto</h3>
-            <button type="button" className="btn btnSlim" onClick={() => setMode("search")}>
-              Cancelar
-            </button>
-          </div>
-
-          <p className="small">{decideFoodOwnership(photoBarcodeInput).noteEs}</p>
-
-          <div className="photoCompare">
-            <figure className="photoCompareItem">
-              <figcaption className="small">Foto frontal (opcional)</figcaption>
-              {frontPhoto ? <img src={frontPhoto.previewUrl} alt="Foto frontal del producto" /> : null}
-              <button type="button" className="btn btnSlim" onClick={() => void handleCapturePhoto("front")}>
-                {frontPhoto ? "Repetir foto frontal" : "Tomar foto frontal"}
-              </button>
-            </figure>
-            <figure className="photoCompareItem">
-              <figcaption className="small">Tabla nutricional</figcaption>
-              {nutritionPhoto ? <img src={nutritionPhoto.previewUrl} alt="Foto de la tabla nutricional" /> : null}
-              <button type="button" className="btn btnSlim" onClick={() => void handleCapturePhoto("nutrition")}>
-                {nutritionPhoto ? "Repetir foto de etiqueta" : "Tomar foto de tabla nutricional"}
-              </button>
-            </figure>
-          </div>
-
-          <input
-            ref={frontFileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              handleFileInputChange("front", e.target.files?.[0] || null);
-              e.target.value = "";
-            }}
-          />
-          <input
-            ref={nutritionFileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              handleFileInputChange("nutrition", e.target.files?.[0] || null);
-              e.target.value = "";
-            }}
-          />
-
-          {ocrRunning ? <div className="emptyState">Leyendo la etiqueta...</div> : null}
-          {ocrWarning ? <div className="message">{ocrWarning}</div> : null}
-
-          <label>
-            <span className="smallLabel">Nombre del alimento</span>
-            <input className="input" value={photoName} onChange={(e) => setPhotoName(e.target.value)} />
-          </label>
-          <label>
-            <span className="smallLabel">Marca (opcional)</span>
-            <input className="input" value={photoBrand} onChange={(e) => setPhotoBrand(e.target.value)} />
-          </label>
-          <label>
-            <span className="smallLabel">Código de barras (opcional)</span>
-            <input
-              className="input"
-              inputMode="numeric"
-              placeholder="Puedes agregarlo más adelante"
-              value={photoBarcodeInput}
-              onChange={(e) => setPhotoBarcodeInput(e.target.value)}
-            />
-          </label>
-
-          <div>
-            <span className="smallLabel">Los valores de abajo son por</span>
-            <div className="chipRow">
-              <button
-                type="button"
-                className={`chipButton ${photoBasis === "per_100g" ? "activeChipButton" : ""}`}
-                onClick={() => setPhotoBasis("per_100g")}
-              >
-                100 g
-              </button>
-              <button
-                type="button"
-                className={`chipButton ${photoBasis === "per_100ml" ? "activeChipButton" : ""}`}
-                onClick={() => setPhotoBasis("per_100ml")}
-              >
-                100 ml
-              </button>
-            </div>
-          </div>
-
-          <label>
-            <span className="smallLabel">Tamano de porcion (g, opcional)</span>
-            <input
-              className="input"
-              inputMode="decimal"
-              value={photoServingSizeG}
-              onChange={(e) => setPhotoServingSizeG(e.target.value)}
-            />
-          </label>
-
-          <div className="bodyMetricGrid">
-            {PHOTO_FORM_MACRO_KEYS.map((key) => {
-              const field = photoMacros[key];
-              return (
-                <label key={key} className="bodyMetricField">
-                  <span className="smallLabel">
-                    {PHOTO_MACRO_LABELS[key]}
-                    {field.suggested ? (
-                      <span className="badge" style={{ marginLeft: 6 }}>
-                        {`Sugerido (confianza ${CONFIDENCE_LABEL_ES[field.confidence ?? "low"]})`}
-                      </span>
-                    ) : null}
-                  </span>
-                  <input className="input" inputMode="decimal" value={field.text} onChange={(e) => updatePhotoMacro(key, e.target.value)} />
-                </label>
-              );
-            })}
-          </div>
-
-          {renderMealSlotField()}
-
-          <QuantityField
-            label="Cantidad a registrar"
-            value={photoQuantity}
-            onValueChange={setPhotoQuantity}
-            unit={photoQuantityUnit}
-            onUnitChange={setPhotoQuantityUnit}
-            basis={photoBasis}
-            servingSizeG={parseOptionalNumber(photoServingSizeG)}
-          />
-
-          <label>
-            <span className="smallLabel">Notas (opcional)</span>
-            <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </label>
-
-          <div className="quickActions">
-            <button type="button" className="btn primary" onClick={() => void savePhotoCapture()} disabled={saving || !athleteId}>
-              {saving ? "Guardando..." : "Registrar alimento"}
-            </button>
-            <button type="button" className="btn" onClick={() => setMode("search")} disabled={saving}>
-              Cancelar
-            </button>
-          </div>
-        </section>
+        <PhotoPanel
+          barcode={photo.photoBarcodeInput}
+          onBarcodeChange={photo.setPhotoBarcodeInput}
+          name={photo.photoName}
+          onNameChange={photo.setPhotoName}
+          brand={photo.photoBrand}
+          onBrandChange={photo.setPhotoBrand}
+          basis={photo.photoBasis}
+          onBasisChange={photo.setPhotoBasis}
+          servingSizeText={photo.photoServingSizeG}
+          servingSizeG={parseOptionalNumber(photo.photoServingSizeG)}
+          onServingSizeChange={photo.setPhotoServingSizeG}
+          macros={photo.photoMacros}
+          onMacroChange={photo.updatePhotoMacro}
+          quantity={photo.photoQuantity}
+          onQuantityChange={photo.setPhotoQuantity}
+          quantityUnit={photo.photoQuantityUnit}
+          onQuantityUnitChange={photo.setPhotoQuantityUnit}
+          notes={notes}
+          onNotesChange={setNotes}
+          frontPhoto={photo.frontPhoto}
+          nutritionPhoto={photo.nutritionPhoto}
+          onCapturePhoto={(kind) => void photo.handleCapturePhoto(kind)}
+          frontFileInputRef={photo.frontFileInputRef}
+          nutritionFileInputRef={photo.nutritionFileInputRef}
+          onFileInputChange={photo.handleFileInputChange}
+          ocrRunning={photo.ocrRunning}
+          ocrWarning={photo.ocrWarning}
+          mealSlotField={mealSlotField}
+          saving={saving}
+          canSave={!!athleteId}
+          onSave={() => void savePhotoCapture()}
+          onCancel={() => setMode("search")}
+        />
       ) : null}
 
       {showCaptureHooks ? (
         <section className="surface stack compactStack">
-          {renderMealSlotField()}
+          {mealSlotField}
 
           <div>
             <span className="smallLabel">Alimento</span>
             {selectedFood ? (
-              <div className="foodResultCard">
-                <div className="foodResultHead">
-                  <strong>
-                    <span className="foodEmoji" aria-hidden="true">
-                      {foodEmoji(selectedFood.name, selectedFood.category)}
-                    </span>
-                    {selectedFood.name}
-                  </strong>
-                  <button type="button" className="btn btnSlim" onClick={clearFood}>
-                    Cambiar
-                  </button>
-                </div>
-                {selectedFood.brand ? <span className="small">{selectedFood.brand}</span> : null}
-
-                <QuantityField
-                  value={quantity}
-                  onValueChange={setQuantity}
-                  unit={quantityUnit}
-                  onUnitChange={setQuantityUnit}
-                  basis={selectedFood.basis}
-                  servingSizeG={selectedFood.serving_size_g}
-                  hint={quantityUnit === "g" || quantityUnit === "ml" ? undefined : baseQuantityHint}
-                />
-
-                <span className="small">
-                  {`Aprox: ${scalePer100g(selectedFood.energy_kcal, previewQty) ?? "—"} kcal | P ${scalePer100g(selectedFood.protein_g, previewQty) ?? "—"} g | C ${scalePer100g(selectedFood.carbs_g, previewQty) ?? "—"} g | G ${scalePer100g(selectedFood.fat_g, previewQty) ?? "—"} g`}
-                </span>
-              </div>
+              <SelectedFoodCard
+                food={selectedFood}
+                quantity={quantity}
+                onQuantityChange={setQuantity}
+                quantityUnit={quantityUnit}
+                onQuantityUnitChange={setQuantityUnit}
+                previewQty={previewQty}
+                baseQuantityHint={baseQuantityHint}
+                onClear={clearFood}
+              />
             ) : (
-              <div className="stack compactStack">
-                <div className="captureInputRow">
-                  <input
-                    className="input"
-                    placeholder={activeCategory ? `Buscar en ${activeCategory.label}...` : "Nombre del alimento..."}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                  />
-                  <button type="button" className="captureIconBtn" onClick={startScanFlow} aria-label="Escanear código de barras">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 7v10M8 7v10M12 7v10M16 7v10M20 7v10" />
-                    </svg>
-                  </button>
-                  <button type="button" className="captureIconBtn" onClick={() => openPhotoFlow(null)} aria-label="Registrar por foto">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 8h3l2-2h6l2 2h3v11H4z" />
-                      <circle cx="12" cy="13" r="3.5" />
-                    </svg>
-                  </button>
-                </div>
-
-                {activeCategory ? (
-                  <div className="foodBrowseHead">
-                    <button type="button" className="chipButton" onClick={() => pickCategory(null)}>
-                      ← Categorias
-                    </button>
-                    <span className="chip">
-                      <span className="foodEmoji" aria-hidden="true">
-                        {activeCategory.emoji}
-                      </span>
-                      {activeCategory.label}
-                    </span>
-                  </div>
-                ) : null}
-
-                {showBrowse && recentFoods.length > 0 ? (
-                  <div className="foodBrowseBlock">
-                    <span className="smallLabel">Recientes</span>
-                    <div className="stack compactStack">{recentFoods.map(renderFoodRow)}</div>
-                  </div>
-                ) : null}
-
-                {showBrowse && categoryGroups.length > 0 ? (
-                  <div className="foodBrowseBlock">
-                    <span className="smallLabel">Categorias</span>
-                    <div className="foodCategoryGrid">
-                      {categoryGroups.map((group) => (
-                        <button
-                          key={group.key}
-                          type="button"
-                          className="foodCategoryTile"
-                          onClick={() => pickCategory(group)}
-                        >
-                          <span className="foodCategoryEmoji" aria-hidden="true">
-                            {group.emoji}
-                          </span>
-                          <span className="foodCategoryLabel">{group.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {showBrowse ? null : searching ? (
-                  <div className="emptyState">Buscando...</div>
-                ) : results.length > 0 ? (
-                  <div className="stack compactStack">{results.map(renderFoodRow)}</div>
-                ) : query.trim() ? (
-                  <div className="emptyState">Sin resultados para "{query.trim()}".</div>
-                ) : (
-                  <div className="emptyState">Sin alimentos en {activeCategory?.label}.</div>
-                )}
-
-                {query.trim() ? (
-                  <div className="stack compactStack">
-                    <p className="small">No esta en el catálogo? Completa los datos y se registra como alimento manual.</p>
-                    <div className="bodyMetricGrid">
-                      <div className="bodyMetricField">
-                        <QuantityField
-                          value={quantity}
-                          onValueChange={setQuantity}
-                          unit={quantityUnit}
-                          onUnitChange={setQuantityUnit}
-                        />
-                      </div>
-                      <label className="bodyMetricField">
-                        <span className="smallLabel">Energía (kcal)</span>
-                        <input
-                          className="input"
-                          inputMode="decimal"
-                          value={manualKcal}
-                          onChange={(e) => setManualKcal(e.target.value)}
-                        />
-                      </label>
-                      <label className="bodyMetricField">
-                        <span className="smallLabel">Proteína (g)</span>
-                        <input
-                          className="input"
-                          inputMode="decimal"
-                          value={manualProtein}
-                          onChange={(e) => setManualProtein(e.target.value)}
-                        />
-                      </label>
-                      <label className="bodyMetricField">
-                        <span className="smallLabel">Carbohidratos (g)</span>
-                        <input
-                          className="input"
-                          inputMode="decimal"
-                          value={manualCarbs}
-                          onChange={(e) => setManualCarbs(e.target.value)}
-                        />
-                      </label>
-                      <label className="bodyMetricField">
-                        <span className="smallLabel">Grasas (g)</span>
-                        <input
-                          className="input"
-                          inputMode="decimal"
-                          value={manualFat}
-                          onChange={(e) => setManualFat(e.target.value)}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              <FoodBrowser
+                query={query}
+                onQueryChange={setQuery}
+                activeCategory={activeCategory}
+                categoryGroups={categoryGroups}
+                recentFoods={recentFoods}
+                results={results}
+                searching={searching}
+                onPickFood={pickFood}
+                onPickCategory={pickCategory}
+                onScan={startScanFlow}
+                onPhoto={() => openPhotoFlow(null)}
+                quantity={quantity}
+                onQuantityChange={setQuantity}
+                quantityUnit={quantityUnit}
+                onQuantityUnitChange={setQuantityUnit}
+                manualKcal={manualKcal}
+                onManualKcalChange={setManualKcal}
+                manualProtein={manualProtein}
+                onManualProteinChange={setManualProtein}
+                manualCarbs={manualCarbs}
+                onManualCarbsChange={setManualCarbs}
+                manualFat={manualFat}
+                onManualFatChange={setManualFat}
+              />
             )}
           </div>
 
