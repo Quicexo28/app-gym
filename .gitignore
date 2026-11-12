@@ -43,3 +43,6 @@ htmlcov/
 # Se regenera con scripts/tcac/build.py; no tiene por que viajar en el repo.
 scripts/tcac/cache/
 data/validation_tmp/
+
+# generado por vite-plugin-pwa en modo dev
+dev-dist
