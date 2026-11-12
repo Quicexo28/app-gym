@@ -51,7 +51,7 @@ export default function BodyMetrics() {
       <section className="surface">
         <div className="sectionHead">
           <h3>Progreso en medidas</h3>
-          <p>{`Sujeto activo: ${activeSubject?.label || "Sin sujeto"}${latest ? ` | Último control: ${new Date(latest.measured_at).toLocaleDateString(APP_LOCALE)}` : ""}`}</p>
+          <p>{`Viendo: ${activeSubject?.label || "Sin sujeto"}${latest ? ` | Último control: ${new Date(latest.measured_at).toLocaleDateString(APP_LOCALE)}` : ""}`}</p>
         </div>
         <div className="quickActions" style={{ marginTop: 12 }}>
           <button className="btn primary" onClick={() => navigate("/profile/progress/medida/nueva")} disabled={!athleteId}>

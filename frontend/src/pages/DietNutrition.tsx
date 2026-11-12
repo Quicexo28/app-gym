@@ -335,7 +335,8 @@ export default function DietNutrition() {
               </div>
             </div>
 
-            <h4 style={{ marginTop: 18 }}>Micronutrientes</h4>
+            <details className="microDetails" style={{ marginTop: 18 }}>
+              <summary><strong>Micronutrientes</strong></summary>
             {microRows.length > 0 ? (
               <div className="microGrid" style={{ marginTop: 10 }}>
                 {microRows.map((row) => (
@@ -354,6 +355,7 @@ export default function DietNutrition() {
                 Sin datos de micronutrientes.
               </div>
             )}
+            </details>
           </>
         )}
       </section>
@@ -402,7 +404,8 @@ export default function DietNutrition() {
               </div>
             ) : null}
 
-            <h4 style={{ marginTop: 18 }}>Micronutrientes (promedio diario)</h4>
+            <details className="microDetails" style={{ marginTop: 18 }}>
+              <summary><strong>Micronutrientes (promedio diario)</strong></summary>
             {weekMicroRows.length > 0 ? (
               <div className="microGrid" style={{ marginTop: 10 }}>
                 {weekMicroRows.map((row) => (
@@ -421,6 +424,7 @@ export default function DietNutrition() {
                 Aún no hay días registrados en esta semana.
               </div>
             )}
+            </details>
           </>
         )}
       </section>

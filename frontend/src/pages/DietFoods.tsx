@@ -47,7 +47,7 @@ const EMPTY_MACRO_RANGES: Record<MacroRangeField, string> = {
 
 const SCOPE_OPTIONS: Array<{ value: FoodScope; label: string }> = [
   { value: "all", label: "Todos" },
-  { value: "mine", label: "Mios" },
+  { value: "mine", label: "Míos" },
   { value: "global", label: "Globales" },
 ];
 
@@ -86,6 +86,7 @@ export default function DietFoods() {
   const { user } = useAuth();
 
   const [query, setQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(20);
   const [scope, setScope] = useState<FoodScope>("all");
   const [results, setResults] = useState<FoodProduct[]>([]);
   const [searching, setSearching] = useState(false);
@@ -147,7 +148,10 @@ export default function DietFoods() {
           limit: filtersActive ? 200 : 40,
         })
           .then((rows) => {
-            if (!cancelled) setResults(rows);
+            if (!cancelled) {
+              setResults(rows);
+              setVisibleCount(20);
+            }
           })
           .catch((cause: unknown) => {
             if (cancelled) return;
@@ -332,7 +336,7 @@ export default function DietFoods() {
             </div>
           ) : (
             <div className="stack compactStack">
-              {results.map((food) => (
+              {results.slice(0, visibleCount).map((food) => (
                 <article key={food.id} className="foodResultCard">
                   <div className="foodResultHead">
                     <strong>
@@ -366,6 +370,11 @@ export default function DietFoods() {
                   </div>
                 </article>
               ))}
+              {results.length > visibleCount ? (
+                <button type="button" className="btn" onClick={() => setVisibleCount((n) => n + 20)}>
+                  {`Ver más (${results.length - visibleCount} restantes)`}
+                </button>
+              ) : null}
             </div>
           )}
         </div>

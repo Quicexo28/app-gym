@@ -129,7 +129,7 @@ export default function MeasurementLog() {
 
       <section className="surface stack compactStack">
         <div className="sectionHead">
-          <h3>{singleInfo ? `Registrar: ${singleInfo.label}` : "Nueva medición"}</h3>
+          <h3>{singleInfo ? `Registrar: ${singleInfo.label}` : "Registrar medidas"}</h3>
           {singleInfo ? <p>Solo se guarda esta medida; el resto de tu histórico no cambia.</p> : null}
         </div>
 
@@ -163,7 +163,7 @@ export default function MeasurementLog() {
 
         <div className="quickActions">
           <button className="btn primary" onClick={() => void save()} disabled={saving || !athleteId}>
-            {saving ? "Guardando..." : "Guardar medición"}
+            {saving ? "Guardando..." : "Guardar medidas"}
           </button>
           <button className="btn" onClick={goBack} disabled={saving}>
             Cancelar

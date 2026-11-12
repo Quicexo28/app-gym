@@ -1537,8 +1537,9 @@ export default function Routines() {
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <label className="smallLabel">Buscar ejercicio</label>
+              <label className="smallLabel" htmlFor="routines-exercise-search">Buscar ejercicio</label>
               <input
+                id="routines-exercise-search"
                 className="input"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -1680,36 +1681,35 @@ export default function Routines() {
       ) : null}
 
       {athleteId && !showBuilder ? (
-        <section className="surface">
-          {sorted.length === 0 ? (
-            <div className="emptyState">Aún no tienes rutinas guardadas.</div>
-          ) : (
-            <div className="rowList">
-              {sorted.map((routine) => (
-                <div key={routine.id} className="rowItem">
-                  <button type="button" className="rowMain" onClick={() => setInfoRoutineId(routine.id)}>
-                    <strong>{routine.name}</strong>
-                    <span className="small">{routineSummaryLine(routine)}</span>
-                  </button>
-                  <KebabMenu
-                    ariaLabel={`Opciones de ${routine.name}`}
-                    actions={[
-                      { label: "Editar", onSelect: () => startEditRoutine(routine) },
-                      { label: "Ver detalle", onSelect: () => setInfoRoutineId(routine.id) },
-                      { label: "Eliminar", destructive: true, onSelect: () => removeRoutine(routine.id) },
-                    ]}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="rowListActions">
-            <button type="button" className="linkBtn" onClick={openNewRoutineBuilder}>
+        <div className="routineCards">
+          <div className="routineCardsHead">
+            <button type="button" className="btn" onClick={openNewRoutineBuilder}>
               + Nueva rutina
             </button>
           </div>
-        </section>
+          {sorted.length === 0 ? (
+            <section className="surface">
+              <div className="emptyState">Aún no tienes rutinas guardadas.</div>
+            </section>
+          ) : (
+            sorted.map((routine) => (
+              <section key={routine.id} className="surface routineCard">
+                <button type="button" className="rowMain" onClick={() => setInfoRoutineId(routine.id)}>
+                  <strong>{routine.name}</strong>
+                  <span className="small">{routineSummaryLine(routine)}</span>
+                </button>
+                <KebabMenu
+                  ariaLabel={`Opciones de ${routine.name}`}
+                  actions={[
+                    { label: "Ver detalle", onSelect: () => setInfoRoutineId(routine.id) },
+                    { label: "Editar", onSelect: () => startEditRoutine(routine) },
+                    { label: "Eliminar", destructive: true, onSelect: () => removeRoutine(routine.id) },
+                  ]}
+                />
+              </section>
+            ))
+          )}
+        </div>
       ) : null}
     </>
   );

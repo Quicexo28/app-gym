@@ -53,10 +53,10 @@ export default function SideMenu({
     <>
       <div className="drawerBackdrop" onClick={onClose} />
 
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label="Menu de navegacion">
+      <aside className="drawer" role="dialog" aria-modal="true" aria-label="Menú de navegación">
         <div className="drawerHead">
           <span className="brandTitle">Alzo</span>
-          <button type="button" className="btn ghost" onClick={onClose} aria-label="Cerrar menu">
+          <button type="button" className="btn ghost" onClick={onClose} aria-label="Cerrar menú">
             Cerrar
           </button>
         </div>

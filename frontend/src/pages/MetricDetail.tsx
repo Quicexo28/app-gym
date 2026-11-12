@@ -92,7 +92,7 @@ export default function MetricDetail() {
           <p>{info?.description}</p>
         </div>
         <div className="chipRow" style={{ marginTop: 10 }}>
-          <span className="chip">{`Sujeto: ${activeSubject?.label || "Sin sujeto"}`}</span>
+          <span className="chip">{`Viendo: ${activeSubject?.label || "Sin sujeto"}`}</span>
           <span className="chip">{`Registros: ${points.length}`}</span>
         </div>
         <div className="quickActions" style={{ marginTop: 10 }}>

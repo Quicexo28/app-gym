@@ -30,7 +30,7 @@ export const FOOD_CATEGORY_GROUPS: FoodCategoryGroup[] = [
   { key: "carbohidratos", label: "Carbohidratos", emoji: "🌾", tcac: ["Cereales y derivados"] },
   { key: "vegetales", label: "Vegetales", emoji: "🥬", tcac: ["Verduras, hortalizas y derivados"] },
   { key: "frutas", label: "Frutas", emoji: "🍎", tcac: ["Frutas y derivados"] },
-  { key: "lacteos", label: "Lacteos", emoji: "🥛", tcac: ["Leche y derivados"] },
+  { key: "lacteos", label: "Lácteos", emoji: "🥛", tcac: ["Leche y derivados"] },
   { key: "legumbres", label: "Legumbres", emoji: "🫘", tcac: ["Leguminosas y derivados"] },
   { key: "grasas", label: "Grasas y aceites", emoji: "🫒", tcac: ["Grasas y aceites"] },
   { key: "bebidas", label: "Bebidas", emoji: "🥤", tcac: ["Bebidas (alcoholicas y no alcoholicas)"] },

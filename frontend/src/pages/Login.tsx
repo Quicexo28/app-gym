@@ -89,7 +89,7 @@ function toFriendlyError(error: unknown): string {
   if (error instanceof ApiError) {
     const detail = error.detail;
     if (error.status === 401 && detail.includes("Invalid credentials")) {
-      return "Contrasena invalida o usuario no encontrado.";
+      return "Contraseña inválida o usuario no encontrado.";
     }
     if (error.status === 409 && detail.includes("Email already registered")) {
       return "El correo ya existe.";
@@ -379,7 +379,7 @@ export default function Login() {
     const cleanPhone = phoneNumber.trim();
 
     if (mode === "register" && password !== confirmPassword) {
-      setError("Las contrasenas no coinciden.");
+      setError("Las contraseñas no coinciden.");
       return;
     }
 
@@ -432,7 +432,7 @@ export default function Login() {
         <div className="pillGroup">
           <button type="button" className={`pill ${mode === "login" ? "active" : ""}`} onClick={() => setMode("login")}>
             <span>Iniciar sesión</span>
-            <small>Correo o celular con contrasena</small>
+            <small>Correo o celular con contraseña</small>
           </button>
           <button
             type="button"
@@ -440,7 +440,7 @@ export default function Login() {
             onClick={() => setMode("register")}
           >
             <span>Crear cuenta</span>
-            <small>Incluye celular opcional y confirmacion</small>
+            <small>Incluye celular opcional y confirmación</small>
           </button>
         </div>
 
@@ -482,7 +482,7 @@ export default function Login() {
           )}
 
           <div>
-            <label className="smallLabel">Contrasena</label>
+            <label className="smallLabel">Contraseña</label>
             <div className="passwordInputWrap">
               <input
                 className="input passwordInput"
@@ -495,8 +495,8 @@ export default function Login() {
                 type="button"
                 className="passwordToggle"
                 onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
-                title={showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
               >
                 <PasswordVisibilityIcon visible={showPassword} />
               </button>
@@ -505,7 +505,7 @@ export default function Login() {
 
           {mode === "register" ? (
             <div>
-              <label className="smallLabel">Confirmar contrasena</label>
+              <label className="smallLabel">Confirmar contraseña</label>
               <div className="passwordInputWrap">
                 <input
                   className="input passwordInput"
@@ -518,8 +518,8 @@ export default function Login() {
                   type="button"
                   className="passwordToggle"
                   onClick={() => setShowConfirmPassword((prev) => !prev)}
-                  aria-label={showConfirmPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
-                  title={showConfirmPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+                  aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  title={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                 >
                   <PasswordVisibilityIcon visible={showConfirmPassword} />
                 </button>
@@ -603,7 +603,7 @@ export default function Login() {
 
           {canGuestLogin ? (
             <button type="button" className="btn" onClick={submitGuest} disabled={busy}>
-              Entrar como invitado (debug)
+              Entrar como invitado
             </button>
           ) : null}
         </div>

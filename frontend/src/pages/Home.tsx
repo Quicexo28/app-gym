@@ -557,11 +557,6 @@ export default function Home() {
                   </button>
                 </div>
               )}
-              <div className="quickActions">
-                <button className="btn btnSlim" onClick={() => nav("/training/plan")}>
-                  Programar semana
-                </button>
-              </div>
             </div>
           )}
         </section>

@@ -351,8 +351,8 @@ export default function Profile() {
         ) : (
           <div className="chipRow">
             <span className="chip">{data?.email || "-"}</span>
-            <span className="chip">Rol: {data?.role || "-"}</span>
-            <span className="chip">Plan: {data?.plan || "-"}</span>
+            <span className="chip">Rol: {data?.role === "admin" ? "Admin" : data?.role === "coach" ? "Coach" : "Usuario"}</span>
+            <span className="chip">Plan: {data?.plan === "free" || !data?.plan ? "Gratis" : data.plan}</span>
             <span className="chip">Sesiones: {data?.training_stats.sessions_total ?? 0}</span>
             <span className="chip">{`Última: ${formatDate(data?.training_stats.last_session_at)}`}</span>
             {data?.profile.height_cm ? (
@@ -414,7 +414,7 @@ export default function Profile() {
           <p>
             {isCoachOfThread
               ? `Publicas en el hilo de ${activeSubject?.label || "el atleta"}.`
-              : "Envia un reporte con tus últimas medidas y entrenamientos a tu coach."}
+              : "Envía un reporte con tus últimas medidas y entrenamientos a tu coach."}
           </p>
         </div>
 

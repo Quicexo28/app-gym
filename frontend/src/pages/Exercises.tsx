@@ -282,6 +282,7 @@ export default function Exercises() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
 
   const filters = useMemo<ExerciseFilters>(
     () => ({
@@ -658,8 +659,20 @@ export default function Exercises() {
     }
   }
 
+  const hasActiveFilters =
+    search.trim() !== "" ||
+    selectedZone !== ALL_EXERCISE_ZONE_FILTER ||
+    selectedMovement !== ALL_EXERCISE_MOVEMENT_FILTER;
+
   return (
     <>
+      {!showCreate ? (
+        <div className="routineCardsHead">
+          <button type="button" className="btn" onClick={() => setShowCreate(true)}>
+            + Nuevo ejercicio
+          </button>
+        </div>
+      ) : (
       <section className="surface">
         {syncError ? <div className="message error">{syncError}</div> : null}
         {error ? <div className="message error">{error}</div> : null}
@@ -769,13 +782,16 @@ export default function Exercises() {
           <button className="btn primary" onClick={() => void add()} disabled={loading || !ready}>
             {loading ? "Sincronizando..." : createScope === "global" ? "Agregar global" : "Agregar personal"}
           </button>
-          <span className="chip">Total catálogo: {items.length}</span>
+          <button type="button" className="btn" onClick={() => setShowCreate(false)}>
+            Cancelar
+          </button>
         </div>
       </section>
+      )}
 
       <section className="surface">
         <div className="sectionHead">
-          <h3>Explorador</h3>
+          <h3>{`Explorador · ${items.length} ejercicios`}</h3>
           <p>Busca en el arbol o filtra por zona, músculo y tipo de movimiento.</p>
         </div>
 
@@ -840,11 +856,13 @@ export default function Exercises() {
           </div>
         </div>
 
-        <div className="chipRow" style={{ marginTop: 10 }}>
-          <button type="button" className="btn" onClick={clearFilters}>
-            Limpiar filtros
-          </button>
-        </div>
+        {hasActiveFilters ? (
+          <div className="chipRow" style={{ marginTop: 10 }}>
+            <button type="button" className="btn" onClick={clearFilters}>
+              Limpiar filtros
+            </button>
+          </div>
+        ) : null}
 
         {filteredEntries.length === 0 ? (
           <div className="emptyState" style={{ marginTop: 12 }}>
