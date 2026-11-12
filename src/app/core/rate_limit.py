@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import threading
 import time
 from collections import defaultdict, deque
@@ -38,12 +39,32 @@ class SlidingWindowRateLimiter:
             return True
 
 
+def client_ip(request: Request) -> str:
+    """IP del cliente, resuelta detrás del proxy de la propia app (nginx).
+
+    Solo se confía en X-Forwarded-For si la conexión directa viene de una IP
+    privada o de loopback (el contenedor nginx). Se toma la ÚLTIMA entrada: la
+    añade el proxy de confianza, mientras que las anteriores las puede falsear el cliente.
+    """
+    peer = request.client.host if request.client else "unknown"
+    try:
+        trusted = ipaddress.ip_address(peer).is_private
+    except ValueError:
+        trusted = False
+    if trusted:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        last = forwarded.split(",")[-1].strip()
+        if last:
+            return last
+    return peer
+
+
 def rate_limit_dependency(limiter: SlidingWindowRateLimiter, scope: str) -> Callable[[Request], None]:
     """FastAPI dependency that throttles by client IP within the given scope."""
 
     def dependency(request: Request) -> None:
-        client_ip = request.client.host if request.client else "unknown"
-        if not limiter.allow(f"{scope}:{client_ip}"):
+        ip = client_ip(request)
+        if not limiter.allow(f"{scope}:{ip}"):
             raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
 
     return dependency
