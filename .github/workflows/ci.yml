@@ -40,3 +40,14 @@ jobs:
       - name: Typecheck (tsc)
         run: npx tsc -b frontend/tsconfig.json
       # ESLint queda fuera hasta limpiar los 38 errores que ya existían en main.
+
+  # Check obligatorio de la protección de main: pasa solo si backend y frontend pasan.
+  gate:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    if: always()
+    steps:
+      - name: Comprobar resultado de los jobs
+        run: |
+          test "${{ needs.backend.result }}" = "success"
+          test "${{ needs.frontend.result }}" = "success"
