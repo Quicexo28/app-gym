@@ -1,4 +1,6 @@
+import { renderExerciseTree } from "../../components/ExerciseTree";
 import Select from "../../components/Select";
+import type { CatalogNode } from "../../lib/exerciseTree";
 import {
   ALL_EXERCISE_FILTER as ALL,
   ALL_EXERCISE_ZONE_FILTER,
@@ -7,85 +9,6 @@ import {
   type ExerciseBodyZoneFilter,
   type ExerciseCatalogEntry,
 } from "../../lib/exerciseCatalog";
-import { formatExerciseNameForList, formatExercisePathForList, type CatalogNode } from "../../lib/exerciseTree";
-
-function renderTree(
-  nodes: CatalogNode[],
-  onAdd: (entry: ExerciseCatalogEntry) => void,
-  canAdd: (entry: ExerciseCatalogEntry) => boolean,
-  expandAll: boolean,
-  onSelectGroup: (group: string) => void,
-  depth: number,
-  activeRootLabel: string | null,
-) {
-  return nodes.map((node) => {
-    const isRoot = depth === 1;
-    const isSelectedRoot = isRoot && activeRootLabel === node.label;
-    const isSiblingRoot = isRoot && activeRootLabel !== null && !isSelectedRoot;
-    const isInSelectedBranch = activeRootLabel !== null && node.path[0] === activeRootLabel;
-    const depthClass = depth >= 4 ? "treeNodeDepth4" : `treeNodeDepth${depth}`;
-    const nodeClassName = [
-      "treeNode",
-      depthClass,
-      isInSelectedBranch ? "treeNodeFocused" : "",
-      isSelectedRoot ? "treeNodeSelectedRoot" : "",
-      isSiblingRoot ? "treeNodeSiblingCollapsed" : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-    const isOpen = isRoot && activeRootLabel !== null ? isSelectedRoot : expandAll;
-
-    return (
-      <details
-        key={node.path.join(" > ")}
-        className={nodeClassName}
-        open={isOpen}
-      >
-        <summary
-          className={`treeSummary ${isRoot ? "treeSummarySelectable" : ""} ${isSelectedRoot ? "treeSummarySelected" : ""}`}
-          onClick={
-            isRoot
-              ? (event) => {
-                  event.preventDefault();
-                  onSelectGroup(node.label);
-                }
-              : undefined
-          }
-        >
-          <span>{node.label}</span>
-          <span className="chip">{node.totalItems}</span>
-        </summary>
-
-        <div className="treeChildren">
-          {node.items.filter((item) => canAdd(item.entry)).length > 0 ? (
-            <div className="treeLeafList">
-              {node.items
-                .filter((item) => canAdd(item.entry))
-                .map((item) => (
-                  <article key={item.entry.id} className="treeLeaf">
-                    <div>
-                      <strong>{formatExerciseNameForList(item.entry.name)}</strong>
-                      <div className="small">{formatExercisePathForList(item.treePath)}</div>
-                      <div className="chipRow" style={{ marginTop: 6 }}>
-                        <span className="chip">{item.entry.scope === "global" ? "Global" : "Personal"}</span>
-                      </div>
-                    </div>
-                    <button className="btn" onClick={() => onAdd(item.entry)}>
-                      Agregar
-                    </button>
-                  </article>
-                ))}
-            </div>
-          ) : null}
-
-          {node.children.length > 0
-            ? renderTree(node.children, onAdd, canAdd, expandAll, onSelectGroup, depth + 1, activeRootLabel)
-            : null}
-        </div>
-      </details>
-    );
-  });
-}
 
 type Props = {
   selectedZone: ExerciseBodyZoneFilter;
@@ -184,7 +107,18 @@ export default function ExercisePickerModal({
           </div>
         ) : (
           <div className="treeList" style={{ marginTop: 12 }}>
-            {renderTree(tree, onAdd, canAdd, expandAll, onSelectGroup, 1, activeRootLabel)}
+            {renderExerciseTree(tree, {
+              expandAll,
+              onSelectGroup,
+              activeRootLabel,
+              showScopeChip: true,
+              filterItem: canAdd,
+              renderActions: (entry) => (
+                <button className="btn" onClick={() => onAdd(entry)}>
+                  Agregar
+                </button>
+              ),
+            })}
           </div>
         )}
       </section>
