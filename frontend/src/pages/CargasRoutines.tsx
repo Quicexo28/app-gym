@@ -87,7 +87,7 @@ export default function CargasRoutines() {
       <section className="surface">
         <div className="sectionHead">
           <h3>Progreso por rutina</h3>
-          <p>{`Sujeto activo: ${activeSubject?.label || "Sin sujeto"}. Toca una rutina para ver el progreso de sus ejercicios.`}</p>
+          <p>{`Viendo: ${activeSubject?.label || "Sin sujeto"}. Toca una rutina para ver el progreso de sus ejercicios.`}</p>
         </div>
       </section>
 

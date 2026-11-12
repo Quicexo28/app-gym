@@ -31,8 +31,8 @@ type NavItemDef = {
 const NAV_ITEMS: NavItemDef[] = [
   { to: "/home", label: "Home" },
   { to: "/diet", label: "Dieta" },
-  { to: "/training", label: "Rutina" },
-  { to: "/predictions", label: "Predicción" },
+  { to: "/training", label: "Rutinas" },
+  { to: "/predictions", label: "Escenarios" },
   { to: "/profile", label: "Perfil" },
 ];
 
@@ -85,7 +85,7 @@ export default function AppShell() {
         ],
       },
       {
-        title: "Rutina",
+        title: "Rutinas",
         links: [
           { to: "/training", label: "Rutinas", end: true },
           { to: "/training/plan", label: "Programación" },
@@ -120,7 +120,7 @@ export default function AppShell() {
             <button
               type="button"
               className="menuBtn"
-              aria-label="Abrir menu"
+              aria-label="Abrir menú"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen(true)}
             >
@@ -164,6 +164,32 @@ export default function AppShell() {
         </div>
       </header>
 
+      <aside className="sidebar" aria-label="Menú principal">
+        <div className="brandTitle sidebarBrand">Alzo</div>
+        <nav className="drawerNav">
+          {menuGroups.map((group) => (
+            <div key={group.title} className="drawerGroup">
+              <div className="smallLabel">{group.title}</div>
+              {group.links.map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  end={link.end}
+                  className={({ isActive }) => `drawerLink ${isActive ? "active" : ""}`}
+                >
+                  {link.label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="drawerFooter">
+          <button type="button" className="btn ghost btnBlock" onClick={logout}>
+            Salir
+          </button>
+        </div>
+      </aside>
+
       <SideMenu
         open={menuOpen}
         groups={menuGroups}
@@ -179,7 +205,7 @@ export default function AppShell() {
         <Outlet />
       </main>
 
-      <nav className="tabbar" aria-label="Navegacion principal">
+      <nav className="tabbar" aria-label="Navegación principal">
         {NAV_ITEMS.map((item) => (
           <NavLink
             key={item.to}

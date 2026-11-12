@@ -50,7 +50,7 @@ export const FALLBACK_DEFINITIONS: BodyMetricDefinition[] = [
   },
   {
     key: "chest_cm",
-    label: "Perímetro torax",
+    label: "Perímetro tórax",
     unit: "cm",
     description: "Seguimiento de tren superior en fases de hipertrofia/definicion.",
   },

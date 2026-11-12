@@ -62,7 +62,7 @@ export function weekdayIndex(date: Date): number {
 
 /** "vie 25 jul" */
 export function formatDayShort(date: Date): string {
-  const weekday = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"][date.getDay()];
+  const weekday = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"][date.getDay()];
   return `${weekday} ${date.getDate()} ${MONTHS_SHORT[date.getMonth()]}`;
 }
 

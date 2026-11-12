@@ -241,8 +241,9 @@ export default function CargasExercises() {
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <label className="smallLabel">Buscar ejercicio</label>
+        <label className="smallLabel" htmlFor="cargas-exercise-search">Buscar ejercicio</label>
         <input
+          id="cargas-exercise-search"
           className="input"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

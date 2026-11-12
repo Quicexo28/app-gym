@@ -42,7 +42,7 @@ export const MICRONUTRIENTS: readonly MicronutrientEntry[] = [
   // dietario (NIH ODS). Dejarlo aquí marcaria como "excedido" a cualquiera que
   // cumpla su RDA de 420 mg comiendo normal: falsa alarma diaria para todos.
   { key: "magnesium_mg", label: "Magnesio", unit: "mg", rda: 420, upperLimit: null },
-  { key: "phosphorus_mg", label: "Fosforo", unit: "mg", rda: 1250, upperLimit: 4000 },
+  { key: "phosphorus_mg", label: "Fósforo", unit: "mg", rda: 1250, upperLimit: 4000 },
   { key: "potassium_mg", label: "Potasio", unit: "mg", rda: 4700, upperLimit: null },
   { key: "zinc_mg", label: "Zinc", unit: "mg", rda: 11, upperLimit: 40 },
   { key: "copper_mg", label: "Cobre", unit: "mg", rda: 0.9, upperLimit: 10 },
