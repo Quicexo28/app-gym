@@ -1,39 +1,5 @@
-from app.planning.service import (
-    ACTIVE_ASSIGNMENT_STATES,
-    DEFAULT_TIMEZONE,
-    DEFAULT_TOLERANCE_DAYS,
-    add_template_child,
-    athlete_overview,
-    create_assignment,
-    create_template,
-    delete_template,
-    get_assignment_detail,
-    get_template_tree,
-    list_assignments,
-    list_templates,
-    metrics_for_assignment,
-    patch_assignment_status,
-    reconcile_active_assignments_for_athletes,
-    reconcile_assignment,
-    update_template,
-)
+from app.planning import service
+from app.planning.service import *  # noqa: F403
 
-__all__ = [
-    "ACTIVE_ASSIGNMENT_STATES",
-    "DEFAULT_TIMEZONE",
-    "DEFAULT_TOLERANCE_DAYS",
-    "add_template_child",
-    "athlete_overview",
-    "create_assignment",
-    "create_template",
-    "delete_template",
-    "get_assignment_detail",
-    "get_template_tree",
-    "list_assignments",
-    "list_templates",
-    "metrics_for_assignment",
-    "patch_assignment_status",
-    "reconcile_active_assignments_for_athletes",
-    "reconcile_assignment",
-    "update_template",
-]
+# La API publica se define una sola vez, en `service.__all__`.
+__all__ = list(service.__all__)
