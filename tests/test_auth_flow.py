@@ -101,6 +101,26 @@ def test_register_and_login_with_phone_identifier() -> None:
     assert login_result.user.id == register_result.user.id
 
 
+def test_login_ignores_email_case() -> None:
+    # El teclado de iOS pone mayuscula inicial en el campo de correo.
+    db = FakeDb(users=[_make_user(email="user@example.com", password="Password123")])
+
+    result = auth_endpoint.login(LoginRequest(identifier="User@Example.com", password="Password123"), db)
+
+    assert result.user.email == "user@example.com"
+
+
+def test_register_stores_email_lowercase_and_rejects_case_duplicate() -> None:
+    db = FakeDb()
+
+    result = auth_endpoint.register(RegisterRequest(email="Athlete@Example.com", password="Password123"), db)
+    assert result.user.email == "athlete@example.com"
+
+    with pytest.raises(HTTPException) as exc:
+        auth_endpoint.register(RegisterRequest(email="athlete@example.com", password="Password123"), db)
+    assert exc.value.status_code == 409
+
+
 def test_login_rejects_invalid_password() -> None:
     db = FakeDb(users=[_make_user(email="user@example.com", password="Password123")])
 
