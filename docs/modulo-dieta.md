@@ -243,7 +243,7 @@ Si falta `energy-kcal_100g` pero existe `energy-kj_100g`: `kcal = kJ / 4.184`.
 
 ## 5. API — `/api/v1/diet`
 
-Nuevo archivo `src/app/api/v1/endpoints/diet.py`, registrado en
+Paquete `src/app/api/v1/endpoints/diet/` (un router por tema), registrado en
 `src/app/api/v1/router.py`. Todos los endpoints con `athlete_id` usan la
 dependencia existente `require_athlete_access`.
 

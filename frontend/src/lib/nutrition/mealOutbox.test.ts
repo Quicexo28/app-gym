@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // `mealOutbox.ts` (via `../sessionOutbox`) importa `ApiError`/`ingestSessions`
 // y `createDietEntry` de `../../api`. Se mockea aqui para controlar exito/
 // fallo de red sin tocar la red real. Ambos modulos resuelven al MISMO
-// archivo (`src/api.ts`), asi que un solo mock cubre las dos importaciones.
+// archivo (`src/api/index.ts`), asi que un solo mock cubre las dos importaciones.
 const { createDietEntryMock } = vi.hoisted(() => ({ createDietEntryMock: vi.fn() }));
 
 vi.mock("../../api", () => {

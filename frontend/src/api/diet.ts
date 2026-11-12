@@ -1,10 +1,11 @@
 import { ApiError, applyAuthHeaders, http, notifyUnauthorized, toApiUrl } from "./core";
+
 // --------------------------------------------------------------------------
-// Dieta (`src/app/api/v1/endpoints/diet.py`)
+// Dieta (`src/app/api/v1/endpoints/diet/`)
 // --------------------------------------------------------------------------
 
 // Franjas legacy (fijas) + genericas personalizables `comida_1`..`comida_8`
-// (ver `MealSlot` en `src/app/api/v1/endpoints/diet.py`). El nombre visible de
+// (ver `MealSlot` en `src/app/api/v1/endpoints/diet/common.py`). El nombre visible de
 // las genericas sale de `NutritionTarget.meal_labels`, no de este id.
 export type MealSlot = string;
 
