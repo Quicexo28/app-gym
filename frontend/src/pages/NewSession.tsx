@@ -17,7 +17,6 @@ import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import { useUndo } from "../state/undo";
 import { APP_LOCALE } from "../lib/locale";
-
 type SetRow = { reps: string; load: string; completed: boolean; effort: string };
 type RoutineExerciseDraft = {
   name: string;

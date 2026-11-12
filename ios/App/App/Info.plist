@@ -35,6 +35,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Alzo usa la cámara para escanear códigos de barras y fotografiar etiquetas nutricionales.</string>
 	<key>NSMicrophoneUsageDescription</key>

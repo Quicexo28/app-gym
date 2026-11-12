@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0D42118F928BD8A8562F8DAA /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 57C718DD36F1499E991B40DF /* PrivacyInfo.xcprivacy */; };
+		17427C195F9FC32FBF1D895B /* AlzoBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 592F2FFE88C682C9172F8082 /* AlzoBridgeViewController.swift */; };
+		1D34A2C2A45181B99CB8F152 /* AlzoSessionAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F634D53472F611A7D3FF3BCE /* AlzoSessionAttributes.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -14,13 +17,43 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
-		0D42118F928BD8A8562F8DAA /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 57C718DD36F1499E991B40DF /* PrivacyInfo.xcprivacy */; };
+		77321F7B9E5AAECC7E1E7BE6 /* AlzoSessionAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F634D53472F611A7D3FF3BCE /* AlzoSessionAttributes.swift */; };
+		7B17288FB66EAC5D6780E145 /* AlzoSessionLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37CA9B9A8C3AD3877A56C5B4 /* AlzoSessionLiveActivity.swift */; };
+		8053E372663E9947F9BCCE7F /* SessionLiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5874C3A0FFB7B6D48B17D0B1 /* SessionLiveActivityPlugin.swift */; };
 		9582B6852FE996820072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6842FE996800072D4E8 /* SceneDelegate.swift */; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
+		C2DB08EEE55D3DE187BC70B9 /* AlzoLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5BFA63BB25D84EDE48594E2 /* AlzoLiveActivityBundle.swift */; };
+		C6D93B2ACF5B8CFA8558BE7C /* AlzoLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5B21DBC193DCCA6E9449781A /* AlzoLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		ECFE76EF65F32B207D75C3EB /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D290DB5601631FC98187F594 /* Foundation.framework */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3DFFD9FB42BDFC0C68F11C28 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7A6D25B762CDFA2EFEE41924;
+			remoteInfo = AlzoLiveActivity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B3CA0863914C6BA88DB66D51 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C6D93B2ACF5B8CFA8558BE7C /* AlzoLiveActivity.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		37CA9B9A8C3AD3877A56C5B4 /* AlzoSessionLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AlzoSessionLiveActivity.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -28,12 +61,19 @@
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		57C718DD36F1499E991B40DF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		DE1F65AF2EEDD34C1CA1CF45 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		57C718DD36F1499E991B40DF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		5874C3A0FFB7B6D48B17D0B1 /* SessionLiveActivityPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SessionLiveActivityPlugin.swift; sourceTree = "<group>"; };
+		592F2FFE88C682C9172F8082 /* AlzoBridgeViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AlzoBridgeViewController.swift; sourceTree = "<group>"; };
+		5B21DBC193DCCA6E9449781A /* AlzoLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AlzoLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		9582B6842FE996800072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
+		C5BFA63BB25D84EDE48594E2 /* AlzoLiveActivityBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AlzoLiveActivityBundle.swift; sourceTree = "<group>"; };
+		D0C89FD5878046A307295666 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D290DB5601631FC98187F594 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		DE1F65AF2EEDD34C1CA1CF45 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		F634D53472F611A7D3FF3BCE /* AlzoSessionAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AlzoSessionAttributes.swift; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -46,13 +86,31 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CA036CC3EFDDD8693FAB08F1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ECFE76EF65F32B207D75C3EB /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		23FF198680B163457D120401 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				F634D53472F611A7D3FF3BCE /* AlzoSessionAttributes.swift */,
+			);
+			name = Shared;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		27E2DDA53C4D2A4D1A88CE4A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */,
+				CF3246D4C43BBCB467F62A45 /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -64,6 +122,8 @@
 				504EC3051FED79650016851F /* Products */,
 				7F8756D8B27F46E3366F6CEA /* Pods */,
 				27E2DDA53C4D2A4D1A88CE4A /* Frameworks */,
+				23FF198680B163457D120401 /* Shared */,
+				B6526B0E81A00C26F82BE05D /* AlzoLiveActivity */,
 			);
 			sourceTree = "<group>";
 		};
@@ -71,6 +131,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				5B21DBC193DCCA6E9449781A /* AlzoLiveActivity.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -89,6 +150,8 @@
 				DE1F65AF2EEDD34C1CA1CF45 /* App.entitlements */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
+				5874C3A0FFB7B6D48B17D0B1 /* SessionLiveActivityPlugin.swift */,
+				592F2FFE88C682C9172F8082 /* AlzoBridgeViewController.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -102,6 +165,25 @@
 			name = Pods;
 			sourceTree = "<group>";
 		};
+		B6526B0E81A00C26F82BE05D /* AlzoLiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				C5BFA63BB25D84EDE48594E2 /* AlzoLiveActivityBundle.swift */,
+				37CA9B9A8C3AD3877A56C5B4 /* AlzoSessionLiveActivity.swift */,
+				D0C89FD5878046A307295666 /* Info.plist */,
+			);
+			name = AlzoLiveActivity;
+			path = AlzoLiveActivity;
+			sourceTree = "<group>";
+		};
+		CF3246D4C43BBCB467F62A45 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				D290DB5601631FC98187F594 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -113,16 +195,35 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				B3CA0863914C6BA88DB66D51 /* Embed Foundation Extensions */,
 				9592DBEFFC6D2A0C8D5DEB22 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				5EB56FE104076C0D85245998 /* PBXTargetDependency */,
 			);
 			name = App;
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		7A6D25B762CDFA2EFEE41924 /* AlzoLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4117F980261698A1A61B27D1 /* Build configuration list for PBXNativeTarget "AlzoLiveActivity" */;
+			buildPhases = (
+				C12F53DC42E9629E3E49C827 /* Sources */,
+				CA036CC3EFDDD8693FAB08F1 /* Frameworks */,
+				52C18CFE5101C61578936D8D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AlzoLiveActivity;
+			productName = AlzoLiveActivity;
+			productReference = 5B21DBC193DCCA6E9449781A /* AlzoLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -149,13 +250,12 @@
 				Base,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
-			packageReferences = (
-			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				7A6D25B762CDFA2EFEE41924 /* AlzoLiveActivity */,
 			);
 		};
 /* End PBXProject section */
@@ -172,6 +272,13 @@
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
 				0D42118F928BD8A8562F8DAA /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52C18CFE5101C61578936D8D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -220,10 +327,32 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6852FE996820072D4E8 /* SceneDelegate.swift in Sources */,
+				8053E372663E9947F9BCCE7F /* SessionLiveActivityPlugin.swift in Sources */,
+				17427C195F9FC32FBF1D895B /* AlzoBridgeViewController.swift in Sources */,
+				77321F7B9E5AAECC7E1E7BE6 /* AlzoSessionAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C12F53DC42E9629E3E49C827 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C2DB08EEE55D3DE187BC70B9 /* AlzoLiveActivityBundle.swift in Sources */,
+				7B17288FB66EAC5D6780E145 /* AlzoSessionLiveActivity.swift in Sources */,
+				1D34A2C2A45181B99CB8F152 /* AlzoSessionAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5EB56FE104076C0D85245998 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = AlzoLiveActivity;
+			target = 7A6D25B762CDFA2EFEE41924 /* AlzoLiveActivity */;
+			targetProxy = 3DFFD9FB42BDFC0C68F11C28 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -393,9 +522,57 @@
 			};
 			name = Release;
 		};
+		6737E182B734FF4AE316A225 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = AlzoLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.santiagoquiceno.alzo.LiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		DF2A68CD282CCCDFB5AE6518 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = AlzoLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.santiagoquiceno.alzo.LiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		4117F980261698A1A61B27D1 /* Build configuration list for PBXNativeTarget "AlzoLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DF2A68CD282CCCDFB5AE6518 /* Release */,
+				6737E182B734FF4AE316A225 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
