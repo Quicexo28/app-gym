@@ -1135,30 +1135,6 @@ export default function NewSession() {
     setSessionTimer((prev) => pauseSessionTimerState(prev, now));
   }
 
-  function resetSessionTimer(autostart: boolean) {
-    const now = Date.now();
-    setNowMs(now);
-    setError("");
-    setSessionTimer(
-      autostart
-        ? createRunningSessionTimer(now)
-        : {
-            started_at_ms: now,
-            running_since_ms: null,
-            accumulated_ms: 0,
-            completed_at_ms: null,
-          },
-    );
-    setRestTimer(null);
-  }
-
-  function completeSession() {
-    const now = Date.now();
-    setNowMs(now);
-    setSessionTimer((prev) => completeSessionTimerState(prev, now));
-    setRestTimer(null);
-  }
-
   function clearRestTimer() {
     setRestTimer(null);
   }
@@ -1552,6 +1528,9 @@ export default function NewSession() {
       resetSetAnimations();
       await ingestSessions(payload);
       await deactivateVoiceCapture();
+      // Salir de capture_session antes de limpiar: si no, el efecto de autoguardado
+      // (que depende del borrador) lo vuelve a escribir y la barra de sesión se queda.
+      setStep("pick_routine");
       clearDraft();
       nav("/home");
       return true;
@@ -1560,6 +1539,7 @@ export default function NewSession() {
         // Sin conexión: la sesión queda en cola local y se sube al reconectar.
         enqueueSessionUpload(payload);
         await deactivateVoiceCapture();
+        setStep("pick_routine");
         clearDraft();
         nav("/home");
         return true;
@@ -1671,7 +1651,6 @@ export default function NewSession() {
   }
 
   const timerStatus = sessionTimerRunning ? "En curso" : sessionTimerCompleted ? "Completada" : sessionTimerStarted ? "Pausada" : "Sin iniciar";
-  const timerActionLabel = sessionTimerStarted ? "Reanudar" : "Iniciar";
   const voiceCaptureActive = voiceStatus === "armed" || voiceStatus === "listening";
   const voiceTranscriptDisplay = (() => {
     const partial = normalizeTranscriptText(voicePartial);
@@ -1879,23 +1858,18 @@ export default function NewSession() {
             <span className="chip">Estado: {timerStatus}</span>
             {sessionTimer.completed_at_ms ? <span className="chip">{`Completada: ${new Date(sessionTimer.completed_at_ms).toLocaleTimeString(APP_LOCALE)}`}</span> : null}
           </div>
-          <div className="quickActions" style={{ marginTop: 10 }}>
-            {sessionTimerRunning ? (
-              <button className="btn primary" type="button" onClick={pauseSessionTimer}>
-                Pausar temporizador
+          {sessionTimerCompleted ? null : (
+            <div className="quickActions" style={{ marginTop: 8 }}>
+              <button
+                className="btn"
+                type="button"
+                style={{ padding: "4px 12px", fontSize: 13, minHeight: 0 }}
+                onClick={sessionTimerRunning ? pauseSessionTimer : startOrResumeSessionTimer}
+              >
+                {sessionTimerRunning ? "Pausar" : "Reanudar"}
               </button>
-            ) : (
-              <button className="btn primary" type="button" onClick={startOrResumeSessionTimer}>
-                {timerActionLabel}
-              </button>
-            )}
-            <button className="btn" type="button" onClick={() => resetSessionTimer(true)}>
-              Reiniciar
-            </button>
-            <button className="btn" type="button" onClick={completeSession} disabled={sessionTimerCompleted}>
-              Completar sesión
-            </button>
-          </div>
+            </div>
+          )}
         </div>
 
       </section>
@@ -1909,17 +1883,6 @@ export default function NewSession() {
               : "Selecciona una rutina para capturar sets en cada ejercicio."}
           </p>
         </div>
-
-        {allSetsCompleted && !sessionTimerCompleted ? (
-          <div className="message" style={{ marginTop: 12 }}>
-            Terminaste todas las series. Puedes completar la sesión para detener el cronometro.
-            <div className="quickActions" style={{ marginTop: 10 }}>
-              <button className="btn primary" type="button" onClick={completeSession}>
-                Completar sesión
-              </button>
-            </div>
-          </div>
-        ) : null}
 
         {!selectedRoutine ? (
           <div className="emptyState" style={{ marginTop: 12 }}>
@@ -2110,7 +2073,7 @@ export default function NewSession() {
 
         <div className="hstack">
           <button className="btn primary" onClick={() => void submit()} disabled={busy || !selectedRoutine || !hasActiveAthlete}>
-            {busy ? "Guardando..." : "Guardar sesión"}
+            {busy ? "Completando..." : "Completar sesión"}
           </button>
           <button className="btn" onClick={() => nav("/home")} disabled={busy}>
             Cancelar
