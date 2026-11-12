@@ -64,10 +64,8 @@ export default function Predictions() {
             {busy ? "Calculando..." : "Analizar mi historial"}
           </button>
         </div>
-      </section>
 
-      <section className="surface">
-        <div className="sectionHead">
+        <div className="sectionHead" style={{ marginTop: 20 }}>
           <h3>Análisis recientes</h3>
         </div>
 

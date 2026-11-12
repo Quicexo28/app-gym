@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 
 import HubTabs, { type HubTabDef } from "../components/HubTabs";
+import "../styles.perfil.css";
 
 const TABS: HubTabDef[] = [
   { to: "/profile/progress", label: "Medidas", end: true },
@@ -11,7 +12,9 @@ const TABS: HubTabDef[] = [
 export default function Progress() {
   return (
     <>
-      <HubTabs ariaLabel="Secciones de progreso" tabs={TABS} />
+      <div className="hubSub">
+        <HubTabs ariaLabel="Secciones de progreso" tabs={TABS} />
+      </div>
       <Outlet />
     </>
   );

@@ -1,0 +1,36 @@
+.pickHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pickEditLink {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pickSurface {
+  padding-top: 0;
+}
+
+.pickSurface > .emptyState:first-child {
+  margin-top: 12px;
+}
+
+button.routinePickBtn {
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  gap: 4px;
+}
+
+button.routinePickBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

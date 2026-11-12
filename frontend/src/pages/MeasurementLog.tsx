@@ -13,6 +13,7 @@ import {
   useBodyMeasurements,
 } from "../lib/bodyMetrics";
 import { useAthleteId } from "../state/athlete";
+import "../styles.perfil.css";
 
 const VALID_KEYS = new Set<string>(FIELD_GROUPS.flatMap((group) => group.keys));
 
@@ -105,7 +106,7 @@ export default function MeasurementLog() {
     return (
       <label key={key} className="bodyMetricField">
         <span className="smallLabel">{info.label}</span>
-        <div className="bodyMetricInputRow">
+        <div className="inputSuffix">
           <input
             className="input"
             value={values[key]}
@@ -114,7 +115,7 @@ export default function MeasurementLog() {
             placeholder="0.0"
             autoFocus={singleKey === key}
           />
-          <span className="chip">{info.unit}</span>
+          <span className="suffix">{info.unit}</span>
         </div>
       </label>
     );
@@ -155,6 +156,8 @@ export default function MeasurementLog() {
           <span className="smallLabel">Notas</span>
           <textarea
             className="input compactTextarea"
+            rows={2}
+            style={{ minHeight: 0 }}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Opcional: estado general, hora de medición, observaciones..."

@@ -1,0 +1,125 @@
+/* Ajustes de revisión UX (Preferencias, Fotos, Dieta). */
+
+/* Preferencias: etiqueta a la izquierda, control segmentado compacto a la derecha. */
+.optionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.optionRow .pillGroup {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+}
+
+.optionRow .pill {
+  display: block;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+  font-size: 13px;
+}
+
+.optionRow .pill.active {
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 80%);
+  color: var(--accent);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.legalLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.legalLinks a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.dangerZone > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* Fotos: nota de privacidad en una línea, sin card. */
+.privacyLine {
+  margin: 0;
+  padding: 0 2px;
+}
+
+/* Dieta: botón "+" junto al título de comida y kebab visualmente menor. */
+.mealAddBtn {
+  width: 44px;
+  height: 44px;
+  margin: -7px -4px -7px 0;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mealAddBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mealGroupHead .kebabTrigger {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* Alta de alimento: campo + iconos de captura en una fila. */
+.captureInputRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.captureInputRow .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.captureIconBtn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.captureIconBtn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

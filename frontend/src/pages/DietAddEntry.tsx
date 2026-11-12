@@ -56,6 +56,7 @@ import { captureNativePhoto } from "../lib/nutrition/photoCapture";
 import type { ConfidenceLevel } from "../lib/nutrition/types";
 import { isNetworkError } from "../lib/sessionOutbox";
 import { useAthleteId } from "../state/athlete";
+import "../styles.ajustes.css";
 
 // Se lee una sola vez fuera del render (mismo patron que `Login.tsx`): leer la
 // plataforma es una operacion pura, pero conviene no repetirla en cada pintado.
@@ -696,28 +697,11 @@ export default function DietAddEntry() {
       {error ? <section className="message error">{error}</section> : null}
       {msg ? <section className="message">{msg}</section> : null}
 
-      {showCaptureHooks ? (
-        <section className="surface">
-          <div className="sectionHead">
-            <h3>Captura rápida</h3>
-            <p>Escanea el código de barras o toma una foto de la etiqueta.</p>
-          </div>
-          <div className="captureHookRow" style={{ marginTop: 12 }}>
-            <button className="btn" onClick={startScanFlow}>
-              Escanear código
-            </button>
-            <button className="btn" onClick={() => openPhotoFlow(null)}>
-              Registrar por foto
-            </button>
-          </div>
-        </section>
-      ) : null}
-
       {mode === "scan" ? (
         <section className="surface stack compactStack">
           <div className="sectionHead">
             <h3>Escanear código de barras</h3>
-            <button className="btn btnSlim" onClick={cancelScan}>
+            <button type="button" className="btn btnSlim" onClick={cancelScan}>
               Cancelar
             </button>
           </div>
@@ -747,7 +731,7 @@ export default function DietAddEntry() {
                   onChange={(e) => setManualBarcodeInput(e.target.value)}
                 />
               </label>
-              <button className="btn primary" onClick={submitManualBarcode} disabled={!manualBarcodeInput.trim()}>
+              <button type="button" className="btn primary" onClick={submitManualBarcode} disabled={!manualBarcodeInput.trim()}>
                 Buscar
               </button>
             </div>
@@ -759,7 +743,7 @@ export default function DietAddEntry() {
         <section className="surface stack compactStack">
           <div className="sectionHead">
             <h3>Registro por foto</h3>
-            <button className="btn btnSlim" onClick={() => setMode("search")}>
+            <button type="button" className="btn btnSlim" onClick={() => setMode("search")}>
               Cancelar
             </button>
           </div>
@@ -770,14 +754,14 @@ export default function DietAddEntry() {
             <figure className="photoCompareItem">
               <figcaption className="small">Foto frontal (opcional)</figcaption>
               {frontPhoto ? <img src={frontPhoto.previewUrl} alt="Foto frontal del producto" /> : null}
-              <button className="btn btnSlim" onClick={() => void handleCapturePhoto("front")}>
+              <button type="button" className="btn btnSlim" onClick={() => void handleCapturePhoto("front")}>
                 {frontPhoto ? "Repetir foto frontal" : "Tomar foto frontal"}
               </button>
             </figure>
             <figure className="photoCompareItem">
               <figcaption className="small">Tabla nutricional</figcaption>
               {nutritionPhoto ? <img src={nutritionPhoto.previewUrl} alt="Foto de la tabla nutricional" /> : null}
-              <button className="btn btnSlim" onClick={() => void handleCapturePhoto("nutrition")}>
+              <button type="button" className="btn btnSlim" onClick={() => void handleCapturePhoto("nutrition")}>
                 {nutritionPhoto ? "Repetir foto de etiqueta" : "Tomar foto de tabla nutricional"}
               </button>
             </figure>
@@ -895,10 +879,10 @@ export default function DietAddEntry() {
           </label>
 
           <div className="quickActions">
-            <button className="btn primary" onClick={() => void savePhotoCapture()} disabled={saving || !athleteId}>
+            <button type="button" className="btn primary" onClick={() => void savePhotoCapture()} disabled={saving || !athleteId}>
               {saving ? "Guardando..." : "Registrar alimento"}
             </button>
-            <button className="btn" onClick={() => setMode("search")} disabled={saving}>
+            <button type="button" className="btn" onClick={() => setMode("search")} disabled={saving}>
               Cancelar
             </button>
           </div>
@@ -920,7 +904,7 @@ export default function DietAddEntry() {
                     </span>
                     {selectedFood.name}
                   </strong>
-                  <button className="btn btnSlim" onClick={clearFood}>
+                  <button type="button" className="btn btnSlim" onClick={clearFood}>
                     Cambiar
                   </button>
                 </div>
@@ -942,12 +926,25 @@ export default function DietAddEntry() {
               </div>
             ) : (
               <div className="stack compactStack">
-                <input
-                  className="input"
-                  placeholder={activeCategory ? `Buscar en ${activeCategory.label}...` : "Nombre del alimento..."}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
+                <div className="captureInputRow">
+                  <input
+                    className="input"
+                    placeholder={activeCategory ? `Buscar en ${activeCategory.label}...` : "Nombre del alimento..."}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                  <button type="button" className="captureIconBtn" onClick={startScanFlow} aria-label="Escanear código de barras">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 7v10M8 7v10M12 7v10M16 7v10M20 7v10" />
+                    </svg>
+                  </button>
+                  <button type="button" className="captureIconBtn" onClick={() => openPhotoFlow(null)} aria-label="Registrar por foto">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 8h3l2-2h6l2 2h3v11H4z" />
+                      <circle cx="12" cy="13" r="3.5" />
+                    </svg>
+                  </button>
+                </div>
 
                 {activeCategory ? (
                   <div className="foodBrowseHead">
@@ -1062,10 +1059,10 @@ export default function DietAddEntry() {
           </label>
 
           <div className="quickActions">
-            <button className="btn primary" onClick={() => void save()} disabled={saving || !athleteId}>
+            <button type="button" className="btn primary" onClick={() => void save()} disabled={saving || !athleteId}>
               {saving ? "Guardando..." : "Registrar comida"}
             </button>
-            <button className="btn" onClick={() => nav(-1)} disabled={saving}>
+            <button type="button" className="btn" onClick={() => nav(-1)} disabled={saving}>
               Cancelar
             </button>
           </div>

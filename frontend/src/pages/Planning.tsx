@@ -24,10 +24,12 @@ import {
   type PlanningTemplateTree,
 } from "../api";
 import DatePicker from "../components/DatePicker";
+import KebabMenu from "../components/KebabMenu";
 import Select from "../components/Select";
 import { loadRoutines, type RoutineTemplate } from "../lib/storage";
 import { useAthleteAccess } from "../state/athlete";
 import { useUndo } from "../state/undo";
+import "../styles.planning.css";
 
 type PlanningTab = "micro" | "meso" | "macro" | "assignments" | "tracking";
 type BuilderLevel = "micro" | "meso" | "macro";
@@ -234,7 +236,6 @@ function TreeNode({ node }: { node: PlanningTemplateTree }) {
 }
 
 const PLANNING_TABS: ReadonlyArray<{ key: PlanningTab; label: string }> = [
-  { key: "micro", label: "Microciclo" },
   { key: "meso", label: "Mesociclo" },
   { key: "macro", label: "Macrociclo" },
   { key: "assignments", label: "Asignaciones" },
@@ -246,6 +247,7 @@ export default function Planning() {
   const { registerUndo } = useUndo();
   const pendingDeleteTimerByTemplateRef = useRef<Map<string, number>>(new Map());
   const [tab, setTab] = useState<PlanningTab>("micro");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [templates, setTemplates] = useState<Record<CycleLevel, PlanningTemplateItem[]>>({
     micro: [],
@@ -725,7 +727,7 @@ export default function Planning() {
   function renderTemplateCards(level: CycleLevel) {
     const levelTemplates = templates[level];
     if (levelTemplates.length === 0) {
-      return <div className="emptyState">Sin plantillas guardadas en este nivel.</div>;
+      return null;
     }
 
     const unitLabel = level === "micro" ? "Sesiones" : level === "meso" ? "Ciclos" : "Bloques";
@@ -784,18 +786,16 @@ export default function Planning() {
 
   function renderMicroTab() {
     return (
-      <section className="surface stack">
+      <section className="surface stack planningSurface">
         <div className="planningTopRow">
-          <div className="sectionHead">
-            <h3>Microciclo</h3>
-          </div>
           <div className="quickActions">
-            <button className="btn" onClick={() => resetBuilder("micro")}>
-              Nuevo limpio
-            </button>
             <button className="btn primary" onClick={() => void saveMicroBuilder()}>
-              Guardar microciclo
+              Guardar
             </button>
+            <KebabMenu
+              ariaLabel="Más opciones del microciclo"
+              actions={[{ label: "Nuevo limpio", onSelect: () => resetBuilder("micro") }]}
+            />
           </div>
         </div>
 
@@ -821,11 +821,6 @@ export default function Planning() {
           </aside>
 
           <div className="planningEditorMain">
-            <div className="planningHeaderCard">
-              <strong>{microBuilder.name || "Microciclo sin nombre"}</strong>
-              <span className="small">{`Sesiones: ${microBuilder.duration}`}</span>
-            </div>
-
             <div className="planningMosaic">
               {microBuilder.slots.map((slot) => {
                 const routineName = slot.routineId ? routineMap.get(slot.routineId)?.name : "";
@@ -837,7 +832,7 @@ export default function Planning() {
                   >
                     <span className="planningSquareIdx">{`S${slot.index}`}</span>
                     <strong>{slot.title || `Sesión ${slot.index}`}</strong>
-                    <span className="small">{routineName || "Sin rutina"}</span>
+                    <span className="small">{routineName || "Elegir rutina"}</span>
                   </button>
                 );
               })}
@@ -885,7 +880,6 @@ export default function Planning() {
     const childTemplates = level === "meso" ? templates.micro : templates.meso;
     const childMap = level === "meso" ? microTemplateMap : mesoTemplateMap;
     const sectionTitle = level === "meso" ? "Mesociclo" : "Macrociclo";
-    const saveLabel = level === "meso" ? "Guardar mesociclo" : "Guardar macrociclo";
     const childLabel = level === "meso" ? "Ciclo" : "Bloque";
     const childLabelPlural = level === "meso" ? "Ciclos" : "Bloques";
     const usedIds = new Set(
@@ -897,18 +891,16 @@ export default function Planning() {
     const assignedBlocks = builder.slots.filter((slot) => slot.childTemplateId).length;
 
     return (
-      <section className="surface stack">
+      <section className="surface stack planningSurface">
         <div className="planningTopRow">
-          <div className="sectionHead">
-            <h3>{sectionTitle}</h3>
-          </div>
           <div className="quickActions">
-            <button className="btn" onClick={() => resetBuilder(level)}>
-              Nuevo limpio
-            </button>
             <button className="btn primary" onClick={() => void saveLinkBuilder(level)}>
-              {saveLabel}
+              Guardar
             </button>
+            <KebabMenu
+              ariaLabel={`Más opciones del ${sectionTitle.toLowerCase()}`}
+              actions={[{ label: "Nuevo limpio", onSelect: () => resetBuilder(level) }]}
+            />
           </div>
         </div>
 
@@ -946,7 +938,6 @@ export default function Planning() {
 
           <div className="planningEditorMain">
             <div className="planningHeaderCard">
-              <strong>{builder.name || `${levelLabel(level)} sin nombre`}</strong>
               <span className="small">{`${childLabelPlural}: ${builder.duration}`}</span>
               <span className="small">{`Categoria: ${selectedCategory}`}</span>
               <span className="small">{`${childLabelPlural} asignados: ${assignedBlocks}/${builder.duration}`}</span>
@@ -1000,19 +991,31 @@ export default function Planning() {
       {/* Mismo lenguaje visual que el resto de hubs (pildoras de navegacion).
           El boton "Refrescar" salio de aqui: mezclaba una accion dentro de una
           fila de navegacion y ya se recarga solo al entrar y al guardar. */}
-      <nav className="hubTabs" aria-label="Secciones de programación">
-        {PLANNING_TABS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            className={`hubTab ${tab === item.key ? "active" : ""}`.trim()}
-            aria-current={tab === item.key ? "page" : undefined}
-            onClick={() => setTab(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
+      <details
+        className="planningAdvanced"
+        open={advancedOpen}
+        onToggle={(e) => {
+          const isOpen = e.currentTarget.open;
+          setAdvancedOpen(isOpen);
+          if (!isOpen) setTab("micro");
+          else if (tab === "micro") setTab("meso");
+        }}
+      >
+        <summary>Avanzado</summary>
+        <nav className="hubTabs" aria-label="Secciones avanzadas de programación">
+          {PLANNING_TABS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={`hubTab ${tab === item.key ? "active" : ""}`.trim()}
+              aria-current={tab === item.key ? "page" : undefined}
+              onClick={() => setTab(item.key)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      </details>
 
       {loadingTemplates ? <div className="small">Cargando plantillas...</div> : null}
 
@@ -1021,7 +1024,7 @@ export default function Planning() {
       {tab === "macro" ? renderHierarchyTab("macro") : null}
 
       {tab === "assignments" ? (
-        <section className="surface stack">
+        <section className="surface stack planningSurface">
           <div className="sectionHead">
             <h3>Asignar ciclo</h3>
           </div>
@@ -1075,7 +1078,7 @@ export default function Planning() {
       ) : null}
 
       {tab === "tracking" ? (
-        <section className="surface stack">
+        <section className="surface stack planningSurface">
           <div className="sectionHead">
             <h3>Seguimiento</h3>
           </div>

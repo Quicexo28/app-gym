@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 
 import {
   MUSCLE_GROUPS,
@@ -97,19 +97,7 @@ export default function UsersHub() {
     nav(`/users/${encodeURIComponent(subject.id)}`);
   }
 
-  if (!coachView) {
-    return (
-      <div className="container stack">
-        <header className="titleBlock">
-          <h1>Usuarios</h1>
-          <p>Enciende la vista coach (interruptor de la barra superior) para ver tu cartera.</p>
-        </header>
-        <section className="surface">
-          <div className="emptyState">Vista coach apagada.</div>
-        </section>
-      </div>
-    );
-  }
+  if (!coachView) return <Navigate to="/home" replace />;
 
   return (
     <div className="container stack">
