@@ -1,424 +1,53 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { ingestSessions, listCoachNotes, markCoachNoteRead } from "../api";
 import type { CoachNote } from "../api";
 import { dayKeyToDatetimeLocal } from "../lib/dates";
+import { buildSessionExercises, buildSessionPayload } from "../lib/session/buildPayload";
+import {
+  deviceDatetimeLocal,
+  formatStartLabel,
+  normalizeExerciseNameForNotes,
+} from "../lib/session/format";
+import { EMPTY_SET, parseSetEffortValue, routineToDraft } from "../lib/session/routine";
+import {
+  completeSessionTimerState,
+  computeSessionElapsedMs,
+  createRunningSessionTimer,
+  IDLE_SESSION_TIMER,
+  pauseSessionTimerState,
+  resumeSessionTimerState,
+} from "../lib/session/sessionTimer";
+import type {
+  RoutineExerciseDraft,
+  SessionDraftCommand,
+  SessionStep,
+  SessionTimerState,
+} from "../lib/session/types";
 import { enqueueSessionUpload, isNetworkError } from "../lib/sessionOutbox";
-import { formatSetsRange, loadRoutines } from "../lib/storage";
-import type { RoutineExerciseTemplate, RoutineTemplate } from "../lib/storage";
-import type { OfflineVoskRecognizer as OfflineVoskRecognizerClass } from "../lib/voice/offlineRecognizer";
+import { loadRoutines } from "../lib/storage";
+import type { RoutineTemplate } from "../lib/storage";
 import { findCurrentSetTarget } from "../lib/voice/setTarget";
-import type { OfflineRecognizerFinalTranscript, OfflineRecognizerState } from "../lib/voice/types";
-import { toKg } from "../lib/units";
-import type { ActiveSessionVoiceCommandAudit } from "../state/activeSession";
 import { useActiveSession } from "../state/activeSession";
 import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
-import { useUndo } from "../state/undo";
-import { APP_LOCALE } from "../lib/locale";
+import CloseRoutineModal from "./newSession/CloseRoutineModal";
+import ExerciseCard from "./newSession/ExerciseCard";
+import PickRoutineStep from "./newSession/PickRoutineStep";
+import RestFloatBar from "./newSession/RestFloatBar";
+import SessionTimerCard from "./newSession/SessionTimerCard";
+import { useRestFinishedNotice, useRestTimer } from "./newSession/useRestTimer";
+import { useSessionVoice } from "./newSession/useSessionVoice";
+import { useSetRowAnimations } from "./newSession/useSetRowAnimations";
+import VoiceDock from "./newSession/VoiceDock";
+import WellnessPanel from "./newSession/WellnessPanel";
 import "../styles.rutinas.css";
-type SetRow = { reps: string; load: string; completed: boolean; effort: string };
-type RoutineExerciseDraft = {
-  name: string;
-  group?: string;
-  athleteNote?: string;
-  target_reps_min: number;
-  target_reps_max: number;
-  rest_seconds: number;
-  sets: SetRow[];
-};
-type SessionStep = "pick_routine" | "capture_session";
-
-function normalizeExerciseNameForNotes(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-type SessionTimerState = {
-  started_at_ms: number | null;
-  running_since_ms: number | null;
-  accumulated_ms: number;
-  completed_at_ms: number | null;
-};
-
-type RestTimerState = {
-  exercise_index: number;
-  set_index: number;
-  exercise_name: string;
-  duration_seconds: number;
-  started_at_ms: number;
-  ends_at_ms: number;
-  notified: boolean;
-};
-
-type NotificationCapability = NotificationPermission | "unsupported";
-
-type SessionDraftCommand =
-  | { type: "set_reps"; exercise_index: number; set_index: number; value: string }
-  | { type: "set_load"; exercise_index: number; set_index: number; value: string }
-  | { type: "set_set_completed"; exercise_index: number; set_index: number; value: boolean }
-  | { type: "set_set_effort"; exercise_index: number; set_index: number; value: string };
-
-type PendingSetDelete = {
-  id: string;
-  rowKey: string;
-  exerciseIndex: number;
-  setIndex: number;
-  setSnapshot: SetRow;
-  exerciseName: string;
-  committed: boolean;
-  animationTimeoutId: number | null;
-  cleanupTimeoutId: number | null;
-};
-
-const EMPTY_SET: SetRow = { reps: "", load: "", completed: false, effort: "" };
-const WELLNESS_MIN_SCORE = 1;
-const WELLNESS_MAX_SCORE = 10;
-const WELLNESS_STEP = 0.1;
-const WELLNESS_TICKS = Array.from(
-  { length: WELLNESS_MAX_SCORE - WELLNESS_MIN_SCORE + 1 },
-  (_, index) => WELLNESS_MIN_SCORE + index,
-);
-const WELLNESS_LABEL_POINTS = [
-  { score: 2, label: "muy malo" },
-  { score: 4.5, label: "malo" },
-  { score: 6.5, label: "bueno" },
-  { score: 9, label: "excelente" },
-] as const;
-const STRESS_LABEL_POINTS = [
-  { score: 2, label: "bajo" },
-  { score: 4.5, label: "medio-bajo" },
-  { score: 6.5, label: "medio-alto" },
-  { score: 9, label: "alto" },
-] as const;
-const IDLE_SESSION_TIMER: SessionTimerState = {
-  started_at_ms: null,
-  running_since_ms: null,
-  accumulated_ms: 0,
-  completed_at_ms: null,
-};
-const TICK_MS = 1_000;
-const UNCHECK_SET_ANIMATION_MS = 700;
-const DELETE_SET_ANIMATION_MS = 1_500;
-const DELETE_SET_UNDO_TIMEOUT_MS = 7_000;
-const MAX_VOICE_AUDIT_ENTRIES = 50;
-const ENABLE_OFFLINE_VOICE_CAPTURE =
-  ((import.meta.env.VITE_ENABLE_OFFLINE_VOICE_CAPTURE as string | undefined)?.trim().toLowerCase() ?? "") === "true";
-const VOICE_ENGINE = "vosk-browser@0.0.8";
-const VOICE_MODEL_ID = "vosk-model-small-es-0.42";
-const VOICE_MODEL_URL = `/models/${VOICE_MODEL_ID}.zip`;
-const VOICE_LANGUAGE = "es-ES";
-const VOICE_WAKE_PHRASE = "alzo";
-const VOICE_ASSIST_DESKTOP_KEY = "coach_ai_voice_assist_desktop_v1";
-
-function readVoiceAssistDesktopPreference(): boolean {
-  if (typeof window === "undefined") return true;
-  const raw = window.localStorage.getItem(VOICE_ASSIST_DESKTOP_KEY);
-  if (raw === "0") return false;
-  if (raw === "1") return true;
-  return true;
-}
-
-function voiceStatusLabel(status: OfflineRecognizerState): string {
-  if (status === "inactive") return "Inactiva";
-  if (status === "loading") return "Cargando modelo";
-  if (status === "listening") return "Escuchando";
-  if (status === "error") return "Error";
-  return "Armada";
-}
-
-function normalizeTranscriptText(raw: string): string {
-  return raw
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function clampVoiceConfidence(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, Number(value.toFixed(3))));
-}
-
-function describeMicrophoneError(cause: unknown): string {
-  const payload = cause as { name?: string; message?: string };
-  const name = String(payload?.name ?? "");
-  if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-    return "Permiso de microfono denegado en el navegador.";
-  }
-  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-    return "No se detecto un microfono disponible.";
-  }
-  if (name === "NotReadableError" || name === "TrackStartError") {
-    return "El microfono esta ocupado por otra aplicación.";
-  }
-  if (name === "SecurityError") {
-    return "La captura de microfono requiere HTTPS o localhost.";
-  }
-  const message = String(payload?.message ?? "");
-  return message || String(cause);
-}
-
-function appendVoiceTranscript(previous: string, chunk: string): string {
-  const normalizedChunk = normalizeTranscriptText(chunk);
-  if (!normalizedChunk) return previous;
-  if (!previous) return normalizedChunk;
-  if (previous.toLowerCase().endsWith(normalizedChunk.toLowerCase())) return previous;
-  return `${previous} ${normalizedChunk}`.trim();
-}
-
-function toISOZ(datetimeLocal: string): string {
-  const d = new Date(datetimeLocal);
-  return d.toISOString();
-}
-
-function deviceDatetimeLocal(): string {
-  const now = new Date();
-  const timezoneOffsetMs = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
-}
-
-function formatStartLabel(datetimeLocal: string): string {
-  if (!datetimeLocal) return "Sin fecha de inicio";
-  const parsed = new Date(datetimeLocal);
-  if (Number.isNaN(parsed.getTime())) return datetimeLocal.replace("T", " ");
-  return parsed.toLocaleString(APP_LOCALE, { dateStyle: "medium", timeStyle: "short" });
-}
-
-function formatTimer(totalSeconds: number): string {
-  const safe = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(safe / 3600);
-  const minutes = Math.floor((safe % 3600) / 60);
-  const seconds = safe % 60;
-
-  if (hours > 0) {
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
-function formatTimerSigned(totalSeconds: number): string {
-  if (totalSeconds < 0) return `-${formatTimer(-totalSeconds)}`;
-  return formatTimer(totalSeconds);
-}
-
-function formatRepsRange(min: number, max: number): string {
-  if (min === max) return String(min);
-  return `${min}-${max}`;
-}
-
-function formatRestRecommendation(restSeconds: number): string {
-  if (restSeconds <= 0) return "Sin descanso";
-  return `${restSeconds}s`;
-}
-
-function formatExerciseNameForCard(name: string): string {
-  return name.replace(/\s*>\s*/g, " - ");
-}
-
-function setRowAnimationKey(exerciseIndex: number, setIndex: number): string {
-  return `${exerciseIndex}:${setIndex}`;
-}
-
-function detectNotificationCapability(): NotificationCapability {
-  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
-  return Notification.permission;
-}
-
-function defaultSetForExercise(): SetRow {
-  return {
-    reps: "",
-    load: "",
-    completed: false,
-    effort: "",
-  };
-}
-
-function normalizeRoutineExercises(source: RoutineExerciseTemplate[]): RoutineExerciseTemplate[] {
-  const seen = new Set<string>();
-  const out: RoutineExerciseTemplate[] = [];
-  for (const raw of source) {
-    const name = raw.name.trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      name,
-      group: raw.group,
-      target_sets_min: Math.max(1, Math.min(30, Math.round(raw.target_sets_min || 1))),
-      target_sets_max: Math.max(1, Math.min(30, Math.round(raw.target_sets_max || 1))),
-      target_reps_min: Math.max(1, Math.min(100, Math.round(raw.target_reps_min || 1))),
-      target_reps_max: Math.max(1, Math.min(100, Math.round(raw.target_reps_max || 1))),
-      rest_seconds: Math.max(0, Math.min(900, Math.round(raw.rest_seconds || 0))),
-    });
-  }
-  return out.map((exercise) => ({
-    ...exercise,
-    target_sets_min: Math.min(exercise.target_sets_min, exercise.target_sets_max),
-    target_sets_max: Math.max(exercise.target_sets_min, exercise.target_sets_max),
-    target_reps_min: Math.min(exercise.target_reps_min, exercise.target_reps_max),
-    target_reps_max: Math.max(exercise.target_reps_min, exercise.target_reps_max),
-  }));
-}
-
-function routineToDraft(routine: RoutineTemplate): RoutineExerciseDraft[] {
-  return normalizeRoutineExercises(routine.exercises).map((exercise) => ({
-    name: exercise.name,
-    group: exercise.group,
-    athleteNote: "",
-    target_reps_min: exercise.target_reps_min,
-    target_reps_max: exercise.target_reps_max,
-    rest_seconds: exercise.rest_seconds,
-    sets: Array.from({ length: exercise.target_sets_min }, () => defaultSetForExercise()),
-  }));
-}
-
-function createRunningSessionTimer(nowMs: number): SessionTimerState {
-  return {
-    started_at_ms: nowMs,
-    running_since_ms: nowMs,
-    accumulated_ms: 0,
-    completed_at_ms: null,
-  };
-}
-
-function computeSessionElapsedMs(timer: SessionTimerState, nowMs: number): number {
-  const chunkMs = timer.running_since_ms === null ? 0 : Math.max(0, nowMs - timer.running_since_ms);
-  return Math.max(0, timer.accumulated_ms + chunkMs);
-}
-
-function pauseSessionTimerState(timer: SessionTimerState, nowMs: number): SessionTimerState {
-  if (timer.running_since_ms === null || timer.completed_at_ms !== null) return timer;
-  return {
-    ...timer,
-    running_since_ms: null,
-    accumulated_ms: computeSessionElapsedMs(timer, nowMs),
-  };
-}
-
-function resumeSessionTimerState(timer: SessionTimerState, nowMs: number): SessionTimerState {
-  if (timer.completed_at_ms !== null) return timer;
-  if (timer.running_since_ms !== null) return timer;
-  if (timer.started_at_ms === null) {
-    return createRunningSessionTimer(nowMs);
-  }
-  return {
-    ...timer,
-    running_since_ms: nowMs,
-  };
-}
-
-function completeSessionTimerState(timer: SessionTimerState, nowMs: number): SessionTimerState {
-  if (timer.completed_at_ms !== null) return timer;
-  const elapsedMs = computeSessionElapsedMs(timer, nowMs);
-  return {
-    started_at_ms: timer.started_at_ms ?? nowMs,
-    running_since_ms: null,
-    accumulated_ms: elapsedMs,
-    completed_at_ms: nowMs,
-  };
-}
-
-function parseSetEffortValue(
-  value: string,
-  scale: "rpe" | "rir",
-): {
-  valid: boolean;
-  hasValue: boolean;
-  raw: number | null;
-  rpe: number | null;
-  rir: number | null;
-} {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return { valid: true, hasValue: false, raw: null, rpe: null, rir: null };
-  }
-
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed)) {
-    return { valid: false, hasValue: true, raw: null, rpe: null, rir: null };
-  }
-
-  if (scale === "rpe") {
-    if (parsed < 0 || parsed > 10) {
-      return { valid: false, hasValue: true, raw: parsed, rpe: null, rir: null };
-    }
-    const rounded = Number(parsed.toFixed(2));
-    return { valid: true, hasValue: true, raw: rounded, rpe: rounded, rir: null };
-  }
-
-  if (parsed < 0 || parsed > 6) {
-    return { valid: false, hasValue: true, raw: parsed, rpe: null, rir: null };
-  }
-  const roundedRir = Number(parsed.toFixed(2));
-  const convertedRpe = Number(Math.max(0, Math.min(10, 10 - roundedRir)).toFixed(2));
-  return { valid: true, hasValue: true, raw: roundedRir, rpe: convertedRpe, rir: roundedRir };
-}
-
-function clampWellnessScore(value: number): number {
-  if (!Number.isFinite(value)) return WELLNESS_MIN_SCORE;
-  return Math.max(WELLNESS_MIN_SCORE, Math.min(WELLNESS_MAX_SCORE, value));
-}
-
-function parseWellnessScore(rawValue: string): number {
-  return Number(clampWellnessScore(Number(rawValue)).toFixed(1));
-}
-
-function invertWellnessScore(score: number): number {
-  return WELLNESS_MAX_SCORE + WELLNESS_MIN_SCORE - clampWellnessScore(score);
-}
-
-function wellnessLabelFromScore(score: number): string {
-  if (score >= 8) return "excelente";
-  if (score >= 6) return "bueno";
-  if (score >= 4) return "malo";
-  return "muy malo";
-}
-
-function stressLabelFromScore(score: number): string {
-  if (score >= 8) return "alto";
-  if (score >= 6) return "medio-alto";
-  if (score >= 4) return "medio-bajo";
-  return "bajo";
-}
-
-function formatWellnessScore(score: number): string {
-  return Number(clampWellnessScore(score).toFixed(1)).toFixed(1);
-}
-
-function wellnessTickOffset(score: number): string {
-  const ratio = (score - WELLNESS_MIN_SCORE) / (WELLNESS_MAX_SCORE - WELLNESS_MIN_SCORE);
-  return `${Math.max(0, Math.min(1, ratio)) * 100}%`;
-}
-
-function stressSliderValue(score: number): number {
-  return Number(invertWellnessScore(score).toFixed(1));
-}
-
-function parseStressScore(rawValue: string): number {
-  return Number(invertWellnessScore(parseWellnessScore(rawValue)).toFixed(1));
-}
-
-function stressTickOffset(score: number): string {
-  return wellnessTickOffset(invertWellnessScore(score));
-}
-
-function wellnessProgress(score: number): string {
-  const ratio = (clampWellnessScore(score) - WELLNESS_MIN_SCORE) / (WELLNESS_MAX_SCORE - WELLNESS_MIN_SCORE);
-  return `${Math.max(0, Math.min(1, ratio)) * 100}%`;
-}
-
-function wellnessSliderStyle(score: number): CSSProperties {
-  return { "--wellness-progress": wellnessProgress(score) } as CSSProperties;
-}
 
 export default function NewSession() {
   const { athleteIds, canSwitch, ready: athleteReady } = useAthleteAccess();
   const [athleteId] = useAthleteId();
   const { prefs } = usePreferences();
-  const { registerUndo } = useUndo();
   const { draft: activeSessionDraft, saveDraft, clearDraft } = useActiveSession();
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
@@ -447,83 +76,82 @@ export default function NewSession() {
   const [expandedNoteExercise, setExpandedNoteExercise] = useState<number | null>(null);
 
   const [sessionTimer, setSessionTimer] = useState<SessionTimerState>(() => draftForAthlete?.sessionTimer ?? IDLE_SESSION_TIMER);
-  const [restTimer, setRestTimer] = useState<RestTimerState | null>(() => draftForAthlete?.restTimer ?? null);
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  const [notificationCapability, setNotificationCapability] = useState<NotificationCapability>(() => detectNotificationCapability());
-  const [voiceAudit, setVoiceAudit] = useState<ActiveSessionVoiceCommandAudit[]>(() => draftForAthlete?.voiceAudit ?? []);
-  const [voiceTranscript, setVoiceTranscript] = useState<string>("");
-  const [voiceUsed, setVoiceUsed] = useState<boolean>(() => draftForAthlete?.voiceUsed ?? false);
-  const [voiceAssistDesktopEnabled, setVoiceAssistDesktopEnabled] = useState<boolean>(() => readVoiceAssistDesktopPreference());
-  const [voiceStatus, setVoiceStatus] = useState<OfflineRecognizerState>("inactive");
-  const [voiceError, setVoiceError] = useState<string>("");
-  const [voicePartial, setVoicePartial] = useState<string>("");
-  // El dock de voz arranca plegado: antes flotaba siempre abierto y tapaba la
-  // columna de RPE de cada serie.
-  const [voiceDockOpen, setVoiceDockOpen] = useState<boolean>(false);
-  const [clipboardBusy, setClipboardBusy] = useState(false);
+  const {
+    restTimer,
+    setRestTimer,
+    nowMs,
+    setNowMs,
+    notificationCapability,
+    restRemainingSec,
+    restRemainingSecSigned,
+    restProgressPct,
+    requestDeviceNotifications,
+    clearRestTimer,
+  } = useRestTimer(draftForAthlete?.restTimer ?? null);
+  const {
+    voiceAudit,
+    setVoiceAudit,
+    setVoiceTranscript,
+    voiceTranscript,
+    voicePartial,
+    voiceUsed,
+    setVoiceUsed,
+    voiceAssistDesktopEnabled,
+    voiceStatus,
+    voiceError,
+    setVoiceError,
+    setVoicePartial,
+    voiceDockOpen,
+    setVoiceDockOpen,
+    clipboardBusy,
+    voiceCaptureActive,
+    voiceTranscriptDisplay,
+    voiceAuditPreview,
+    clearVoiceFeedback,
+    disarmVoiceRecognizer,
+    startVoiceCapture,
+    deactivateVoiceCapture,
+    toggleVoiceAssistDesktop,
+    transcribeClipboardText,
+  } = useSessionVoice({
+    step,
+    initialAudit: draftForAthlete?.voiceAudit ?? [],
+    initialUsed: draftForAthlete?.voiceUsed ?? false,
+  });
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
   const [extrasMenuOpen, setExtrasMenuOpen] = useState(false);
   const [closeRoutineOpen, setCloseRoutineOpen] = useState(false);
-  const [uncheckingSetKeys, setUncheckingSetKeys] = useState<string[]>([]);
-  const [deletingSetKeys, setDeletingSetKeys] = useState<string[]>([]);
+  const {
+    uncheckingSetKeys,
+    deletingSetKeys,
+    hasPendingSetDelete,
+    resetSetAnimations,
+    handleSetCompletedToggle,
+    handleRemoveSetWithAnimation,
+  } = useSetRowAnimations({
+    routineExercises,
+    setRoutineExercises,
+    setRestTimer,
+    setError,
+    applySessionDraftCommand,
+  });
 
-  const restTimeoutRef = useRef<number | null>(null);
-  const uncheckTimeoutsRef = useRef<number[]>([]);
-  const deleteTimeoutsRef = useRef<number[]>([]);
-  const pendingSetDeletesRef = useRef<Map<string, PendingSetDelete>>(new Map());
-  const nextSetDeleteIdRef = useRef(1);
   const activeSessionDraftRef = useRef(activeSessionDraft);
   const autoStartedRef = useRef(false);
-  const voiceRecognizerRef = useRef<OfflineVoskRecognizerClass | null>(null);
-  const voiceStartingRef = useRef(false);
-  const voiceStatusPulseTimeoutRef = useRef<number | null>(null);
-  const clearAnimationTimeouts = useCallback(() => {
-    for (const timeoutId of uncheckTimeoutsRef.current) {
-      window.clearTimeout(timeoutId);
-    }
-    for (const timeoutId of deleteTimeoutsRef.current) {
-      window.clearTimeout(timeoutId);
-    }
-    for (const pendingDelete of pendingSetDeletesRef.current.values()) {
-      if (pendingDelete.animationTimeoutId !== null) {
-        window.clearTimeout(pendingDelete.animationTimeoutId);
-      }
-      if (pendingDelete.cleanupTimeoutId !== null) {
-        window.clearTimeout(pendingDelete.cleanupTimeoutId);
-      }
-    }
-    uncheckTimeoutsRef.current = [];
-    deleteTimeoutsRef.current = [];
-    pendingSetDeletesRef.current.clear();
-  }, []);
-  const resetSetAnimations = useCallback(() => {
-    clearAnimationTimeouts();
-    setUncheckingSetKeys([]);
-    setDeletingSetKeys([]);
-  }, [clearAnimationTimeouts]);
-
   useEffect(() => {
     activeSessionDraftRef.current = activeSessionDraft;
   }, [activeSessionDraft]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(VOICE_ASSIST_DESKTOP_KEY, voiceAssistDesktopEnabled ? "1" : "0");
-  }, [voiceAssistDesktopEnabled]);
-
-  useEffect(() => {
-    if (!athleteId) {
-      if (voiceRecognizerRef.current) {
-        void voiceRecognizerRef.current.disarm();
-      }
+    const resetToIdle = (nextSessionAthleteId: string) => {
+      disarmVoiceRecognizer();
       resetSetAnimations();
-      setRoutines([]);
       setRoutineId("");
       setRoutineExercises([]);
       setStep("pick_routine");
-      setSessionAthleteId("");
+      setSessionAthleteId(nextSessionAthleteId);
       setStartLocal("");
       setNotes("");
       setSleepScore(7);
@@ -534,9 +162,12 @@ export default function NewSession() {
       setVoiceAudit([]);
       setVoiceTranscript("");
       setVoiceUsed(false);
-      setVoiceError("");
-      setVoicePartial("");
-      setVoiceStatus("inactive");
+      clearVoiceFeedback();
+    };
+
+    if (!athleteId) {
+      resetToIdle("");
+      setRoutines([]);
       return;
     }
 
@@ -558,35 +189,24 @@ export default function NewSession() {
       setVoiceAudit(stored.voiceAudit);
       setVoiceTranscript("");
       setVoiceUsed(stored.voiceUsed);
-      setVoiceError("");
-      setVoicePartial("");
-      setVoiceStatus("inactive");
+      clearVoiceFeedback();
       setError("");
       return;
     }
 
-    if (voiceRecognizerRef.current) {
-      void voiceRecognizerRef.current.disarm();
-    }
-    resetSetAnimations();
-    setRoutineId("");
-    setRoutineExercises([]);
-    setStep("pick_routine");
-    setSessionAthleteId(athleteId);
-    setStartLocal("");
-    setNotes("");
-    setSleepScore(7);
-    setStressScore(5);
-    setSensationScore(7);
-    setSessionTimer(IDLE_SESSION_TIMER);
-    setRestTimer(null);
-    setVoiceAudit([]);
-    setVoiceTranscript("");
-    setVoiceUsed(false);
-    setVoiceError("");
-    setVoicePartial("");
-    setVoiceStatus("inactive");
-  }, [athleteId, resetSetAnimations]);
+    resetToIdle(athleteId);
+  }, [
+    athleteId,
+    clearVoiceFeedback,
+    disarmVoiceRecognizer,
+    resetSetAnimations,
+    setRestTimer,
+    setVoiceAudit,
+    setVoiceTranscript,
+    setVoiceUsed,
+  ]);
+
+  useRestFinishedNotice(restTimer, setRestTimer, restRemainingSec, notificationCapability);
 
   const sortedRoutines = useMemo(() => [...routines].sort((a, b) => a.name.localeCompare(b.name)), [routines]);
   const selectedRoutine = useMemo(() => sortedRoutines.find((routine) => routine.id === routineId) || null, [routineId, sortedRoutines]);
@@ -644,24 +264,11 @@ export default function NewSession() {
   const sessionTimerRunning = sessionTimer.running_since_ms !== null && sessionTimer.completed_at_ms === null;
   const sessionTimerCompleted = sessionTimer.completed_at_ms !== null;
   const sessionTimerStarted = sessionTimer.started_at_ms !== null;
-  const restRemainingSec = useMemo(() => {
-    if (!restTimer) return 0;
-    return Math.max(0, Math.ceil((restTimer.ends_at_ms - nowMs) / 1_000));
-  }, [nowMs, restTimer]);
-  const restRemainingSecSigned = useMemo(() => {
-    if (!restTimer) return 0;
-    return Math.ceil((restTimer.ends_at_ms - nowMs) / 1_000);
-  }, [nowMs, restTimer]);
   const allSetsCompleted = useMemo(
     () => routineExercises.length > 0 && routineExercises.every((exercise) => exercise.sets.length > 0 && exercise.sets.every((set) => set.completed)),
     [routineExercises],
   );
   const voiceCurrentTarget = useMemo(() => findCurrentSetTarget(routineExercises), [routineExercises]);
-  const restProgressPct = useMemo(() => {
-    if (!restTimer || restTimer.duration_seconds <= 0) return 0;
-    const elapsedMs = Math.max(0, nowMs - restTimer.started_at_ms);
-    return Math.min(100, Math.round((elapsedMs / (restTimer.duration_seconds * 1_000)) * 100));
-  }, [nowMs, restTimer]);
   const sessionRpeAuto = useMemo(() => {
     const samples: number[] = [];
     for (const exercise of routineExercises) {
@@ -674,7 +281,6 @@ export default function NewSession() {
     if (samples.length === 0) return null;
     return Number((samples.reduce((acc, item) => acc + item, 0) / samples.length).toFixed(2));
   }, [prefs.effortScale, routineExercises]);
-  const hasPendingSetDelete = deletingSetKeys.length > 0;
 
   useEffect(() => {
     if (!athleteId) return;
@@ -727,296 +333,6 @@ export default function NewSession() {
     voiceUsed,
   ]);
 
-  useEffect(() => {
-    const intervalId = window.setInterval(() => setNowMs(Date.now()), TICK_MS);
-    return () => window.clearInterval(intervalId);
-  }, []);
-
-  useEffect(
-    () => () => {
-      clearAnimationTimeouts();
-    },
-    [clearAnimationTimeouts],
-  );
-
-  useEffect(() => {
-    const syncNow = () => setNowMs(Date.now());
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") syncNow();
-    };
-    window.addEventListener("focus", syncNow);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.removeEventListener("focus", syncNow);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
-
-  useEffect(() => {
-    setNotificationCapability(detectNotificationCapability());
-  }, []);
-
-  useEffect(() => {
-    if (restTimeoutRef.current !== null) {
-      window.clearTimeout(restTimeoutRef.current);
-      restTimeoutRef.current = null;
-    }
-    if (!restTimer) return;
-    const delayMs = Math.max(0, restTimer.ends_at_ms - Date.now());
-    restTimeoutRef.current = window.setTimeout(() => setNowMs(Date.now()), delayMs + 30);
-    return () => {
-      if (restTimeoutRef.current !== null) {
-        window.clearTimeout(restTimeoutRef.current);
-        restTimeoutRef.current = null;
-      }
-    };
-  }, [restTimer]);
-
-  useEffect(() => {
-    if (!restTimer || restRemainingSec > 0 || restTimer.notified) return;
-    setRestTimer((prev) => {
-      if (!prev || prev.notified) return prev;
-      return { ...prev, notified: true };
-    });
-    if (notificationCapability === "granted" && "Notification" in window) {
-      try {
-        new Notification("Descanso finalizado", {
-          body: `Continua con el siguiente ejercicio. Último completado: ${restTimer.exercise_name}.`,
-        });
-      } catch {
-        // El navegador puede bloquear notificaciones en segundo plano.
-      }
-    }
-  }, [notificationCapability, restRemainingSec, restTimer]);
-
-  async function requestDeviceNotifications() {
-    if (!("Notification" in window)) {
-      setNotificationCapability("unsupported");
-      return;
-    }
-    if (Notification.permission === "granted") {
-      setNotificationCapability("granted");
-      return;
-    }
-    try {
-      const permission = await Notification.requestPermission();
-      setNotificationCapability(permission);
-    } catch {
-      setNotificationCapability(detectNotificationCapability());
-    }
-  }
-
-  const appendVoiceAuditEntry = useCallback((entry: ActiveSessionVoiceCommandAudit) => {
-    setVoiceAudit((prev) => {
-      const next = [...prev, entry];
-      if (next.length <= MAX_VOICE_AUDIT_ENTRIES) return next;
-      return next.slice(next.length - MAX_VOICE_AUDIT_ENTRIES);
-    });
-  }, []);
-
-  const transcribeClipboardText = useCallback(async () => {
-    setVoiceError("");
-    if (!voiceAssistDesktopEnabled) {
-      setVoiceError("La asistencia por voz esta desactivada.");
-      return;
-    }
-    if (!("clipboard" in navigator) || typeof navigator.clipboard.readText !== "function") {
-      setVoiceError("Este navegador no permite leer el portapapeles.");
-      return;
-    }
-
-    setClipboardBusy(true);
-    try {
-      const clipboardText = await navigator.clipboard.readText();
-      const normalized = normalizeTranscriptText(clipboardText);
-      if (!normalized) {
-        setVoiceError("El portapapeles no contiene texto para transcribir.");
-        return;
-      }
-
-      setVoiceUsed(true);
-      setVoiceTranscript((previous) => appendVoiceTranscript(previous, normalized));
-      setVoicePartial("");
-      appendVoiceAuditEntry({
-        timestamp_ms: Date.now(),
-        transcript_normalized: normalized,
-        intent: "none",
-        exercise_index: null,
-        set_index: null,
-        exercise_name: null,
-        value_text: null,
-        confidence: 1,
-        applied: false,
-        reason: "Transcripción manual desde portapapeles.",
-      });
-    } catch (cause: unknown) {
-      const message = String((cause as { message?: string })?.message || cause);
-      setVoiceError(`No pude leer el portapapeles: ${message}`);
-      setVoiceStatus("error");
-    } finally {
-      setClipboardBusy(false);
-    }
-  }, [appendVoiceAuditEntry, voiceAssistDesktopEnabled]);
-
-  const startVoiceCaptureInner = useCallback(async () => {
-    setVoiceError("");
-    if (!voiceAssistDesktopEnabled) {
-      setVoiceError("La asistencia por voz esta desactivada.");
-      return;
-    }
-    if (!ENABLE_OFFLINE_VOICE_CAPTURE) {
-      setVoiceError("La feature VITE_ENABLE_OFFLINE_VOICE_CAPTURE esta en false.");
-      return;
-    }
-    if (!("mediaDevices" in navigator) || typeof navigator.mediaDevices?.getUserMedia !== "function") {
-      setVoiceError("Este navegador no permite acceso al microfono.");
-      setVoiceStatus("error");
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: false,
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          channelCount: 1,
-        },
-      });
-      stream.getTracks().forEach((track) => track.stop());
-    } catch (cause: unknown) {
-      setVoiceError(`No se pudo obtener permiso de microfono: ${describeMicrophoneError(cause)}`);
-      setVoiceStatus("error");
-      return;
-    }
-
-    let voiceModule: typeof import("../lib/voice/offlineRecognizer");
-    try {
-      voiceModule = await import("../lib/voice/offlineRecognizer");
-    } catch (cause: unknown) {
-      const message = String((cause as { message?: string })?.message || cause);
-      setVoiceError(`No pude cargar el motor de voz: ${message}`);
-      setVoiceStatus("error");
-      return;
-    }
-
-    if (!voiceModule.browserSupportsOfflineRecognizer()) {
-      setVoiceError("Este navegador no soporta captura de microfono offline para voz.");
-      setVoiceStatus("error");
-      return;
-    }
-
-    let recognizer = voiceRecognizerRef.current;
-    if (!recognizer) {
-      recognizer = new voiceModule.OfflineVoskRecognizer({
-        modelUrl: VOICE_MODEL_URL,
-        callbacks: {
-          onStateChange: (state) => setVoiceStatus(state),
-          onPartialTranscript: (partial) => {
-            const normalized = normalizeTranscriptText(partial);
-            setVoicePartial(normalized);
-          },
-          onFinalTranscript: (result: OfflineRecognizerFinalTranscript) => {
-            const normalized = normalizeTranscriptText(result.text);
-            if (!normalized) return;
-            setVoiceUsed(true);
-            setVoiceTranscript((previous) => appendVoiceTranscript(previous, normalized));
-            setVoicePartial("");
-            appendVoiceAuditEntry({
-              timestamp_ms: Date.now(),
-              transcript_normalized: normalized,
-              intent: "none",
-              exercise_index: null,
-              set_index: null,
-              exercise_name: null,
-              value_text: null,
-              confidence: clampVoiceConfidence(result.confidence),
-              applied: false,
-              reason: "Transcripción por microfono (sin aplicar comando).",
-            });
-          },
-          onError: (message) => {
-            setVoiceError(message);
-            setVoiceStatus("error");
-          },
-        },
-      });
-      voiceRecognizerRef.current = recognizer;
-    }
-
-    try {
-      await recognizer.arm();
-    } catch (cause: unknown) {
-      const message = String((cause as { message?: string })?.message || cause);
-      setVoiceError(`No se pudo iniciar la escucha: ${message}`);
-      setVoiceStatus("error");
-    }
-  }, [appendVoiceAuditEntry, voiceAssistDesktopEnabled]);
-
-  // Evita que un doble clic cree dos recognizers mientras los await del arranque siguen en curso.
-  const startVoiceCapture = useCallback(async () => {
-    if (voiceStartingRef.current) return;
-    voiceStartingRef.current = true;
-    try {
-      await startVoiceCaptureInner();
-    } finally {
-      voiceStartingRef.current = false;
-    }
-  }, [startVoiceCaptureInner]);
-
-  const deactivateVoiceCapture = useCallback(async () => {
-    if (voiceStatusPulseTimeoutRef.current !== null) {
-      window.clearTimeout(voiceStatusPulseTimeoutRef.current);
-      voiceStatusPulseTimeoutRef.current = null;
-    }
-    const recognizer = voiceRecognizerRef.current;
-    if (!recognizer) {
-      setVoiceStatus("inactive");
-      setVoicePartial("");
-      return;
-    }
-
-    try {
-      await recognizer.disarm();
-      setVoiceError("");
-    } catch (cause: unknown) {
-      const message = String((cause as { message?: string })?.message || cause);
-      setVoiceError(message);
-      setVoiceStatus("error");
-    }
-  }, []);
-
-  const toggleVoiceAssistDesktop = useCallback(() => {
-    if (voiceAssistDesktopEnabled) {
-      void deactivateVoiceCapture();
-      setVoiceError("");
-    }
-    setVoiceAssistDesktopEnabled((prev) => !prev);
-  }, [deactivateVoiceCapture, voiceAssistDesktopEnabled]);
-
-  useEffect(() => {
-    if (step === "capture_session") return;
-    void deactivateVoiceCapture();
-  }, [deactivateVoiceCapture, step]);
-
-  useEffect(
-    () => () => {
-      if (voiceStatusPulseTimeoutRef.current !== null) {
-        window.clearTimeout(voiceStatusPulseTimeoutRef.current);
-        voiceStatusPulseTimeoutRef.current = null;
-      }
-      const recognizer = voiceRecognizerRef.current;
-      voiceRecognizerRef.current = null;
-      if (!recognizer) return;
-      void recognizer.dispose();
-    },
-    [],
-  );
-
-  function onWellnessChange(setter: (value: number) => void, rawValue: string) {
-    setter(parseWellnessScore(rawValue));
-  }
-
   function startRestForSet(exerciseIndex: number, setIndex: number) {
     const exercise = routineExercises[exerciseIndex];
     if (!exercise) return;
@@ -1061,9 +377,7 @@ export default function NewSession() {
     setRestTimer(null);
     setVoiceAudit([]);
     setVoiceUsed(false);
-    setVoiceError("");
-    setVoicePartial("");
-    setVoiceStatus("inactive");
+    clearVoiceFeedback();
   }
 
   // Un enlace con `?routine=` salta el paso 1, salvo que ya haya una sesión activa en curso.
@@ -1100,9 +414,7 @@ export default function NewSession() {
     setStep("pick_routine");
     setSessionTimer(IDLE_SESSION_TIMER);
     setRestTimer(null);
-    setVoiceError("");
-    setVoicePartial("");
-    setVoiceStatus("inactive");
+    clearVoiceFeedback();
     setError("");
   }
 
@@ -1127,9 +439,7 @@ export default function NewSession() {
     setRestTimer(null);
     setVoiceAudit([]);
     setVoiceUsed(false);
-    setVoiceError("");
-    setVoicePartial("");
-    setVoiceStatus("inactive");
+    clearVoiceFeedback();
     setNowMs(Date.now());
     setError("");
     nav("/home");
@@ -1146,10 +456,6 @@ export default function NewSession() {
     const now = Date.now();
     setNowMs(now);
     setSessionTimer((prev) => pauseSessionTimerState(prev, now));
-  }
-
-  function clearRestTimer() {
-    setRestTimer(null);
   }
 
   function addSet(exIdx: number) {
@@ -1183,128 +489,6 @@ export default function NewSession() {
         return { ...entry, sets: [...entry.sets, { ...last }] };
       }),
     );
-  }
-
-  function removeSet(exIdx: number, setIdx: number) {
-    setRoutineExercises((prev) =>
-      prev.map((entry, i) => (i === exIdx ? { ...entry, sets: entry.sets.filter((_, j) => j !== setIdx) } : entry)),
-    );
-    setRestTimer((prev) => {
-      if (!prev) return prev;
-      if (prev.exercise_index !== exIdx) return prev;
-      if (prev.set_index === setIdx) return null;
-      if (prev.set_index > setIdx) return { ...prev, set_index: prev.set_index - 1 };
-      return prev;
-    });
-  }
-
-  function restoreRemovedSet(record: PendingSetDelete) {
-    setRoutineExercises((prev) =>
-      prev.map((entry, i) => {
-        if (i !== record.exerciseIndex) return entry;
-        const boundedIndex = Math.max(0, Math.min(entry.sets.length, record.setIndex));
-        const nextSets = [...entry.sets];
-        nextSets.splice(boundedIndex, 0, { ...record.setSnapshot });
-        return { ...entry, sets: nextSets };
-      }),
-    );
-  }
-
-  function handleSetCompletedToggle(exIdx: number, setIdx: number, completed: boolean) {
-    const setKey = setRowAnimationKey(exIdx, setIdx);
-    if (deletingSetKeys.includes(setKey) || uncheckingSetKeys.includes(setKey)) return;
-
-    if (!completed) {
-      applySessionDraftCommand({
-        type: "set_set_completed",
-        exercise_index: exIdx,
-        set_index: setIdx,
-        value: true,
-      });
-      return;
-    }
-
-    setUncheckingSetKeys((prev) => (prev.includes(setKey) ? prev : [...prev, setKey]));
-    const timeoutId = window.setTimeout(() => {
-      applySessionDraftCommand({
-        type: "set_set_completed",
-        exercise_index: exIdx,
-        set_index: setIdx,
-        value: false,
-      });
-      setUncheckingSetKeys((prev) => prev.filter((item) => item !== setKey));
-      uncheckTimeoutsRef.current = uncheckTimeoutsRef.current.filter((item) => item !== timeoutId);
-    }, UNCHECK_SET_ANIMATION_MS);
-    uncheckTimeoutsRef.current.push(timeoutId);
-  }
-
-  function handleRemoveSetWithAnimation(exIdx: number, setIdx: number) {
-    const setKey = setRowAnimationKey(exIdx, setIdx);
-    if (hasPendingSetDelete || uncheckingSetKeys.includes(setKey) || deletingSetKeys.includes(setKey)) return;
-    const exercise = routineExercises[exIdx];
-    const setSnapshot = exercise?.sets[setIdx];
-    if (!exercise || !setSnapshot) return;
-
-    const deleteId = `session_set_delete_${nextSetDeleteIdRef.current++}`;
-    const pendingDelete: PendingSetDelete = {
-      id: deleteId,
-      rowKey: setKey,
-      exerciseIndex: exIdx,
-      setIndex: setIdx,
-      setSnapshot: { ...setSnapshot },
-      exerciseName: exercise.name,
-      committed: false,
-      animationTimeoutId: null,
-      cleanupTimeoutId: null,
-    };
-    pendingSetDeletesRef.current.set(deleteId, pendingDelete);
-
-    setDeletingSetKeys([setKey]);
-    const timeoutId = window.setTimeout(() => {
-      const currentPending = pendingSetDeletesRef.current.get(deleteId);
-      if (!currentPending) return;
-      currentPending.committed = true;
-      currentPending.animationTimeoutId = null;
-      removeSet(currentPending.exerciseIndex, currentPending.setIndex);
-      setDeletingSetKeys((prev) => prev.filter((item) => item !== currentPending.rowKey));
-      deleteTimeoutsRef.current = deleteTimeoutsRef.current.filter((item) => item !== timeoutId);
-    }, DELETE_SET_ANIMATION_MS);
-    pendingDelete.animationTimeoutId = timeoutId;
-    deleteTimeoutsRef.current.push(timeoutId);
-
-    registerUndo({
-      message: `Serie ${setIdx + 1} de "${formatExerciseNameForCard(exercise.name)}" eliminada.`,
-      timeoutMs: DELETE_SET_UNDO_TIMEOUT_MS,
-      onUndo: async () => {
-        const currentPending = pendingSetDeletesRef.current.get(deleteId);
-        if (!currentPending) return;
-
-        if (currentPending.animationTimeoutId !== null) {
-          window.clearTimeout(currentPending.animationTimeoutId);
-          deleteTimeoutsRef.current = deleteTimeoutsRef.current.filter((item) => item !== currentPending.animationTimeoutId);
-          currentPending.animationTimeoutId = null;
-          setDeletingSetKeys((prev) => prev.filter((item) => item !== currentPending.rowKey));
-        } else if (currentPending.committed) {
-          restoreRemovedSet(currentPending);
-        }
-
-        if (currentPending.cleanupTimeoutId !== null) {
-          window.clearTimeout(currentPending.cleanupTimeoutId);
-        }
-        pendingSetDeletesRef.current.delete(deleteId);
-        setError("");
-      },
-    });
-
-    const cleanupTimeoutId = window.setTimeout(() => {
-      const staleDelete = pendingSetDeletesRef.current.get(deleteId);
-      if (!staleDelete) return;
-      if (staleDelete.animationTimeoutId !== null) {
-        window.clearTimeout(staleDelete.animationTimeoutId);
-      }
-      pendingSetDeletesRef.current.delete(deleteId);
-    }, DELETE_SET_UNDO_TIMEOUT_MS + 200);
-    pendingDelete.cleanupTimeoutId = cleanupTimeoutId;
   }
 
   // Handler central para inputs manuales y comandos por voz.
@@ -1364,173 +548,37 @@ export default function NewSession() {
       return false;
     }
 
-    const exercisesOut: Array<{
-      name: string;
-      sets: Array<{
-        reps: number;
-        load_kg: number;
-        rpe?: number;
-        rir?: number;
-        meta: {
-          set_index: number;
-          completed: boolean;
-          effort_scale?: "rpe" | "rir";
-          effort_value?: number;
-        };
-      }>;
-      meta: {
-        exercise_index: number;
-        completed: boolean;
-        target_reps_min: number;
-        target_reps_max: number;
-        target_rest_seconds: number;
-        group?: string;
-        athlete_note?: string;
-      };
-    }> = [];
-    for (const [exerciseIndex, entry] of routineExercises.entries()) {
-      const sets: Array<{
-        reps: number;
-        load_kg: number;
-        rpe?: number;
-        rir?: number;
-        meta: {
-          set_index: number;
-          completed: boolean;
-          effort_scale?: "rpe" | "rir";
-          effort_value?: number;
-        };
-      }> = [];
-      for (const [setIndex, set] of entry.sets.entries()) {
-        const reps = Number(set.reps);
-        const loadValue = Number(set.load);
-        if (!Number.isFinite(reps) || reps <= 0 || !Number.isFinite(loadValue) || loadValue < 0) continue;
-
-        const parsedEffort = parseSetEffortValue(set.effort, prefs.effortScale);
-        if (!parsedEffort.valid) {
-          setError(
-            `${prefs.effortScale.toUpperCase()} inválido en ${entry.name}, set ${setIndex + 1} (usa ${
-              prefs.effortScale === "rir" ? "0-6" : "0-10"
-            }).`,
-          );
-          return false;
-        }
-        if (!parsedEffort.hasValue) {
-          setError(`${prefs.effortScale.toUpperCase()} requerido en ${entry.name}, set ${setIndex + 1}.`);
-          return false;
-        }
-
-        sets.push({
-          reps,
-          load_kg: Number(toKg(loadValue, prefs.weightUnit).toFixed(3)),
-          rpe: parsedEffort.rpe ?? undefined,
-          rir: parsedEffort.rir ?? undefined,
-          meta: {
-            set_index: setIndex + 1,
-            completed: set.completed,
-            effort_scale: prefs.effortScale,
-            effort_value: parsedEffort.raw ?? undefined,
-          },
-        });
-      }
-
-      // Ejercicio sin sets capturados: se omite para poder cerrar rutinas parciales.
-      if (sets.length === 0) continue;
-
-      exercisesOut.push({
-        name: entry.name,
-        sets,
-        meta: {
-          exercise_index: exerciseIndex + 1,
-          completed: entry.sets.every((set) => set.completed),
-          target_reps_min: entry.target_reps_min,
-          target_reps_max: entry.target_reps_max,
-          target_rest_seconds: entry.rest_seconds,
-          group: entry.group || undefined,
-          athlete_note: entry.athleteNote?.trim() || undefined,
-        },
-      });
+    const built = buildSessionExercises(routineExercises, prefs.effortScale, prefs.weightUnit);
+    if ("error" in built) {
+      setError(built.error);
+      return false;
     }
-
+    const exercisesOut = built.exercises;
     if (exercisesOut.length === 0) {
       setError("Captura al menos un set con reps y carga antes de guardar.");
       return false;
     }
 
-    const voiceAuditCommands = voiceAudit.slice(-MAX_VOICE_AUDIT_ENTRIES);
-    const appliedVoiceCommands = voiceAuditCommands.filter((entry) => entry.applied).length;
-    const rejectedVoiceCommands = voiceAuditCommands.length - appliedVoiceCommands;
-
-    const payload = [
-      {
-        athlete_id: athleteId,
-        start_time: toISOZ(startLocal),
-        duration_min: elapsedMinutes,
-        rpe: sessionRpeAuto ?? undefined,
-        modality: "strength",
-        exercises: exercisesOut,
-        source: "ui_routine",
-        meta: {
-          note: notes || undefined,
-          routine_id: selectedRoutine.id,
-          routine_name: selectedRoutine.name,
-          effort_summary: {
-            scale: prefs.effortScale,
-            source: "auto_from_sets",
-            computed_session_rpe: sessionRpeAuto,
-          },
-          weight_unit_input: prefs.weightUnit,
-          session_completed_at_utc: finalizedTimer.completed_at_ms ? new Date(finalizedTimer.completed_at_ms).toISOString() : undefined,
-          session_elapsed_seconds: Math.floor(computeSessionElapsedMs(finalizedTimer, now) / 1_000),
-          session_all_exercises_completed: allSetsCompleted,
-          session_all_series_completed: allSetsCompleted,
-          wellness_signals: {
-            schema: "wellness_v2_1_10",
-            sleep: {
-              score_1_10: Number(clampWellnessScore(sleepScore).toFixed(1)),
-              label: wellnessLabelFromScore(sleepScore),
-            },
-            stress: {
-              score_1_10: Number(clampWellnessScore(stressScore).toFixed(1)),
-              label: stressLabelFromScore(stressScore),
-            },
-            sensations: {
-              score_1_10: Number(clampWellnessScore(sensationScore).toFixed(1)),
-              label: wellnessLabelFromScore(sensationScore),
-            },
-            average_score_1_10: Number(((sleepScore + stressScore + sensationScore) / 3).toFixed(2)),
-          },
-          capture_protocol: {
-            version: "session_capture_v2",
-            voice_ready: ENABLE_OFFLINE_VOICE_CAPTURE,
-            voice: {
-              enabled: ENABLE_OFFLINE_VOICE_CAPTURE && voiceAssistDesktopEnabled,
-              mode: "wake_phrase_armed",
-              engine: VOICE_ENGINE,
-              model_id: VOICE_MODEL_ID,
-              language: VOICE_LANGUAGE,
-              wake_phrase: VOICE_WAKE_PHRASE,
-              offline_only: true,
-            },
-            supported_commands: [
-              "set_reps",
-              "set_load",
-              "set_set_completed",
-              "set_set_effort",
-            ],
-          },
-          voice_capture: {
-            summary: {
-              used: voiceUsed,
-              total_commands: voiceAuditCommands.length,
-              applied_commands: appliedVoiceCommands,
-              rejected_commands: rejectedVoiceCommands,
-            },
-            commands: voiceAuditCommands,
-          },
-        },
-      },
-    ];
+    const payload = buildSessionPayload({
+      athleteId,
+      startLocal,
+      elapsedMinutes,
+      sessionRpeAuto,
+      exercises: exercisesOut,
+      notes,
+      routine: selectedRoutine,
+      effortScale: prefs.effortScale,
+      weightUnit: prefs.weightUnit,
+      finalizedTimer,
+      nowMs: now,
+      allSetsCompleted,
+      sleepScore,
+      stressScore,
+      sensationScore,
+      voiceAssistDesktopEnabled,
+      voiceUsed,
+      voiceAudit,
+    });
 
     setSessionTimer(finalizedTimer);
     setRestTimer(null);
@@ -1564,110 +612,23 @@ export default function NewSession() {
     }
   }
 
-  const hasRoutines = sortedRoutines.length > 0;
   const hasActiveAthlete = Boolean(athleteId);
 
   if (step === "pick_routine") {
     return (
-      <div className="container stack">
-        <header className="titleBlock">
-          <div className="pickHead">
-            <h1>Nueva sesión</h1>
-            {hasRoutines ? (
-              <button type="button" className="pickEditLink" onClick={() => nav("/training")}>
-                Editar rutinas
-              </button>
-            ) : null}
-          </div>
-          <p>Elige una rutina para empezar.</p>
-        </header>
-
-        <section className="surface pickSurface">
-          {requestedDayKey ? (
-            <div className="chipRow">
-              <span className="chip">Día: {requestedDayKey}</span>
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="message error" style={{ marginTop: 12 }}>
-              {error}
-            </div>
-          ) : null}
-
-          {!hasRoutines ? (
-            <div className="emptyState" style={{ marginTop: 12 }}>
-              No hay rutinas creadas. Crea al menos una rutina para registrar sesiones.
-              <div className="quickActions" style={{ marginTop: 10 }}>
-                <button className="btn primary" onClick={() => nav("/training")}>
-                  Ir a rutinas
-                </button>
-              </div>
-            </div>
-          ) : canSwitch && athleteReady && athleteIds.length === 0 ? (
-            <div className="emptyState" style={{ marginTop: 12 }}>
-              No tienes atletas asignados. Pide a un admin que te asigne al menos uno para poder registrar sesiones.
-            </div>
-          ) : (
-            <div className="routinePickGrid">
-              {sortedRoutines.map((routine) => {
-                const totalSetsMin = routine.exercises.reduce(
-                  (acc, exercise) => acc + Math.max(1, Math.round(exercise.target_sets_min || 1)),
-                  0,
-                );
-                const totalSetsMax = routine.exercises.reduce(
-                  (acc, exercise) => acc + Math.max(1, Math.round(exercise.target_sets_max || 1)),
-                  0,
-                );
-                const averageRestSeconds =
-                  routine.exercises.length > 0
-                    ? Math.round(
-                        routine.exercises.reduce((acc, exercise) => acc + Math.max(0, Math.round(exercise.rest_seconds || 0)), 0) /
-                          routine.exercises.length,
-                      )
-                    : 0;
-                const previewNames = routine.exercises
-                  .slice(0, 3)
-                  .map((exercise) => formatExerciseNameForCard(exercise.name))
-                  .filter(Boolean)
-                  .join(" - ");
-                const hiddenCount = Math.max(0, routine.exercises.length - 3);
-
-                return (
-                  <button
-                    type="button"
-                    key={routine.id}
-                    className={`routinePickCard routinePickBtn ${routine.id === routineId ? "active" : ""}`.trim()}
-                    onClick={() => startSessionStep(routine.id)}
-                    disabled={!hasActiveAthlete}
-                  >
-                    <strong>{routine.name}</strong>
-                    <span className="small">
-                      {`${routine.exercises.length} ejercicio${routine.exercises.length === 1 ? "" : "s"} · ${formatSetsRange(totalSetsMin, totalSetsMax)} series · ~${formatRestRecommendation(averageRestSeconds)}`}
-                    </span>
-                    <span className="small">
-                      {previewNames || "Sin ejercicios"}
-                      {hiddenCount > 0 ? ` (+${hiddenCount})` : ""}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-        </section>
-      </div>
+      <PickRoutineStep
+        routines={sortedRoutines}
+        routineId={routineId}
+        requestedDayKey={requestedDayKey}
+        error={error}
+        hasActiveAthlete={hasActiveAthlete}
+        noAthletesAssigned={canSwitch && athleteReady && athleteIds.length === 0}
+        onStartRoutine={startSessionStep}
+        onGoToTraining={() => nav("/training")}
+      />
     );
   }
 
-  const timerStatus = sessionTimerRunning ? "En curso" : sessionTimerCompleted ? "Completada" : sessionTimerStarted ? "Pausada" : "Sin iniciar";
-  const voiceCaptureActive = voiceStatus === "armed" || voiceStatus === "listening";
-  const voiceTranscriptDisplay = (() => {
-    const partial = normalizeTranscriptText(voicePartial);
-    if (!partial) return voiceTranscript;
-    return appendVoiceTranscript(voiceTranscript, partial);
-  })();
-  const voiceAuditPreview = [...voiceAudit].slice(Math.max(0, voiceAudit.length - 8)).reverse();
   return (
     <div className="container stack">
       <header className="titleBlock">
@@ -1732,120 +693,14 @@ export default function NewSession() {
           <h3>Datos de la rutina</h3>
         </div>
 
-        <div className="wellnessPanel" style={{ marginTop: 12 }}>
-          <div className="sectionHead">
-            <h4>Estado diario</h4>
-          </div>
-          <div className="wellnessStack" style={{ marginTop: 10 }}>
-            <div className="wellnessField">
-              <div className="wellnessFieldHead">
-                <label className="smallLabel">Sueño</label>
-                <span className="chip">{`${formatWellnessScore(sleepScore)} / 10 - ${wellnessLabelFromScore(sleepScore)}`}</span>
-              </div>
-              <input
-                className="wellnessSlider"
-                type="range"
-                min={WELLNESS_MIN_SCORE}
-                max={WELLNESS_MAX_SCORE}
-                step={WELLNESS_STEP}
-                value={sleepScore}
-                style={wellnessSliderStyle(sleepScore)}
-                onChange={(e) => onWellnessChange(setSleepScore, e.target.value)}
-              />
-              <div className="wellnessTicks">
-                {WELLNESS_TICKS.map((tick) => (
-                  <div
-                    key={`sleep_tick_${tick}`}
-                    className={`wellnessTick ${tick === WELLNESS_MIN_SCORE ? "wellnessTickMin" : tick === WELLNESS_MAX_SCORE ? "wellnessTickMax" : ""}`.trim()}
-                    style={{ left: wellnessTickOffset(tick) }}
-                  >
-                    <span className="wellnessTickMark" aria-hidden="true" />
-                    <span>{tick}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="wellnessScale">
-                {WELLNESS_LABEL_POINTS.map((item) => (
-                  <div key={`sleep_label_${item.score}`} className="wellnessScaleItem" style={{ left: wellnessTickOffset(item.score) }}>
-                    <span>{item.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-              <div className="wellnessField">
-              <div className="wellnessFieldHead">
-                <label className="smallLabel">Estrés</label>
-                <span className="chip">{`${formatWellnessScore(stressScore)} / 10 - ${stressLabelFromScore(stressScore)}`}</span>
-              </div>
-              <input
-                className="wellnessSlider"
-                type="range"
-                min={WELLNESS_MIN_SCORE}
-                max={WELLNESS_MAX_SCORE}
-                step={WELLNESS_STEP}
-                value={stressSliderValue(stressScore)}
-                style={wellnessSliderStyle(stressSliderValue(stressScore))}
-                onChange={(e) => setStressScore(parseStressScore(e.target.value))}
-              />
-              <div className="wellnessTicks">
-                {WELLNESS_TICKS.map((tick) => (
-                  <div
-                    key={`stress_tick_${tick}`}
-                    className={`wellnessTick ${tick === WELLNESS_MAX_SCORE ? "wellnessTickMin" : tick === WELLNESS_MIN_SCORE ? "wellnessTickMax" : ""}`.trim()}
-                    style={{ left: stressTickOffset(tick) }}
-                  >
-                    <span className="wellnessTickMark" aria-hidden="true" />
-                    <span>{tick}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="wellnessScale">
-                {STRESS_LABEL_POINTS.map((item) => (
-                  <div key={`stress_label_${item.score}`} className="wellnessScaleItem" style={{ left: stressTickOffset(item.score) }}>
-                    <span>{item.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="wellnessField">
-              <div className="wellnessFieldHead">
-                <label className="smallLabel">Sensaciones / motivación</label>
-                <span className="chip">{`${formatWellnessScore(sensationScore)} / 10 - ${wellnessLabelFromScore(sensationScore)}`}</span>
-              </div>
-              <input
-                className="wellnessSlider"
-                type="range"
-                min={WELLNESS_MIN_SCORE}
-                max={WELLNESS_MAX_SCORE}
-                step={WELLNESS_STEP}
-                value={sensationScore}
-                style={wellnessSliderStyle(sensationScore)}
-                onChange={(e) => onWellnessChange(setSensationScore, e.target.value)}
-              />
-              <div className="wellnessTicks">
-                {WELLNESS_TICKS.map((tick) => (
-                  <div
-                    key={`sensations_tick_${tick}`}
-                    className={`wellnessTick ${tick === WELLNESS_MIN_SCORE ? "wellnessTickMin" : tick === WELLNESS_MAX_SCORE ? "wellnessTickMax" : ""}`.trim()}
-                    style={{ left: wellnessTickOffset(tick) }}
-                  >
-                    <span className="wellnessTickMark" aria-hidden="true" />
-                    <span>{tick}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="wellnessScale">
-                {WELLNESS_LABEL_POINTS.map((item) => (
-                  <div key={`sensations_label_${item.score}`} className="wellnessScaleItem" style={{ left: wellnessTickOffset(item.score) }}>
-                    <span>{item.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+        <WellnessPanel
+          sleepScore={sleepScore}
+          stressScore={stressScore}
+          sensationScore={sensationScore}
+          onSleepChange={setSleepScore}
+          onStressChange={setStressScore}
+          onSensationChange={setSensationScore}
+        />
 
         <div style={{ marginTop: 12 }}>
           <label className="smallLabel">Comentarios</label>
@@ -1857,30 +712,15 @@ export default function NewSession() {
           />
         </div>
 
-        <div className="surface" style={{ marginTop: 12, padding: 12 }}>
-          <div className="sectionHead">
-            <h4>Temporizador de sesión</h4>
-          </div>
-          <div className="timerValue" style={{ marginTop: 10 }}>
-            {formatTimer(sessionElapsedSec)}
-          </div>
-          <div className="chipRow" style={{ marginTop: 8 }}>
-            <span className="chip">Estado: {timerStatus}</span>
-            {sessionTimer.completed_at_ms ? <span className="chip">{`Completada: ${new Date(sessionTimer.completed_at_ms).toLocaleTimeString(APP_LOCALE)}`}</span> : null}
-          </div>
-          {sessionTimerCompleted ? null : (
-            <div className="quickActions" style={{ marginTop: 8 }}>
-              <button
-                className="btn"
-                type="button"
-                style={{ padding: "4px 12px", fontSize: 13, minHeight: 0 }}
-                onClick={sessionTimerRunning ? pauseSessionTimer : startOrResumeSessionTimer}
-              >
-                {sessionTimerRunning ? "Pausar" : "Reanudar"}
-              </button>
-            </div>
-          )}
-        </div>
+        <SessionTimerCard
+          sessionTimer={sessionTimer}
+          elapsedSec={sessionElapsedSec}
+          running={sessionTimerRunning}
+          completed={sessionTimerCompleted}
+          started={sessionTimerStarted}
+          onPause={pauseSessionTimer}
+          onResume={startOrResumeSessionTimer}
+        />
 
       </section>
 
@@ -1900,172 +740,27 @@ export default function NewSession() {
           </div>
         ) : (
           <div className="stack" style={{ marginTop: 12 }}>
-            {routineExercises.map((exercise, exIdx) => {
-              const exerciseNotes = coachNotesByExercise[normalizeExerciseNameForNotes(exercise.name)] || [];
-              const hasUnreadNote = exerciseNotes.some((note) => !note.read_at_utc);
-              const noteExpanded = expandedNoteExercise === exIdx;
-              return (
-              <div key={`${selectedRoutine.id}_${exercise.name}_${exIdx}`} className="exerciseCard">
-                <div className="hstack" style={{ justifyContent: "space-between" }}>
-                  <div>
-                    <label className="smallLabel">Ejercicio</label>
-                    <strong>{formatExerciseNameForCard(exercise.name)}</strong>
-                  </div>
-                  <div className="hstack compact">
-                    <span className="chip">Sets: {exercise.sets.length}</span>
-                    <button
-                      type="button"
-                      className={`btn iconBtn notepadBtn ${noteExpanded ? "active" : ""}`}
-                      onClick={() => handleToggleExerciseNote(exIdx, exerciseNotes)}
-                      aria-label={hasUnreadNote ? "Indicacion del entrenador sin leer" : "Notas del ejercicio"}
-                      title={hasUnreadNote ? "Indicacion del entrenador sin leer" : "Notas del ejercicio"}
-                    >
-                      <svg className="iconGlyph" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M6 3h9l3 3v15H6z" />
-                        <path d="M6 8h9" />
-                        <path d="M6 12h9" />
-                        <path d="M6 16h6" />
-                      </svg>
-                      {hasUnreadNote ? <span className="notifyDot" aria-hidden="true" /> : null}
-                    </button>
-                  </div>
-                </div>
-                <div className="chipRow" style={{ marginTop: 8 }}>
-                  <span className="chip">{`Reps objetivo: ${formatRepsRange(exercise.target_reps_min, exercise.target_reps_max)}`}</span>
-                  <span className="chip">{`Descanso recomendado: ${formatRestRecommendation(exercise.rest_seconds)}`}</span>
-                </div>
-
-                {noteExpanded ? (
-                  <div className="exerciseNotePanel" style={{ marginTop: 8 }}>
-                    {exerciseNotes.length === 0 ? (
-                      <p className="small">Sin indicaciones del entrenador para este ejercicio.</p>
-                    ) : (
-                      exerciseNotes.map((note) => (
-                        <div key={note.id} className="coachNoteBubble">
-                          <p>{note.body}</p>
-                          <span className="smallLabel">{new Date(note.created_at_utc).toLocaleString(APP_LOCALE)}</span>
-                        </div>
-                      ))
-                    )}
-                    <label className="smallLabel">Tu nota para el entrenador</label>
-                    <input
-                      className="input"
-                      value={exercise.athleteNote ?? ""}
-                      onChange={(e) => updateExerciseAthleteNote(exIdx, e.target.value)}
-                      placeholder="observaciones sobre este ejercicio"
-                    />
-                  </div>
-                ) : null}
-
-                <div className="setGrid">
-                  {exercise.sets.map((set, setIdx) => {
-                    const setKey = setRowAnimationKey(exIdx, setIdx);
-                    const isUnchecking = uncheckingSetKeys.includes(setKey);
-                    const isDeleting = deletingSetKeys.includes(setKey);
-
-                    return (
-                    <div
-                      key={setIdx}
-                      className={`setRowCard ${set.completed ? "completedSetRow" : ""} ${isUnchecking ? "uncheckingSetRow" : ""} ${
-                        isDeleting ? "deletingSetRow" : ""
-                      }`.trim()}
-                    >
-                      <div className="setRow">
-                        <span className="setTag">Set {setIdx + 1}</span>
-                        <div className="setFieldMini">
-                          <label className="smallLabel">Peso</label>
-                          <input
-                            className="input setInputMini setInputWeight"
-                            value={set.load}
-                            onChange={(e) =>
-                              applySessionDraftCommand({
-                                type: "set_load",
-                                exercise_index: exIdx,
-                                set_index: setIdx,
-                                value: e.target.value,
-                              })
-                            }
-                            placeholder={prefs.weightUnit}
-                          />
-                        </div>
-                        <div className="setFieldMini">
-                          <label className="smallLabel">Reps</label>
-                          <input
-                            className="input setInputMini setInputReps"
-                            value={set.reps}
-                            onChange={(e) =>
-                              applySessionDraftCommand({
-                                type: "set_reps",
-                                exercise_index: exIdx,
-                                set_index: setIdx,
-                                value: e.target.value,
-                              })
-                            }
-                            placeholder={formatRepsRange(exercise.target_reps_min, exercise.target_reps_max)}
-                          />
-                        </div>
-                        <div className="setFieldMini">
-                          <label className="smallLabel">{prefs.effortScale === "rir" ? "RIR" : "RPE"}</label>
-                          <input
-                            className="input setInputMini setInputEffort"
-                            value={set.effort}
-                            onChange={(e) =>
-                              applySessionDraftCommand({
-                                type: "set_set_effort",
-                                exercise_index: exIdx,
-                                set_index: setIdx,
-                                value: e.target.value,
-                              })
-                            }
-                            placeholder={prefs.effortScale === "rir" ? "0-6" : "0-10"}
-                          />
-                        </div>
-                        <button
-                          className={`btn iconBtn setCompleteBtn completeIconBtn ${set.completed ? "active" : ""}`}
-                          type="button"
-                          aria-pressed={set.completed}
-                          onClick={() => handleSetCompletedToggle(exIdx, setIdx, set.completed)}
-                          disabled={isDeleting || isUnchecking}
-                          aria-label={set.completed ? "Serie completada" : "Marcar serie completada"}
-                          title={set.completed ? "Serie completada" : "Marcar serie completada"}
-                        >
-                          <svg className="iconGlyph" viewBox="0 0 24 24" aria-hidden="true">
-                            <circle cx="12" cy="12" r="9" />
-                            <path d="M8.5 12.2L10.8 14.5L15.6 9.7" />
-                          </svg>
-                        </button>
-                        <button
-                          className="btn iconBtn trashBtn compactTrashBtn"
-                          onClick={() => handleRemoveSetWithAnimation(exIdx, setIdx)}
-                          disabled={exercise.sets.length <= 1 || hasPendingSetDelete || isUnchecking || isDeleting}
-                          type="button"
-                          aria-label="Eliminar serie"
-                          title="Eliminar serie"
-                        >
-                          <svg className="iconGlyph" viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M3 6h18" />
-                            <path d="M8 6V4h8v2" />
-                            <path d="M19 6l-1 14H6L5 6" />
-                            <path d="M10 10v7" />
-                            <path d="M14 10v7" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  )})}
-                </div>
-
-                <div className="hstack compact">
-                  <button className="btn" onClick={() => addSet(exIdx)} disabled={hasPendingSetDelete}>
-                    + Set vacio
-                  </button>
-                  <button className="btn" onClick={() => duplicateLastSet(exIdx)} disabled={hasPendingSetDelete}>
-                    + Duplicar último set
-                  </button>
-                </div>
-              </div>
-              );
-            })}
+            {routineExercises.map((exercise, exIdx) => (
+              <ExerciseCard
+                key={`${selectedRoutine.id}_${exercise.name}_${exIdx}`}
+                exercise={exercise}
+                exIdx={exIdx}
+                exerciseNotes={coachNotesByExercise[normalizeExerciseNameForNotes(exercise.name)] || []}
+                noteExpanded={expandedNoteExercise === exIdx}
+                weightUnit={prefs.weightUnit}
+                effortScale={prefs.effortScale}
+                uncheckingSetKeys={uncheckingSetKeys}
+                deletingSetKeys={deletingSetKeys}
+                hasPendingSetDelete={hasPendingSetDelete}
+                onToggleNote={handleToggleExerciseNote}
+                onAthleteNoteChange={updateExerciseAthleteNote}
+                onCommand={applySessionDraftCommand}
+                onToggleSetCompleted={handleSetCompletedToggle}
+                onRemoveSet={handleRemoveSetWithAnimation}
+                onAddSet={addSet}
+                onDuplicateLastSet={duplicateLastSet}
+              />
+            ))}
           </div>
         )}
       </section>
@@ -2094,147 +789,56 @@ export default function NewSession() {
         {hasActiveAthlete && !selectedRoutine ? <div className="small">Selecciona una rutina para poder guardar.</div> : null}
       </section>
 
-      {!voiceDockOpen ? (
-        <button
-          className={`voiceDockToggle ${voiceCaptureActive ? "listening" : ""}`.trim()}
-          type="button"
-          onClick={() => setVoiceDockOpen(true)}
-          aria-label="Abrir asistencia por voz"
-        >
-          <span className="voiceDockDot" aria-hidden="true" />
-          Voz
-        </button>
-      ) : (
-      <aside className="voiceStatusDock" aria-live="polite">
-        <div className="voiceStatusHead">
-          <strong>Asistencia por voz</strong>
-          <div className="hstack compact">
-            <button className="btn" type="button" onClick={toggleVoiceAssistDesktop}>
-              {voiceAssistDesktopEnabled ? "Desactivar" : "Activar"}
-            </button>
-            <button className="btn ghost" type="button" onClick={() => setVoiceDockOpen(false)} aria-label="Ocultar asistencia por voz">
-              Ocultar
-            </button>
-          </div>
-        </div>
-        <div className="chipRow">
-          <span className={`chip ${voiceStatus === "error" ? "voiceChipError" : ""}`}>{`Estado: ${voiceStatusLabel(voiceStatus)}`}</span>
-          <span className="chip">{`Escuchando: ${voiceCaptureActive ? "si" : "no"}`}</span>
-        </div>
-        <div className="small">
-          {voiceCurrentTarget
-            ? `Set actual: ${formatExerciseNameForCard(voiceCurrentTarget.exerciseName)} - Set ${voiceCurrentTarget.setIndex + 1}`
-            : "Set actual: sin pendientes"}
-        </div>
-        <div className="voiceDockActions">
-          <button className="btn primary" type="button" onClick={() => void startVoiceCapture()} disabled={!voiceAssistDesktopEnabled || voiceCaptureActive || clipboardBusy}>
-            Iniciar escucha
-          </button>
-          <button className="btn" type="button" onClick={() => void deactivateVoiceCapture()} disabled={!voiceCaptureActive && voiceStatus !== "error"}>
-            Detener escucha
-          </button>
-          <button className="btn primary" type="button" onClick={() => void transcribeClipboardText()} disabled={!voiceAssistDesktopEnabled || clipboardBusy}>
-            {clipboardBusy ? "Transcribiendo..." : "Transcribir portapapeles"}
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => {
-              setVoiceTranscript("");
-              setVoicePartial("");
-              setVoiceError("");
-            }}
-            disabled={!voiceTranscript && !voicePartial && !voiceError}
-          >
-            Limpiar
-          </button>
-        </div>
-        <div className="voiceDockTranscript">{voiceTranscriptDisplay || "Sin transcripción aún."}</div>
-        {voiceError ? <div className="message error">{voiceError}</div> : null}
-        <div className="voiceLog">
-          {voiceAuditPreview.length === 0 ? (
-            <div className="small">Sin eventos de voz en esta sesión.</div>
-          ) : (
-            voiceAuditPreview.map((entry, index) => (
-              <article key={`${entry.timestamp_ms}_${index}`} className={`voiceLogItem ${entry.applied ? "applied" : "rejected"}`.trim()}>
-                <div className="hstack" style={{ justifyContent: "space-between" }}>
-                  <strong>{entry.applied ? "Aplicado" : "Rechazado"}</strong>
-                  <span className="small">{new Date(entry.timestamp_ms).toLocaleTimeString(APP_LOCALE)}</span>
-                </div>
-                <div className="small">{entry.transcript_normalized || "(sin texto)"}</div>
-                <div className="small">{entry.reason}</div>
-              </article>
-            ))
-          )}
-        </div>
-      </aside>
-      )}
+      <VoiceDock
+        open={voiceDockOpen}
+        voiceStatus={voiceStatus}
+        captureActive={voiceCaptureActive}
+        assistEnabled={voiceAssistDesktopEnabled}
+        clipboardBusy={clipboardBusy}
+        currentTarget={voiceCurrentTarget}
+        transcript={voiceTranscript}
+        partial={voicePartial}
+        transcriptDisplay={voiceTranscriptDisplay}
+        error={voiceError}
+        auditPreview={voiceAuditPreview}
+        onOpen={() => setVoiceDockOpen(true)}
+        onClose={() => setVoiceDockOpen(false)}
+        onToggleAssist={toggleVoiceAssistDesktop}
+        onStart={() => void startVoiceCapture()}
+        onStop={() => void deactivateVoiceCapture()}
+        onTranscribeClipboard={() => void transcribeClipboardText()}
+        onClear={() => {
+          setVoiceTranscript("");
+          setVoicePartial("");
+          setVoiceError("");
+        }}
+      />
 
       {closeRoutineOpen ? (
-        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Cerrar rutina">
-          <div className="modalCard closeRoutineModal">
-            <div className="sectionHead">
-              <h3>Cerrar rutina</h3>
-              <p>Elige como quieres cerrar la sesión activa.</p>
-            </div>
-
-            {error ? <div className="message error">{error}</div> : null}
-
-            <div className="closeRoutineActions">
-              <button
-                className="btn primary"
-                type="button"
-                disabled={busy || !selectedRoutine || !hasActiveAthlete}
-                onClick={() => {
-                  void submit().then((saved) => {
-                    if (saved) setCloseRoutineOpen(false);
-                  });
-                }}
-              >
-                {busy ? "Guardando..." : "Completar rutina"}
-              </button>
-              <span className="small">Guarda los datos capturados y cierra la sesión.</span>
-
-              <button className="btn trashBtn" type="button" disabled={busy} onClick={exitSession}>
-                Cancelar rutina
-              </button>
-              <span className="small">Cierra sin guardar. Se pierden los datos de esta sesión.</span>
-
-              <button className="btn ghost" type="button" onClick={() => setCloseRoutineOpen(false)}>
-                Volver
-              </button>
-            </div>
-          </div>
-        </div>
+        <CloseRoutineModal
+          error={error}
+          busy={busy}
+          canSave={Boolean(selectedRoutine) && hasActiveAthlete}
+          onComplete={() => {
+            void submit().then((saved) => {
+              if (saved) setCloseRoutineOpen(false);
+            });
+          }}
+          onCancelRoutine={exitSession}
+          onBack={() => setCloseRoutineOpen(false)}
+        />
       ) : null}
 
       {restTimer ? (
-        <section className="restFloatBar" aria-live="polite">
-          <div className="restFloatTop">
-            <strong>Descanso entre series</strong>
-            <span className={`timerValue restFloatTimer${restRemainingSecSigned < 0 ? " restFloatTimerOver" : ""}`}>
-              {formatTimerSigned(restRemainingSecSigned)}
-            </span>
-          </div>
-          <div className="small">{`${restTimer.exercise_name} - Set ${restTimer.set_index + 1}`}</div>
-          <div className="restFloatTrack" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={restProgressPct}>
-            <div className="restFloatFill" style={{ width: `${restProgressPct}%` }} />
-          </div>
-          <div className="restFloatBottom">
-            <div className="hstack compact">
-              {notificationCapability !== "unsupported" && notificationCapability !== "granted" ? (
-                <button className="btn" type="button" onClick={() => void requestDeviceNotifications()}>
-                  Activar notificaciones
-                </button>
-              ) : null}
-              <button className="btn" type="button" onClick={clearRestTimer}>
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </section>
+        <RestFloatBar
+          restTimer={restTimer}
+          remainingSecSigned={restRemainingSecSigned}
+          progressPct={restProgressPct}
+          notificationCapability={notificationCapability}
+          onRequestNotifications={() => void requestDeviceNotifications()}
+          onClose={clearRestTimer}
+        />
       ) : null}
     </div>
   );
 }
-
