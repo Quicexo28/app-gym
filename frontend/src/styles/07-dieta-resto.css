@@ -1,0 +1,801 @@
+.mealSlotPicker {
+  display: grid;
+  gap: 8px;
+}
+
+.mealSlotCard {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.activeMealSlotCard {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 88%);
+}
+
+/* Comidas del dia: bloques dentro de una sola card, separados por una linea
+   (mismo patron que `.planList` en Home) en vez de una card por comida con
+   cajas anidadas adentro. */
+.mealGroups {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.mealGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.mealGroup + .mealGroup {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.mealGroupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+}
+
+.mealGroupHead h4 {
+  margin: 0;
+}
+
+/* Renombrar la comida se hace en el sitio, sobre el mismo titulo: el input
+   ocupa lo que ocupaba el nombre en vez de abrir otra pantalla. */
+.mealNameInput {
+  flex: 1;
+  min-width: 0;
+  max-width: 260px;
+  padding: 4px 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Cantidad = numero + unidad en una sola linea: la unidad es un selector
+   angosto pegado al input, no un segundo campo con su propia etiqueta. */
+.quantityField {
+  display: grid;
+  gap: 4px;
+}
+
+.quantityFieldRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.quantityFieldInput {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.quantityFieldUnit {
+  flex: 0 0 clamp(96px, 34%, 132px);
+}
+
+.mealFoodList {
+  display: grid;
+  /* minmax(0,1fr): sin esto el minimo automatico del grid lo fija el nombre del
+     alimento (nowrap) y un nombre largo del catalogo TCAC estira toda la pagina
+     a lo ancho en moviles. */
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mealFoodRow:not(:last-child) {
+  border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 45%);
+}
+
+.mealFoodRowInner {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+/* En pantallas angostas el nombre se recorta y la cifra nunca se parte en dos
+   lineas. */
+.mealFoodName {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mealFoodMeta {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* La fila entera abre la edicion de cantidad, asi que es un boton: se le quita
+   el aspecto de boton y se le deja solo el feedback al presionar. */
+.mealFoodRowButton {
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mealFoodRowButton:active {
+  opacity: 0.6;
+}
+
+/* Editar en el sitio: la fila se expande a un bloque con el campo de cantidad
+   y sus dos acciones, sin salir de la lista de la comida. */
+.mealFoodEdit {
+  display: grid;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+/* Emoji del alimento: ancla visual al inicio del nombre. Tamano fijo para que
+   no crezca con el peso del texto y no altere la altura de la fila. */
+.foodEmoji {
+  margin-right: 7px;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* La accion de la card entera ("agregar comida") se separa de la ultima comida
+   con la misma linea que divide los bloques, para que no se lea como parte de
+   esa comida. */
+/* Lista de filas planas separadas por hairline (rutinas, atletas, ...), mismo
+   lenguaje que la card de Comidas en /diet. Sustituye a las cards con pila de
+   chips y varios botones solidos por elemento. */
+.rowList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.rowItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.rowItem + .rowItem {
+  border-top: 1px solid color-mix(in srgb, var(--border), transparent 45%);
+}
+
+.rowMain {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 12px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rowMain > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Bloques dentro de la card del editor de rutina: una sola card con hairlines
+   en vez de tres cards apiladas. */
+.routineBuilderBlock {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.routineBuilderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* La regla que detecto un evento: tiene que estar visible para poder
+   auditarla, pero no competir con el dato. `smallLabel` la ponia en
+   mayusculas y en negrita, y gritaba mas que el propio aviso. */
+/* Las filas de señales llevan frases largas ("Fatiga acumulandose: es esperable
+   que..."): ahi el recorte con puntos suspensivos se come justo lo que hay que
+   leer, asi que el titulo envuelve. */
+.signalRow .rowMain > strong {
+  white-space: normal;
+  overflow: visible;
+}
+
+.eventRule {
+  margin: 2px 0 6px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.eventGroup + .eventGroup {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.rowListActions {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.mealsCardActions {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* Accion que se repite en cada comida: texto en acento, no un boton solido por
+   comida (evita la pila de pastillas identicas). */
+.linkBtn {
+  justify-self: start;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.linkBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mealEntryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.mealEntryInfo {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mealEntryInfo strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Buscador de alimentos: atajos que se ven antes de escribir (recientes y
+   categorias) en vez de un campo vacio esperando un nombre exacto. */
+.foodBrowseBlock {
+  display: grid;
+  gap: 8px;
+}
+
+.foodBrowseHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.foodCategoryGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+
+/* Tile compacto: el emoji hace de icono y la etiqueta va debajo, para que la
+   rejilla entera se lea de un vistazo sin ocupar la pantalla. */
+.foodCategoryTile {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  min-height: 76px;
+  padding: 10px 6px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.foodCategoryTile:hover,
+.foodCategoryTile:focus-visible {
+  border-color: var(--accent);
+}
+
+.foodCategoryEmoji {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.foodCategoryLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.foodResultCard {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.foodResultHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.foodPendingChip {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 50%);
+  color: var(--accent);
+}
+
+/* Menu de "..." (kebab): boton + popover, mismo patron de posicionamiento que .select. */
+.kebabMenu {
+  position: relative;
+}
+
+.kebabTrigger {
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kebabPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  display: grid;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 4px;
+  z-index: 20;
+}
+
+.kebabItem {
+  text-align: left;
+  font: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.kebabItem:hover,
+.kebabItem:focus-visible {
+  background: var(--bg-soft);
+}
+
+.kebabItem.destructive {
+  color: var(--danger);
+}
+
+/* Swipe/hold-to-delete tipo iPhone (`SwipeToDeleteRow.tsx`): la accion vive
+   detras, el contenido se desliza sobre ella. */
+.swipeRow {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.swipeRowAction {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.swipeRowAction.hidden {
+  visibility: hidden;
+}
+
+.swipeRowContent {
+  position: relative;
+  background: var(--bg-elevated);
+  touch-action: pan-y;
+  transition: transform 180ms ease;
+}
+
+.swipeRowContent.dragging {
+  transition: none;
+}
+
+.quantityStepRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quantityStepRow .input {
+  text-align: center;
+}
+
+.captureHookRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.barcodeScanVideo {
+  width: 100%;
+  max-height: 320px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  object-fit: cover;
+}
+
+/* ---------------------------------------------------------------------------
+   Overrides responsive y de accesibilidad.
+   Van al FINAL del archivo a proposito: al vivir a media altura pisaban solo a
+   las reglas anteriores, y toda regla declarada despues (planning, mosaico,
+   etc.) ganaba por orden y dejaba muerto el layout movil.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .topbarRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .desktopDockOnly {
+    display: none !important;
+  }
+
+  .setRowCard {
+    padding: 6px;
+  }
+
+  /* Los minimos fijos (84/68/68 + 2 botones + gaps = 327px) no caben en un
+     telefono de 360px: el boton de borrar quedaba cortado fuera de la fila.
+     Con minmax(0,...) las tres celdas se reparten lo que haya. */
+  .voiceStatusDock {
+    top: auto;
+    right: 10px;
+    left: 10px;
+    bottom: 76px;
+    width: auto;
+    max-height: 60vh;
+  }
+
+  /* Editor de rutina: Series/Reps min/Reps max caben de a dos por fila; el
+     descanso (dos inputs + unidades) ocupa la fila completa. Antes cada campo
+     ocupaba una fila entera y un ejercicio medía media pantalla. */
+  .exerciseCard .splitGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .exerciseCard .splitGrid > div:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .setRow {
+    gap: 6px;
+    grid-template-columns: auto minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  }
+
+  .setInputMini.input {
+    padding: 8px 4px;
+    font-size: 13px;
+  }
+
+  .wellnessScale {
+    font-size: 10px;
+  }
+
+  .restFloatBar {
+    right: 10px;
+    width: calc(100% - 20px);
+  }
+
+  .activeSessionBar {
+    right: 10px;
+    width: calc(100% - 20px);
+  }
+
+  .planningEditor {
+    grid-template-columns: 1fr;
+  }
+
+  .planningConfigCard {
+    position: static;
+  }
+
+  .routineInfoLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .planningMosaic {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .planningSquare {
+    min-height: 96px;
+  }
+
+  .undoBar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .undoBarActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .restFloatBar,
+  .activeSessionBar {
+    animation: none;
+  }
+
+  .completedSetRow::before {
+    animation: none;
+    transform: scaleX(1);
+  }
+
+  .uncheckingSetRow::after {
+    animation: none;
+    transform: scaleX(0);
+  }
+
+  .deletingSetRow::after {
+    animation: none;
+    transform: scaleX(1);
+  }
+}
+
+/* Paginas legales (/legal/*): viven fuera del AppShell, asi que el safe-area
+   (notch, barra de gestos) se respeta aqui. Texto largo: ancho de lectura y
+   enlaces subrayados (el reset global de `a` los deja sin marca). */
+.legalPage {
+  max-width: 760px;
+  padding-top: calc(20px + env(safe-area-inset-top));
+  padding-right: calc(18px + env(safe-area-inset-right));
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  padding-left: calc(18px + env(safe-area-inset-left));
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.legalPage .surface p,
+.legalPage .surface ul,
+.legalPage .surface ol {
+  margin: 8px 0 0;
+}
+
+.legalPage .surface ul,
+.legalPage .surface ol {
+  padding-left: 20px;
+}
+
+.legalPage .surface li + li {
+  margin-top: 6px;
+}
+
+.legalPage .surface a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* Mapa corporal: un solo color (acento), la opacidad codifica el volumen */
+.bodyMap {
+  display: grid;
+  gap: 12px;
+}
+
+.bodyMapFigure {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.bodyMapStage {
+  position: relative;
+  width: min(100%, 280px);
+  max-height: 460px;
+}
+
+.bodyMapBase,
+.bodyMapLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.bodyMapBase {
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.bodyMapLayer {
+  background: var(--accent);
+  pointer-events: none;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  transition: opacity 160ms ease;
+}
+
+.bodyMapFocus {
+  min-height: 1.2em;
+  color: var(--text-soft);
+}
+
+.bodyMapScale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bodyMapScaleBar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), var(--accent));
+  border: 1px solid var(--border);
+}
+
+.bodyMapList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.bodyMapRow {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 4px 2px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.bodyMapRow:hover,
+.bodyMapRow:focus-visible {
+  background: var(--bg-soft);
+}
+
+/* Escritorio: menú lateral fijo en vez de barra inferior y menú desplegable. */
+.sidebar {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .shell2 {
+    padding-left: 240px;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 12px;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    background: var(--bg-elevated);
+  }
+
+  .sidebarBrand {
+    padding: 0 8px;
+  }
+
+  .sidebar .drawerNav {
+    flex: 1;
+  }
+
+  .tabbar,
+  .menuBtn {
+    display: none;
+  }
+
+  .content2,
+  body:has(.activeSessionBar) .content2 {
+    padding-bottom: 32px;
+  }
+
+  body:has(.activeSessionBar) .content2 {
+    padding-bottom: calc(190px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Rutinas: una card por rutina; la accion de crear queda fuera de las cards. */
+.routineCards {
+  display: grid;
+  gap: 10px;
+}
+
+.routineCardsHead {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.routineCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.microDetails > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+@media (min-width: 1024px) {
+  .topbar2 .brandTitle {
+    display: none;
+  }
+}

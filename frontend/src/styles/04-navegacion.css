@@ -1,0 +1,506 @@
+.topbarRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.topbarActions {
+  justify-content: flex-end;
+}
+
+.brandTitle {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.content2 {
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+
+body:has(.activeSessionBar) .content2 {
+  padding-bottom: calc(210px + env(safe-area-inset-bottom));
+}
+
+.undoBar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 90;
+  width: min(760px, calc(100% - 24px));
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 48%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--accent) 10%);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.undoBarMain {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.undoBarMessage {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.undoBarActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.undoBarBtn {
+  white-space: nowrap;
+}
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), transparent 6%);
+  backdrop-filter: blur(10px);
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+}
+
+.tabItem {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 10px 4px;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.tabItem:focus-visible,
+.hubTab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tabItem.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 90%);
+}
+
+.hubTabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.hubTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.hubTab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.hubTab.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.btnBlock {
+  flex: 1;
+  min-width: 180px;
+}
+
+.menuBtn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.menuBtnBars,
+.menuBtnBars::before,
+.menuBtnBars::after {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.menuBtnBars {
+  position: relative;
+}
+
+.menuBtnBars::before,
+.menuBtnBars::after {
+  content: "";
+  position: absolute;
+  left: 0;
+}
+
+.menuBtnBars::before {
+  top: -6px;
+}
+
+.menuBtnBars::after {
+  top: 6px;
+}
+
+.drawerBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: color-mix(in srgb, #000, transparent 45%);
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 101;
+  width: min(300px, 84vw);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+  border-right: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.drawerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawerNav {
+  display: grid;
+  gap: 14px;
+}
+
+.drawerGroup {
+  display: grid;
+  gap: 2px;
+}
+
+.drawerLink {
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.drawerLink.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 90%);
+}
+
+.drawerFooter {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.listItemAction {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  cursor: pointer;
+}
+
+.optionRow {
+  display: grid;
+  gap: 6px;
+}
+
+.dangerZone > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.athleteInput {
+  width: 180px;
+  min-width: 180px;
+}
+
+
+
+
+.loginWrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+}
+
+.loginCard {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 14px;
+}
+
+.loginDivider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted, #8a8f98);
+  font-size: 12px;
+  margin: 2px 0;
+}
+
+.loginDivider::before,
+.loginDivider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border, #2a2e35);
+}
+
+.googleSignIn {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+
+.googleSignInButton {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.googleSignIn[aria-busy="true"] .googleSignInButton {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.topbarActions .smallLabel {
+  margin: 0;
+}
+
+.planningTopRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.planningEditor {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.planningConfigCard {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  position: sticky;
+  top: 84px;
+}
+
+.planningEditorMain {
+  display: grid;
+  gap: 12px;
+}
+
+.planningHeaderCard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
+  display: grid;
+  gap: 4px;
+}
+
+.planningMosaic {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+.planningSquare {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 16%);
+  color: var(--text);
+  text-align: left;
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  cursor: pointer;
+  min-height: 110px;
+}
+
+.planningSquare.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.planningSquareIdx {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.planningInspector {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  display: grid;
+  gap: 8px;
+}
+
+.planningInspector h4 {
+  margin: 0;
+}
+
+.bodyMetricGroup {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 16%);
+  display: grid;
+  gap: 10px;
+}
+
+.bodyMetricGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.bodyMetricField {
+  display: grid;
+  gap: 6px;
+}
+
+.bodyMetricInputRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bodyMetricInputRow .input {
+  flex: 1;
+}
+
+.bodyMetricHistoryGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* --- Perfil: identidad y hilo de progreso --- */
+
+.profileHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profileIdentity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.profileName {
+  font-size: 1.1rem;
+}
+
+.shareCard {
+  display: grid;
+  gap: 10px;
+}
+
+.shareThread {
+  display: grid;
+  gap: 8px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+
+.shareComment {
+  display: grid;
+  gap: 2px;
+}
+
+.shareReplyRow {
+  display: flex;
+  gap: 8px;
+}
+
+.shareReplyRow .input {
+  flex: 1;
+}
+
+/* --- Progreso: fotos privadas (solo dispositivo) --- */
+
+.privacyNote {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid var(--accent);
+}
+
+.photoGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}

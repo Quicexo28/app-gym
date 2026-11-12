@@ -1,0 +1,494 @@
+.listMeta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.gridCards {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.surfaceButton {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+}
+
+.coachPortfolioCard .input {
+  flex: 1;
+}
+
+.athleteMiniGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.athleteMiniCard {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+}
+
+.athleteMiniCard h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.activeNowChip {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notifyChip {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.coachReportFeed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reportFeedRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.muscleStateRow {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.muscleStateRow.weakest {
+  border-color: var(--danger);
+}
+
+.chipToggle {
+  cursor: pointer;
+  background: none;
+}
+
+.chipToggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.routinePickGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.routinePickCard {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
+  display: grid;
+  gap: 10px;
+}
+
+.routinePickCard.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.routinePickActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.routineStartBtn {
+  flex: 1;
+  min-height: 44px;
+  font-size: 15px;
+}
+
+.routineGotoBtn {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.catalogList {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.catalogItem {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  padding: 10px;
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.catalogItem.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 88%);
+}
+
+.treeList {
+  display: grid;
+  gap: 8px;
+}
+
+.treeNode {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 20%);
+  overflow: hidden;
+  transition: opacity 0.2s ease, filter 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.treeNodeDepth1 {
+  --tree-node-opacity: 0.72;
+  --tree-node-saturation: 0.75;
+}
+
+.treeNodeDepth2 {
+  --tree-node-opacity: 0.8;
+  --tree-node-saturation: 0.82;
+}
+
+.treeNodeDepth3 {
+  --tree-node-opacity: 0.9;
+  --tree-node-saturation: 0.9;
+}
+
+.treeNodeDepth4 {
+  --tree-node-opacity: 1;
+  --tree-node-saturation: 1;
+}
+
+.treeNodeFocused {
+  opacity: var(--tree-node-opacity, 1);
+  filter: saturate(var(--tree-node-saturation, 1));
+}
+
+.treeNodeSiblingCollapsed {
+  opacity: 0.44;
+  filter: saturate(0.7);
+}
+
+.treeNodeSelectedRoot {
+  position: relative;
+  z-index: 2;
+  border-color: color-mix(in srgb, var(--accent), var(--border) 55%);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent), transparent 82%);
+}
+
+.treeSummary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.treeSummarySelectable {
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.treeSummarySelected {
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 88%);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.treeSummary::-webkit-details-marker {
+  display: none;
+}
+
+.treeChildren {
+  padding: 0 10px 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.treeLeafList {
+  display: grid;
+  gap: 8px;
+}
+
+.treeLeaf {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg-elevated);
+}
+
+/* Por encima de la tabbar (80) y de la barra de sesion activa (88): con 60
+   quedaban encima del pie del modal en movil y el final de la lista no se
+   podia alcanzar con el scroll. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 89;
+  display: grid;
+  place-items: center;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, #000, transparent 45%);
+}
+
+/* En movil 100vh incluye la franja bajo la barra del navegador; dvh es el
+   alto visible de verdad. */
+.modalCard {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.closeRoutineModal {
+  width: min(420px, 100%);
+  z-index: 61;
+}
+
+.closeRoutineActions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.closeRoutineActions .small {
+  margin-bottom: 6px;
+  color: var(--text-soft);
+}
+
+.sessionStartText {
+  color: var(--text-soft);
+  font-size: 13px;
+  text-align: left;
+}
+
+.extrasMenu {
+  position: relative;
+}
+
+.extrasMenuBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.extrasMenuPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 41;
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+
+.extrasMenuItem {
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.extrasMenuItem:hover,
+.extrasMenuItem:focus-visible {
+  background: color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 30%);
+}
+
+.extrasMenuItem.danger {
+  color: var(--danger);
+}
+
+.extrasMenuItem.danger:hover,
+.extrasMenuItem.danger:focus-visible {
+  background: color-mix(in srgb, var(--danger), var(--bg-elevated) 88%);
+}
+
+.routineInfoLayout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(230px, 1fr) minmax(240px, 1fr);
+  align-items: start;
+}
+
+.routineInfoList {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.routineInfoRow {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+}
+
+.routineInfoRowMeta {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+}
+
+.routineRadarWrap {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 12%);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.routineRadarSvg {
+  width: min(100%, 360px);
+  height: auto;
+  overflow: visible;
+}
+
+.routineRadarRing {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-soft), transparent 55%);
+  stroke-width: 1;
+}
+
+.routineRadarAxis {
+  stroke: color-mix(in srgb, var(--text-soft), transparent 52%);
+  stroke-width: 1;
+}
+
+.routineRadarArea {
+  fill: color-mix(in srgb, var(--accent), transparent 55%);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.routineRadarLabel {
+  fill: var(--text-soft);
+  font-size: 11px;
+  dominant-baseline: middle;
+}
+
+.routineRadarCaption {
+  margin: 0;
+  text-align: center;
+}
+
+.metricBlock {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.compactList {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.pillGroup {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.pill {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 30%);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px;
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.pill.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 88%);
+}
+
+.pill small {
+  color: var(--text-soft);
+}
+
+.shell2 {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar2 {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), transparent 12%);
+  backdrop-filter: blur(10px);
+  padding: 10px 14px;
+  display: grid;
+  gap: 8px;
+}

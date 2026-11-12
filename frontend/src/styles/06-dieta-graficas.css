@@ -1,0 +1,494 @@
+.barFill.macro-grasas {
+  background: color-mix(in srgb, var(--accent), var(--text-soft) 55%);
+}
+
+/* Cuarto escalon de la misma rampa (solo en el detalle nutricional): la fibra
+   no puede quedar del mismo color que la proteina. */
+.barFill.macro-fibra {
+  background: color-mix(in srgb, var(--accent), var(--bg-soft) 45%);
+}
+
+/* Pasarse del objetivo tiene que verse: la barra se queda en 100% y no habia
+   ninguna senal de que el valor iba por encima. */
+.barFill.over {
+  background: var(--danger);
+}
+
+.macroOverValue {
+  color: var(--danger);
+}
+
+/* Dos tarjetas compactas lado a lado (pasos + peso). */
+.homeSplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.homeSplit > .cardButton {
+  min-width: 0;
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+}
+
+.cardValue {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepsChart {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  align-items: end;
+  gap: 2px;
+  height: 56px;
+}
+
+/* Historico: misma columna, muchos mas dias. */
+.stepsHistoryChart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 120px;
+  margin-top: 12px;
+}
+
+.stepsHistoryChart .stepsCol {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.stepsHistoryChart .stepsBar {
+  max-width: none;
+}
+
+.stepsCol {
+  display: grid;
+  justify-items: center;
+  align-content: end;
+  height: 100%;
+}
+
+.stepsBar {
+  width: 100%;
+  max-width: 16px;
+  height: 4px;
+  border-radius: 4px 4px 2px 2px;
+  background: var(--bg-soft);
+}
+
+.sparkline {
+  width: 100%;
+  height: 56px;
+}
+
+.sparkline polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* El dia enfocado (centro de la ventana en Home, hoy en el historico) se marca por color. */
+.stepsCol.active .stepsBar {
+  background: var(--accent);
+}
+
+/* Grafica falsa y gris: marca donde ira una grafica real mientras no hay datos. */
+.chartPlaceholder {
+  display: grid;
+  align-content: end;
+  gap: 6px;
+  width: 100%;
+}
+
+.chartPlaceholderBars {
+  display: grid;
+  grid-auto-flow: column;
+  align-items: end;
+  gap: 4px;
+  width: 100%;
+}
+
+.chartPlaceholderBar {
+  background: var(--border);
+  opacity: 0.6;
+  border-radius: 4px 4px 2px 2px;
+}
+
+.chartPlaceholderLine {
+  width: 100%;
+}
+
+.chartPlaceholderLine polyline {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.7;
+}
+
+.chartPlaceholderRadar {
+  width: 100%;
+}
+
+.chartPlaceholderRadarRing {
+  fill: none;
+  stroke: var(--border);
+  opacity: 0.5;
+}
+
+.chartPlaceholderRadarArea {
+  fill: var(--border);
+  stroke: var(--border);
+  opacity: 0.35;
+}
+
+.chartPlaceholderCaption {
+  color: var(--text-soft);
+  text-align: center;
+}
+
+/* Cards de metricas de seguimiento (medidas, cargas): article-buttons con el mismo look de surfaceButton. */
+.metricCard,
+button.surfaceButton {
+  font: inherit;
+  cursor: pointer;
+}
+
+.metricCard {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 24%);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: left;
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+}
+
+.metricCardValue {
+  font-size: 1.15rem;
+}
+
+.metricCardDelta {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.metricCardDelta.up {
+  color: var(--accent);
+}
+
+.metricCardDelta.down {
+  color: var(--danger);
+}
+
+.metricCardDelta.flat {
+  color: var(--text-soft);
+  font-weight: 500;
+}
+
+.progressChartWrap {
+  display: grid;
+  gap: 6px;
+}
+
+.progressChart {
+  height: 140px;
+}
+
+.progressChartDot {
+  fill: var(--accent);
+}
+
+.progressChartCaption {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-soft);
+}
+
+/* Stepper +/- de cantidad de comidas (Objetivos > Comidas). */
+.mealCountStepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.mealCountValue {
+  min-width: 92px;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Grafica de tendencia de dieta: linea + area con degradado del acento y linea de objetivo punteada. */
+.dietTrendChartWrap {
+  display: grid;
+  gap: 8px;
+}
+
+.dietTrendChart {
+  width: 100%;
+  overflow: visible;
+}
+
+.dietTrendGradientStart {
+  stop-color: var(--accent);
+  stop-opacity: 0.32;
+}
+
+.dietTrendGradientEnd {
+  stop-color: var(--accent);
+  stop-opacity: 0;
+}
+
+.dietTrendArea {
+  stroke: none;
+}
+
+.dietTrendLine {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dietTrendTargetLine {
+  stroke: var(--text-soft);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+.dietTrendDot {
+  fill: var(--bg-elevated);
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
+.dietTrendDotLast {
+  fill: var(--accent);
+}
+
+.dietTrendCaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-soft);
+  flex-wrap: wrap;
+}
+
+.datePicker {
+  position: relative;
+}
+
+.datePickerTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+
+.datePickerIcon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--text-soft);
+}
+
+.datePickerPopover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(280px, 88vw);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.datePickerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.datePickerNavBtn {
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text);
+  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.datePickerNavBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.datePickerWeekdays,
+.datePickerGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.datePickerWeekdays span {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.datePickerDay {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 10px;
+  aspect-ratio: 1;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.datePickerDay:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-soft), transparent 10%);
+}
+
+.datePickerDay.outMonth {
+  color: var(--text-soft);
+  opacity: 0.5;
+}
+
+.datePickerDay.today {
+  border-color: var(--accent);
+}
+
+.datePickerDay.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+.datePickerDay:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.timePickerPopover {
+  width: min(220px, 88vw);
+}
+
+.timePickerColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.timePickerColumn {
+  display: grid;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: 2px;
+}
+
+.timePickerOption {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 0;
+  text-align: center;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.timePickerOption:hover {
+  background: color-mix(in srgb, var(--bg-soft), transparent 10%);
+}
+
+.timePickerOptionSelected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Modulo de dieta                                                        */
+/* ---------------------------------------------------------------------- */
+
+.microGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
+.microRow {
+  display: grid;
+  gap: 4px;
+}
+
+.microHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-soft);
+}
+
+.microTrack {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+.microFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 240ms ease;
+}
+
+.microFill.veryLow {
+  background: var(--danger);
+}
+
+.microFill.low {
+  background: color-mix(in srgb, var(--text-soft), var(--border) 40%);
+}
+
+.microFill.good {
+  background: var(--accent);
+}
+
+.microFill.over {
+  background: color-mix(in srgb, var(--danger), var(--accent) 35%);
+}
+
+.dietRangeToggle {
+  display: flex;
+  gap: 8px;
+}

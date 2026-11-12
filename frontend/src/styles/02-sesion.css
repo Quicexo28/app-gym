@@ -1,0 +1,866 @@
+.wellnessField {
+  --wellness-thumb-size: 18px;
+  --wellness-track-size: 6px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 20%);
+  padding: 10px;
+}
+
+.wellnessFieldHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wellnessFieldHead .smallLabel {
+  margin-bottom: 0;
+}
+
+.wellnessSlider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: var(--wellness-thumb-size);
+  margin: 0;
+  background: transparent;
+}
+
+.wellnessSlider::-webkit-slider-runnable-track {
+  height: var(--wellness-track-size);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent), white 10%) 0%,
+    color-mix(in srgb, var(--accent), white 10%) var(--wellness-progress, 0%),
+    color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%) var(--wellness-progress, 0%),
+    color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%) 100%
+  );
+}
+
+.wellnessSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--wellness-thumb-size);
+  height: var(--wellness-thumb-size);
+  border-radius: 999px;
+  border: 2px solid var(--accent);
+  background: var(--bg-elevated);
+  margin-top: calc((var(--wellness-track-size) - var(--wellness-thumb-size)) / 2);
+}
+
+.wellnessSlider::-moz-range-track {
+  height: var(--wellness-track-size);
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent), white 10%) 0%,
+    color-mix(in srgb, var(--accent), white 10%) var(--wellness-progress, 0%),
+    color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%) var(--wellness-progress, 0%),
+    color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%) 100%
+  );
+}
+
+.wellnessSlider::-moz-range-thumb {
+  width: var(--wellness-thumb-size);
+  height: var(--wellness-thumb-size);
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+}
+
+.wellnessSlider:focus-visible {
+  outline: none;
+}
+
+.wellnessSlider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 70%);
+}
+
+.wellnessSlider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 70%);
+}
+
+.wellnessTicks {
+  position: relative;
+  min-height: 24px;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wellnessTick {
+  position: absolute;
+  top: 0;
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  transform: translateX(-50%);
+}
+
+.wellnessTickMin {
+  transform: translateX(0);
+}
+
+.wellnessTickMax {
+  transform: translateX(-100%);
+}
+
+.wellnessTickMark {
+  width: 1px;
+  height: 6px;
+  background: color-mix(in srgb, var(--text-soft), transparent 35%);
+}
+
+.wellnessScale {
+  position: relative;
+  min-height: 14px;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wellnessScaleItem {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+}
+
+.wellnessScaleItem span {
+  white-space: nowrap;
+}
+
+.exerciseCard {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
+  cursor: grab;
+}
+
+.exerciseCardDragging {
+  opacity: 0.58;
+  border-color: color-mix(in srgb, var(--accent), var(--border) 42%);
+}
+
+.exerciseCardDragArmed {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 35%);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.cardMenu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.cardMenuTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.cardMenuTrigger:hover,
+.cardMenuTrigger[aria-expanded="true"] {
+  border-color: var(--border);
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.cardMenuPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  min-width: 208px;
+  padding: 6px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 22%);
+}
+
+.cardMenuItem {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cardMenuItem:hover:not(:disabled) {
+  background: var(--bg-soft);
+}
+
+.cardMenuItem:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cardMenuItemHint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-soft);
+  opacity: 0.75;
+}
+
+.cardMenuItemDanger {
+  color: var(--danger);
+}
+
+.cardMenuItemDanger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger-bg), var(--bg-elevated) 55%);
+}
+
+.routineSortableList {
+  gap: 0;
+}
+
+.routineSortableEntry {
+  display: grid;
+  gap: 6px;
+}
+
+.routineDropSlot {
+  height: 8px;
+  border: 1px dashed transparent;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.routineSortableListDragging .routineDropSlot {
+  background: color-mix(in srgb, var(--accent), transparent 92%);
+  border-color: color-mix(in srgb, var(--accent), transparent 70%);
+}
+
+.routineDropSlot.active {
+  background: color-mix(in srgb, var(--accent), transparent 76%);
+  border-color: color-mix(in srgb, var(--accent), transparent 35%);
+}
+
+.routineDragHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  user-select: none;
+  pointer-events: none;
+}
+
+.routineDragHandleIcon {
+  width: 14px;
+  height: 14px;
+}
+
+.routineDragHandleArmed {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.setGrid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.setRowCard {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 8px;
+  background: color-mix(in srgb, var(--bg-elevated), white 8%);
+  overflow: hidden;
+  position: relative;
+}
+
+.setRowCard::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent), var(--bg-elevated) 78%),
+    color-mix(in srgb, var(--accent), var(--bg-elevated) 84%)
+  );
+  transform: scaleX(0);
+  transform-origin: left center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.setRowCard::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.completedSetRow {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 30%);
+}
+
+.completedSetRow::before {
+  opacity: 1;
+  animation: setRowFillIn 320ms cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+
+.uncheckingSetRow {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 26%);
+}
+
+.uncheckingSetRow::before {
+  opacity: 0;
+  animation: none;
+}
+
+.uncheckingSetRow::after {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--danger), var(--bg-elevated) 66%),
+    color-mix(in srgb, var(--danger), var(--bg-elevated) 74%)
+  );
+  opacity: 1;
+  transform-origin: left center;
+  animation: setRowDrainOut 700ms ease-out forwards;
+}
+
+.deletingSetRow {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 20%);
+  pointer-events: none;
+}
+
+.deletingSetRow::before {
+  opacity: 0;
+  animation: none;
+}
+
+.deletingSetRow::after {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--danger), var(--bg-elevated) 70%),
+    color-mix(in srgb, var(--danger), var(--bg-elevated) 62%)
+  );
+  opacity: 1;
+  transform-origin: left center;
+  animation: setRowDeleteFill 1.5s linear forwards;
+}
+
+.deletingSetRow .setRow {
+  opacity: 0.78;
+}
+
+.setRow {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  grid-template-columns: auto minmax(96px, 1.4fr) minmax(78px, 1fr) minmax(78px, 1fr) auto auto;
+  align-items: end;
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes setRowFillIn {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes setRowDrainOut {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes setRowDeleteFill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 5px 6px;
+}
+
+.iconGlyph {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.setCompleteBtn {
+  border-color: var(--border);
+  color: var(--text-soft);
+}
+
+.notepadBtn {
+  position: relative;
+  border-color: var(--border);
+  color: var(--text-soft);
+}
+
+.notepadBtn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notifyDot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--surface, transparent);
+}
+
+.exerciseNotePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.coachNoteBubble {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.coachNoteBubble p {
+  margin: 0 0 4px;
+}
+
+.completeIconBtn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.setCompleteBtn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.trashBtn:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 35%);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger-bg), var(--bg-elevated) 60%);
+}
+
+.compactTrashBtn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+}
+
+.compactTrashBtn .iconGlyph {
+  width: 12px;
+  height: 12px;
+}
+
+.setFieldMini {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+
+.setFieldMini .smallLabel {
+  margin-bottom: 0;
+}
+
+.setInputMini.input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 7px;
+  text-align: center;
+}
+
+.setInputWeight.input {
+  width: 100%;
+}
+
+.setInputReps.input {
+  width: 100%;
+}
+
+.setInputEffort.input {
+  width: 100%;
+}
+
+.restFloatBar {
+  position: fixed;
+  right: 16px;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  z-index: 95;
+  width: min(360px, calc(100% - 24px));
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--accent) 8%);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  animation: restFloatEnter 320ms cubic-bezier(0.2, 0.9, 0.2, 1);
+  will-change: transform, opacity;
+}
+
+@keyframes restFloatEnter {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.restFloatTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.restFloatTimer {
+  font-size: 1.2rem;
+}
+
+.restFloatTimerOver {
+  color: var(--danger);
+}
+
+.restFloatTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%);
+  overflow: hidden;
+}
+
+.restFloatFill {
+  height: 100%;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent), white 12%), var(--accent));
+  transition: width 0.35s linear;
+}
+
+.restFloatBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.activeSessionBar {
+  position: fixed;
+  right: 16px;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  z-index: 88;
+  width: min(480px, calc(100% - 24px));
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 48%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--accent) 9%);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  animation: activeSessionBarEnter 320ms cubic-bezier(0.2, 0.9, 0.2, 1);
+  will-change: transform, opacity;
+}
+
+.activeSessionMain {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.activeSessionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.activeSessionRestRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.activeSessionTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-soft), var(--bg-elevated) 20%);
+  overflow: hidden;
+}
+
+.activeSessionFill {
+  height: 100%;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent), white 12%), var(--accent));
+  transition: width 0.35s linear;
+}
+
+.activeSessionActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.activeSessionTimerBig {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.activeSessionButtonGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.activeSessionCheckBtn {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.activeSessionCheckBtn .iconGlyph {
+  width: 16px;
+  height: 16px;
+}
+
+.voicePanel {
+  display: grid;
+  gap: 10px;
+}
+
+.voiceStatusDock {
+  position: fixed;
+  right: 14px;
+  top: 96px;
+  z-index: 92;
+  width: min(360px, calc(100vw - 28px));
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--accent) 7%);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
+
+.voiceDockToggle {
+  position: fixed;
+  right: 14px;
+  bottom: 84px;
+  z-index: 92;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
+  background: color-mix(in srgb, var(--bg-elevated), var(--accent) 7%);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.voiceDockDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--text-soft);
+}
+
+.voiceDockToggle.listening .voiceDockDot {
+  background: var(--accent);
+}
+
+.voiceStatusHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.voiceDockActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voiceDockTranscript {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 20%);
+  padding: 8px;
+  font-size: 13px;
+  min-height: 52px;
+  overflow-wrap: anywhere;
+}
+
+.voiceInfoGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin-top: 10px;
+}
+
+.voiceInfoCard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.voiceLog {
+  display: grid;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.voiceLogItem {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 22%);
+  padding: 10px;
+  display: grid;
+  gap: 5px;
+}
+
+.voiceLogItem.applied {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 50%);
+}
+
+.voiceLogItem.rejected {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 45%);
+  background: color-mix(in srgb, var(--danger-bg), var(--bg-elevated) 75%);
+}
+
+.voiceChipError {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 35%);
+  color: var(--danger);
+}
+
+@keyframes activeSessionBarEnter {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.setTag {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-soft);
+  padding-bottom: 6px;
+}
+
+.message {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  padding: 10px;
+}
+
+.message.error {
+  border-color: color-mix(in srgb, var(--danger), transparent 40%);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.emptyState {
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text-soft);
+}
+
+.listItem {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.listMain {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}

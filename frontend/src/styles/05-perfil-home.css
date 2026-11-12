@@ -1,0 +1,489 @@
+.photoCard {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 16%);
+}
+
+.photoCard.selected {
+  border-color: var(--accent);
+}
+
+.photoThumbButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.photoThumbButton img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+}
+
+.photoCardMeta {
+  display: grid;
+  gap: 2px;
+}
+
+.photoCardActions {
+  display: flex;
+  gap: 8px;
+}
+
+.photoCardActions .btn {
+  flex: 1;
+}
+
+.photoCompare {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 12px;
+}
+
+.photoCompareItem {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.photoCompareItem img {
+  width: 100%;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.photoViewer img {
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+/* ---------- Home: dia seleccionado, entreno, dieta y pasos ---------- */
+
+.homeHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.homeDate {
+  display: grid;
+  gap: 2px;
+}
+
+.homeDateDay {
+  font-size: clamp(1.25rem, 2.4vw, 1.7rem);
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+/* "viernes, 25 de julio" -> solo la inicial en mayuscula (capitalize tocaria cada palabra). */
+.homeDateDay::first-letter {
+  text-transform: uppercase;
+}
+
+.homeDateMeta {
+  color: var(--text-soft);
+}
+
+.btnSlim {
+  min-height: 44px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 30%);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.switch.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent), var(--bg-elevated) 90%);
+}
+
+.switchText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.switchLabel {
+  font-weight: 600;
+}
+
+.switchHint {
+  color: var(--text-soft);
+}
+
+.switchTrack {
+  flex: none;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  padding: 2px;
+  display: flex;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.switch.on .switchTrack {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switchKnob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+  transition: transform 0.15s ease;
+}
+
+.switch.on .switchKnob {
+  transform: translateX(18px);
+}
+
+/* Interruptores de vista (admin / coach) en la topbar: minimos, sin hint. */
+.switch.compact {
+  width: auto;
+  gap: 7px;
+  padding: 4px 6px 4px 9px;
+  border-radius: 999px;
+}
+
+.switch.compact .switchLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.switch.compact .switchTrack {
+  width: 30px;
+  height: 18px;
+  padding: 2px;
+}
+
+.switch.compact .switchKnob {
+  width: 12px;
+  height: 12px;
+}
+
+.switch.compact.on .switchKnob {
+  transform: translateX(12px);
+}
+
+.homeHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.weekPicker {
+  padding: 12px;
+}
+
+.weekPickerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-soft);
+}
+
+.weekPickerLabel {
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.weekNavBtn {
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text);
+  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.weekStrip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.dayPill {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 8px 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dayPill.today {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 45%);
+}
+
+.dayPill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.dayPillLetter {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.dayPill.active .dayPillLetter {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.dayPillNumber {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dayPillMarks {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+  align-items: center;
+}
+
+.dayMark {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  display: block;
+}
+
+.dayMark.done {
+  background: var(--accent);
+}
+
+.dayMark.planned {
+  background: transparent;
+  border: 1px solid var(--accent);
+}
+
+.dayPill.active .dayMark.done {
+  background: var(--accent-contrast);
+}
+
+.dayPill.active .dayMark.planned {
+  border-color: var(--accent-contrast);
+}
+
+.planList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.planList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+.planList li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.pickRoutineRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pickRoutineRow .input,
+.pickRoutineRow .select {
+  flex: 1 1 180px;
+}
+
+/* Tarjeta que ademas es enlace: hereda el look de .surface pero se comporta como boton. */
+.cardButton {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.cardButton:hover,
+.cardButton:focus-visible {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 40%);
+}
+
+/* Afordancia sutil de "esta tarjeta navega": chevron en la cabecera, sin texto explicativo. */
+.cardChevron {
+  color: var(--text-soft);
+  font-size: 20px;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.cardButton:hover .cardChevron,
+.cardButton:focus-visible .cardChevron {
+  transform: translateX(2px);
+  color: var(--accent);
+}
+
+/* Metrica todavia sin fuente de datos: se muestra en gris, sin cartel de "proximamente". */
+.mutedValue {
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.dietBody {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.ringWrap {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  flex: 0 0 auto;
+}
+
+.ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ringTrack,
+.ringFill {
+  fill: none;
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.ringTrack {
+  stroke: var(--bg-soft);
+}
+
+.ringFill {
+  stroke: var(--accent);
+  transition: stroke-dasharray 240ms ease;
+}
+
+.ringCenter {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+}
+
+.ringCenter .small {
+  color: var(--text-soft);
+}
+
+.macroStack {
+  flex: 1 1 200px;
+  display: grid;
+  gap: 10px;
+}
+
+.macroRow {
+  display: grid;
+  gap: 4px;
+}
+
+.macroHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-soft);
+}
+
+.barChart {
+  display: grid;
+  gap: 8px;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) minmax(80px, 2fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.barLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barValue {
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.barTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 240ms ease;
+}
+
+.barFill.macro-carbos {
+  background: color-mix(in srgb, var(--accent), var(--text) 32%);
+}
