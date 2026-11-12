@@ -15,6 +15,18 @@ import "./styles.css";
 
 installAndroidBackButton();
 
+// WKWebView (iOS) puede ignorar user-scalable=no: bloquear el pellizco a mano.
+for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+  document.addEventListener(type, (e) => e.preventDefault());
+}
+document.addEventListener(
+  "touchmove",
+  (e) => {
+    if (e.touches.length > 1) e.preventDefault();
+  },
+  { passive: false },
+);
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>

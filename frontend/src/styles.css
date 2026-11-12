@@ -37,6 +37,15 @@ body,
   min-height: 100%;
 }
 
+/* Sin zoom ni scroll horizontal: nada debe ensanchar la pagina. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-family: var(--font-ui);
@@ -57,7 +66,12 @@ a {
 
 .stack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
+}
+
+.stack > * {
+  min-width: 0;
 }
 
 .compactStack {
@@ -760,6 +774,7 @@ textarea.input:focus,
 .setGrid {
   margin-top: 12px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -3942,4 +3957,90 @@ button.surfaceButton {
 .legalPage .surface a {
   color: var(--accent);
   text-decoration: underline;
+}
+
+/* Mapa corporal: un solo color (acento), la opacidad codifica el volumen */
+.bodyMap {
+  display: grid;
+  gap: 12px;
+}
+
+.bodyMapFigure {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.bodyMapStage {
+  position: relative;
+  width: min(100%, 280px);
+  max-height: 460px;
+}
+
+.bodyMapBase,
+.bodyMapLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.bodyMapBase {
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.bodyMapLayer {
+  background: var(--accent);
+  pointer-events: none;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  transition: opacity 160ms ease;
+}
+
+.bodyMapFocus {
+  min-height: 1.2em;
+  color: var(--text-soft);
+}
+
+.bodyMapScale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bodyMapScaleBar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), var(--accent));
+  border: 1px solid var(--border);
+}
+
+.bodyMapList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.bodyMapRow {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 4px 2px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.bodyMapRow:hover,
+.bodyMapRow:focus-visible {
+  background: var(--bg-soft);
 }
