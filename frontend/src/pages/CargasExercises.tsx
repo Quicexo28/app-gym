@@ -7,7 +7,6 @@ import {
   ALL_EXERCISE_MOVEMENT_FILTER,
   ALL_EXERCISE_ZONE_FILTER,
   buildExerciseCatalogBrowser,
-  computeExerciseEntrySearchScore,
   EXERCISE_ZONE_LOWER,
   EXERCISE_ZONE_UPPER,
   tokenizeExerciseSearch,
@@ -16,104 +15,13 @@ import {
   type ExerciseFilters,
 } from "../lib/exerciseCatalog";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
-
-type MutableNode = {
-  label: string;
-  path: string[];
-  children: Map<string, MutableNode>;
-  items: TreeItem[];
-};
-
-type CatalogNode = {
-  label: string;
-  path: string[];
-  children: CatalogNode[];
-  items: TreeItem[];
-  totalItems: number;
-  maxScore: number;
-};
-
-type TreeItem = {
-  entry: ExerciseCatalogEntry;
-  treePath: string[];
-  matchScore: number;
-};
-
-function formatExerciseNameForList(name: string): string {
-  return name.replace(/\s*>\s*/g, " - ").trim();
-}
-
-function formatExercisePathForList(path: string[]): string {
-  return path.map((segment) => formatExerciseNameForList(segment)).join(" - ");
-}
-
-function toTreeItems(entries: ExerciseCatalogEntry[], searchTokens: string[]): TreeItem[] {
-  return entries.map((entry) => {
-    const matchScore = searchTokens.length > 0 ? computeExerciseEntrySearchScore(entry, searchTokens) : 0;
-    return { entry, treePath: entry.path, matchScore };
-  });
-}
-
-function freezeNodes(source: Map<string, MutableNode>, rankBySimilarity: boolean): CatalogNode[] {
-  const nodes = Array.from(source.values()).map((node) => {
-    const children = freezeNodes(node.children, rankBySimilarity);
-    const items = [...node.items].sort((a, b) => {
-      if (rankBySimilarity && b.matchScore !== a.matchScore) {
-        return b.matchScore - a.matchScore;
-      }
-      return a.entry.name.localeCompare(b.entry.name);
-    });
-    const childCount = children.reduce((acc, child) => acc + child.totalItems, 0);
-    const itemMaxScore = items.reduce((maxScore, item) => Math.max(maxScore, item.matchScore), 0);
-    const childMaxScore = children.reduce((maxScore, child) => Math.max(maxScore, child.maxScore), 0);
-
-    return {
-      label: node.label,
-      path: node.path,
-      children,
-      items,
-      totalItems: items.length + childCount,
-      maxScore: Math.max(itemMaxScore, childMaxScore),
-    };
-  });
-
-  nodes.sort((a, b) => {
-    if (rankBySimilarity && b.maxScore !== a.maxScore) {
-      return b.maxScore - a.maxScore;
-    }
-    return a.label.localeCompare(b.label);
-  });
-
-  return nodes;
-}
-
-function buildTree(items: TreeItem[], rankBySimilarity: boolean): CatalogNode[] {
-  const root = new Map<string, MutableNode>();
-
-  for (const item of items) {
-    const path = item.treePath;
-    if (path.length === 0) continue;
-
-    let cursor = root;
-    const currentPath: string[] = [];
-    let currentNode: MutableNode | null = null;
-
-    for (const segment of path) {
-      currentPath.push(segment);
-      let node = cursor.get(segment);
-      if (!node) {
-        node = { label: segment, path: [...currentPath], children: new Map<string, MutableNode>(), items: [] };
-        cursor.set(segment, node);
-      }
-      currentNode = node;
-      cursor = node.children;
-    }
-
-    if (currentNode) currentNode.items.push(item);
-  }
-
-  return freezeNodes(root, rankBySimilarity);
-}
+import {
+  buildTree,
+  formatExerciseNameForList,
+  formatExercisePathForList,
+  toTreeItems,
+  type CatalogNode,
+} from "../lib/exerciseTree";
 
 function renderTree(
   nodes: CatalogNode[],
