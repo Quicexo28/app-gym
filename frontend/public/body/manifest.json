@@ -1,0 +1,88 @@
+{
+  "views": {
+    "front": {
+      "w": 480,
+      "h": 723
+    },
+    "back": {
+      "w": 480,
+      "h": 723
+    }
+  },
+  "groups": {
+    "hombro": {
+      "views": [
+        "front",
+        "back"
+      ],
+      "label": "Hombro"
+    },
+    "bicep": {
+      "views": [
+        "front"
+      ],
+      "label": "Bíceps"
+    },
+    "tricep": {
+      "views": [
+        "back"
+      ],
+      "label": "Tríceps"
+    },
+    "pecho": {
+      "views": [
+        "front"
+      ],
+      "label": "Pecho"
+    },
+    "espalda": {
+      "views": [
+        "back"
+      ],
+      "label": "Espalda"
+    },
+    "abdomen": {
+      "views": [
+        "front"
+      ],
+      "label": "Abdomen"
+    },
+    "gluteo": {
+      "views": [
+        "back"
+      ],
+      "label": "Glúteo"
+    },
+    "abductor": {
+      "views": [
+        "front",
+        "back"
+      ],
+      "label": "Abductor"
+    },
+    "aductor": {
+      "views": [
+        "front"
+      ],
+      "label": "Aductor"
+    },
+    "cuadricep": {
+      "views": [
+        "front"
+      ],
+      "label": "Cuádriceps"
+    },
+    "femoral": {
+      "views": [
+        "back"
+      ],
+      "label": "Femoral"
+    },
+    "pantorrilla": {
+      "views": [
+        "back"
+      ],
+      "label": "Pantorrilla"
+    }
+  }
+}
