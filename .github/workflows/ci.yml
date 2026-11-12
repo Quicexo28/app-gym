@@ -29,8 +29,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
       - name: Install dependencies
-        run: npm ci
+        # tsc -b también compila los *.test.ts: necesita vitest, que vive en frontend/.
+        run: |
+          npm ci
+          npm ci --prefix frontend
       - name: Typecheck (tsc)
         run: npx tsc -b frontend/tsconfig.json
       # ESLint queda fuera hasta limpiar los 38 errores que ya existían en main.
