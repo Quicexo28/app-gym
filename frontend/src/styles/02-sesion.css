@@ -136,8 +136,8 @@
 
 .exerciseCard {
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 8px 10px;
+  border-radius: 14px;
+  padding: 12px;
   background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
   cursor: grab;
 }
@@ -238,11 +238,11 @@
 
 .routineSortableEntry {
   display: grid;
-  gap: 2px;
+  gap: 6px;
 }
 
 .routineDropSlot {
-  height: 6px;
+  height: 8px;
   border: 1px dashed transparent;
   border-radius: 999px;
   background: transparent;
