@@ -136,8 +136,8 @@
 
 .exerciseCard {
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px;
+  border-radius: 12px;
+  padding: 8px 10px;
   background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 18%);
   cursor: grab;
 }
@@ -238,11 +238,11 @@
 
 .routineSortableEntry {
   display: grid;
-  gap: 6px;
+  gap: 2px;
 }
 
 .routineDropSlot {
-  height: 8px;
+  height: 6px;
   border: 1px dashed transparent;
   border-radius: 999px;
   background: transparent;
@@ -698,7 +698,7 @@
 .voiceStatusDock {
   position: fixed;
   right: 14px;
-  top: 96px;
+  top: calc(96px + env(safe-area-inset-top));
   z-index: 92;
   width: min(360px, calc(100vw - 28px));
   border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
@@ -708,7 +708,7 @@
   padding: 12px;
   display: grid;
   gap: 8px;
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 120px - env(safe-area-inset-top));
   overflow: auto;
 }
 

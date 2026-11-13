@@ -170,35 +170,22 @@
 .treeNode {
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 20%);
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--bg-elevated), var(--bg-soft) 20%),
+    #000 var(--tree-shade, 0%)
+  );
   overflow: hidden;
-  transition: opacity 0.2s ease, filter 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease, opacity 0.2s ease, filter 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.treeNodeDepth1 {
-  --tree-node-opacity: 0.72;
-  --tree-node-saturation: 0.75;
-}
-
-.treeNodeDepth2 {
-  --tree-node-opacity: 0.8;
-  --tree-node-saturation: 0.82;
-}
-
-.treeNodeDepth3 {
-  --tree-node-opacity: 0.9;
-  --tree-node-saturation: 0.9;
-}
-
-.treeNodeDepth4 {
-  --tree-node-opacity: 1;
-  --tree-node-saturation: 1;
-}
-
-.treeNodeFocused {
-  opacity: var(--tree-node-opacity, 1);
-  filter: saturate(var(--tree-node-saturation, 1));
-}
+/* Cada nivel abierto oscurece un paso respecto al de arriba: la raiz es la mas
+   clara y cada capa interior mas oscura. Se mezcla con negro sobre el color del
+   tema, asi funciona en tema claro y oscuro. */
+.treeNodeDepth1 { --tree-shade: 0%; }
+.treeNodeDepth2 { --tree-shade: 10%; }
+.treeNodeDepth3 { --tree-shade: 20%; }
+.treeNodeDepth4 { --tree-shade: 30%; }
 
 .treeNodeSiblingCollapsed {
   opacity: 0.44;
@@ -488,7 +475,54 @@
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-elevated), transparent 12%);
   backdrop-filter: blur(10px);
-  padding: 10px 14px;
+  padding: calc(10px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) 10px
+    calc(14px + env(safe-area-inset-left));
   display: grid;
   gap: 8px;
+}
+
+/* Selector de ejercicios como hoja inferior: la rutina queda visible arriba y
+   la X cierra desde la esquina superior derecha. */
+.modalOverlaySheet {
+  place-items: end center;
+  padding: 0;
+  background: color-mix(in srgb, #000, transparent 70%);
+}
+
+.modalCardSheet {
+  width: min(760px, 100%);
+  max-height: 62dvh;
+  border-radius: 16px 16px 0 0;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+.pickerHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pickerClose {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pickerAdded {
+  white-space: nowrap;
+}
+
+.btnAddFirstExercise {
+  width: 100%;
+  padding: 14px;
+  font-size: 1rem;
 }
