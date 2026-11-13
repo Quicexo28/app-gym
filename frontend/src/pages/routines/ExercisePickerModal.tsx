@@ -25,6 +25,8 @@ type Props = {
   onClose: () => void;
   onAdd: (entry: ExerciseCatalogEntry) => void;
   canAdd: (entry: ExerciseCatalogEntry) => boolean;
+  isAdded: (entry: ExerciseCatalogEntry) => boolean;
+  addedCount: number;
   onSelectGroup: (group: string) => void;
 };
 
@@ -43,20 +45,29 @@ export default function ExercisePickerModal({
   onClose,
   onAdd,
   canAdd,
+  isAdded,
+  addedCount,
   onSelectGroup,
 }: Props) {
   return (
-    <div className="modalOverlay" role="presentation" onClick={onClose}>
+    <div className="modalOverlay modalOverlaySheet" role="presentation" onClick={onClose}>
       <section
-        className="modalCard"
+        className="modalCard modalCardSheet"
         role="dialog"
         aria-modal="true"
         aria-labelledby="routine-picker-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="sectionHead">
-          <h3 id="routine-picker-title">Agregar nuevo ejercicio</h3>
-          <p>Selecciona solo ejercicios finales de cada rama del catálogo.</p>
+        <div className="sectionHead pickerHead">
+          <div>
+            <h3 id="routine-picker-title">Agregar ejercicio</h3>
+            <p>{addedCount > 0 ? `En la rutina: ${addedCount}` : "Elige ejercicios finales del catálogo."}</p>
+          </div>
+          <button type="button" className="pickerClose" aria-label="Cerrar" onClick={onClose}>
+            <svg className="iconGlyph" viewBox="0 0 24 24">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
         </div>
 
         <div className="splitGrid" style={{ marginTop: 10 }}>
@@ -96,9 +107,6 @@ export default function ExercisePickerModal({
           <button type="button" className="btn" onClick={onClearFilters}>
             Limpiar filtros
           </button>
-          <button type="button" className="btn" onClick={onClose}>
-            Cerrar
-          </button>
         </div>
 
         {resultsCount === 0 ? (
@@ -113,11 +121,14 @@ export default function ExercisePickerModal({
               activeRootLabel,
               showScopeChip: true,
               filterItem: canAdd,
-              renderActions: (entry) => (
-                <button className="btn" onClick={() => onAdd(entry)}>
-                  Agregar
-                </button>
-              ),
+              renderActions: (entry) =>
+                isAdded(entry) ? (
+                  <span className="chip pickerAdded">✓ Agregado</span>
+                ) : (
+                  <button className="btn" onClick={() => onAdd(entry)}>
+                    Agregar
+                  </button>
+                ),
             })}
           </div>
         )}

@@ -236,14 +236,14 @@ export default function Routines() {
       return;
     }
 
-    setError("");
     const next = entry.name;
     const nextIdentity = routineExerciseIdentity({ name: next, group: entry.group });
-    let added = false;
-    setDraftExercises((prev) => {
-      if (prev.some((value) => routineExerciseIdentity(value) === nextIdentity)) return prev;
-      added = true;
-      return [
+    // Se decide con el estado actual: el updater de setState corre mas tarde y no
+    // sirve para saber aqui si se agrego (antes el modal nunca se cerraba).
+    const duplicated = draftExercises.some((value) => routineExerciseIdentity(value) === nextIdentity);
+    setError(duplicated ? "Ese ejercicio ya está en la rutina." : "");
+    if (!duplicated) {
+      setDraftExercises((prev) => [
         ...prev,
         {
           name: next,
@@ -253,10 +253,7 @@ export default function Routines() {
           target_reps_max: String(DEFAULT_TARGET_REPS_MAX),
           ...splitRestSeconds(DEFAULT_REST_SECONDS),
         },
-      ];
-    });
-    if (added) {
-      setPickerOpen(false);
+      ]);
     }
   }
 
@@ -630,9 +627,14 @@ export default function Routines() {
 
 
             {draftExercises.length === 0 ? (
-              <div className="emptyState" style={{ marginTop: 12 }}>
-                Aún no agregaste ejercicios a la rutina.
-              </div>
+              <button
+                type="button"
+                className="btn primary btnAddFirstExercise"
+                style={{ marginTop: 12 }}
+                onClick={() => setPickerOpen(true)}
+              >
+                + Agregar ejercicio
+              </button>
             ) : (
               <div
                 className={`treeLeafList routineSortableList ${draggedExerciseIdentity ? "routineSortableListDragging" : ""}`}
@@ -676,9 +678,11 @@ export default function Routines() {
               </div>
             )}
 
-            <button type="button" className="linkBtn" style={{ marginTop: 12 }} onClick={() => setPickerOpen(true)}>
-              + Agregar ejercicio
-            </button>
+            {draftExercises.length > 0 ? (
+              <button type="button" className="btn btnAddFirstExercise" style={{ marginTop: 12 }} onClick={() => setPickerOpen(true)}>
+                + Agregar ejercicio
+              </button>
+            ) : null}
           </div>
 
           <div className="routineBuilderActions">
@@ -709,6 +713,11 @@ export default function Routines() {
           onClose={() => setPickerOpen(false)}
           onAdd={addSelectedExercise}
           canAdd={isLeafEntry}
+          isAdded={(entry) => {
+            const id = routineExerciseIdentity({ name: entry.name, group: entry.group });
+            return draftExercises.some((value) => routineExerciseIdentity(value) === id);
+          }}
+          addedCount={draftExercises.length}
           onSelectGroup={selectGroupFromTree}
         />
       ) : null}

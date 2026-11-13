@@ -515,17 +515,8 @@
      descanso (dos inputs + unidades) ocupa la fila completa. Antes cada campo
      ocupaba una fila entera y un ejercicio medía media pantalla. */
   .exerciseCard .splitGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-    margin-top: 6px !important;
-  }
-
-  .exerciseCard .smallLabel {
-    margin-bottom: 2px;
-  }
-
-  .exerciseCard .input {
-    padding: 6px 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .exerciseCard .splitGrid > div:last-child {
