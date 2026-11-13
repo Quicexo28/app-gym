@@ -47,6 +47,8 @@ const PULL_GROUP_TOKENS = new Set([
   "dorsales",
   "trapecio",
   "trapecios",
+  "lumbar",
+  "lumbares",
   "bicep",
   "biceps",
   "femoral",
@@ -63,7 +65,10 @@ const MUSCLE_GROUP_DISPLAY_ORDER: string[][] = [
   ["bicep", "biceps"],
   ["tricep", "triceps"],
   ["pecho", "pectoral", "pectorales"],
-  ["espalda", "dorsal", "dorsales", "trapecio", "trapecios"],
+  ["dorsal", "dorsales"],
+  ["espalda"],
+  ["trapecio", "trapecios"],
+  ["lumbar", "lumbares"],
   ["abdomen", "abdominales", "abdominal", "core"],
   ["gluteo", "gluteos"],
   ["abductor", "abductores"],
@@ -82,12 +87,16 @@ export type ExerciseFilters = {
 
 export type ExerciseCatalogEntry = {
   id: string;
+  /** Id del ejercicio guardado. Igual a `id`, salvo en las entradas espejo de compuestos. */
+  source_id: string;
   name: string;
   group: string;
   family: string;
   variation: string;
   subvariation: string;
   aliases: string[];
+  /** Musculos extra del ejercicio compuesto; `group` es el principal. */
+  extra_muscles: Array<{ group: string; weight: number }>;
   scope: "global" | "custom";
   owner_user_id: string | null;
   path: string[];
@@ -377,38 +386,58 @@ export function formatCatalogName(family: string, variation = "", subvariation =
     .join(" - ");
 }
 
+function buildCatalogEntry(item: ExerciseCatalogItem, groupLabel: string, mirror: boolean): ExerciseCatalogEntry | null {
+  const group = canonicalizeExerciseGroup(groupLabel || "") || "General";
+  const family = cleanExerciseText(item.family || "");
+  if (!family) return null;
+
+  const variation = cleanExerciseText(item.variation || "");
+  const subvariation = cleanExerciseText(item.subvariation || "");
+  const aliases = (item.aliases || []).map((alias) => cleanExerciseText(alias)).filter(Boolean);
+  const path = catalogPathFromParts(group, family, variation, subvariation);
+  const name = formatCatalogName(family, variation, subvariation) || family;
+  const searchable = [name, ...path, ...aliases].filter(Boolean).join(" ");
+  const depth = Math.min(5, Math.max(2, path.length)) as 2 | 3 | 4 | 5;
+
+  return {
+    id: mirror ? `${item.id}@${normalizeSearchValue(group)}` : item.id,
+    source_id: item.id,
+    name,
+    group,
+    family,
+    variation,
+    subvariation,
+    aliases,
+    extra_muscles: item.extra_muscles || [],
+    scope: item.scope === "global" ? "global" : "custom",
+    owner_user_id: item.owner_user_id || null,
+    path,
+    depth,
+    searchText: normalizeSearchValue(searchable),
+    created_at_utc: item.created_at_utc,
+  };
+}
+
+/**
+ * Una entrada por ejercicio, mas una entrada espejo en cada musculo que el ejercicio compuesto
+ * trabaja como principal (peso 1). Las espejo comparten `source_id` con la original.
+ */
 export function toExerciseCatalogEntries(items: ExerciseCatalogItem[]): ExerciseCatalogEntry[] {
-  return items
-    .map((item) => {
-      const group = canonicalizeExerciseGroup(item.group || "") || "General";
-      const family = cleanExerciseText(item.family || "");
-      if (!family) return null;
-
-      const variation = cleanExerciseText(item.variation || "");
-      const subvariation = cleanExerciseText(item.subvariation || "");
-      const aliases = (item.aliases || []).map((alias) => cleanExerciseText(alias)).filter(Boolean);
-      const path = catalogPathFromParts(group, family, variation, subvariation);
-      const name = formatCatalogName(family, variation, subvariation) || family;
-      const searchable = [name, ...path, ...aliases].filter(Boolean).join(" ");
-      const depth = Math.min(5, Math.max(2, path.length)) as 2 | 3 | 4 | 5;
-
-      return {
-        id: item.id,
-        name,
-        group,
-        family,
-        variation,
-        subvariation,
-        aliases,
-        scope: item.scope === "global" ? "global" : "custom",
-        owner_user_id: item.owner_user_id || null,
-        path,
-        depth,
-        searchText: normalizeSearchValue(searchable),
-        created_at_utc: item.created_at_utc,
-      } satisfies ExerciseCatalogEntry;
-    })
-    .filter((entry): entry is ExerciseCatalogEntry => Boolean(entry))
+  const entries: ExerciseCatalogEntry[] = [];
+  for (const item of items) {
+    const base = buildCatalogEntry(item, item.group || "", false);
+    if (!base) continue;
+    entries.push(base);
+    const seen = new Set([normalizeSearchValue(base.group)]);
+    for (const extra of item.extra_muscles || []) {
+      if (extra.weight < 1) continue;
+      const mirror = buildCatalogEntry(item, extra.group, true);
+      if (!mirror || seen.has(normalizeSearchValue(mirror.group))) continue;
+      seen.add(normalizeSearchValue(mirror.group));
+      entries.push(mirror);
+    }
+  }
+  return entries
     .sort((a, b) => a.path.join(" > ").localeCompare(b.path.join(" > ")));
 }
 

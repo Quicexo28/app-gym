@@ -1,4 +1,5 @@
 import type { CoachNote } from "../../api";
+import KebabMenu from "../../components/KebabMenu";
 import { APP_LOCALE } from "../../lib/locale";
 import { formatExerciseNameForCard, formatRepsRange, formatRestRecommendation } from "../../lib/session/format";
 import { setRowAnimationKey } from "../../lib/session/setAnimation";
@@ -22,6 +23,9 @@ type ExerciseCardProps = {
   onRemoveSet: (exIdx: number, setIdx: number) => void;
   onAddSet: (exIdx: number) => void;
   onDuplicateLastSet: (exIdx: number) => void;
+  onEditExercise: (exIdx: number) => void;
+  onReplaceExercise: (exIdx: number) => void;
+  onRemoveExercise: (exIdx: number) => void;
 };
 
 export default function ExerciseCard({
@@ -41,6 +45,9 @@ export default function ExerciseCard({
   onRemoveSet,
   onAddSet,
   onDuplicateLastSet,
+  onEditExercise,
+  onReplaceExercise,
+  onRemoveExercise,
 }: ExerciseCardProps) {
   const hasUnreadNote = exerciseNotes.some((note) => !note.read_at_utc);
   return (
@@ -67,6 +74,14 @@ export default function ExerciseCard({
             </svg>
             {hasUnreadNote ? <span className="notifyDot" aria-hidden="true" /> : null}
           </button>
+          <KebabMenu
+            ariaLabel="Opciones del ejercicio"
+            actions={[
+              { label: "Editar ejercicio", onSelect: () => onEditExercise(exIdx) },
+              { label: "Reemplazar", onSelect: () => onReplaceExercise(exIdx) },
+              { label: "Eliminar", destructive: true, onSelect: () => onRemoveExercise(exIdx) },
+            ]}
+          />
         </div>
       </div>
       <div className="chipRow" style={{ marginTop: 8 }}>
@@ -195,7 +210,7 @@ export default function ExerciseCard({
         })}
       </div>
 
-      <div className="hstack compact">
+      <div className="hstack compact setActions">
         <button className="btn" onClick={() => onAddSet(exIdx)} disabled={hasPendingSetDelete}>
           + Set vacio
         </button>

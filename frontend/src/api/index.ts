@@ -3,7 +3,7 @@ export type { JsonObject, Role, BackendPlan, PlanLabel, ViewScopes } from "./cor
 export { apiPing, authRegister, authLogin, authGoogle, authApple, authGuest, getMe, deleteMyAccount, adminSwitchPlan } from "./auth";
 export type { AuthUser, TokenResponse, AuthResponse, AppleLoginExtras } from "./auth";
 export { getRoutineStore, putRoutineStore, getExerciseCatalog, createCustomExercise, createGlobalExercise, updateCustomExercise, updateGlobalExercise, deleteCustomExercise, deleteGlobalExercise, importGlobalExercises, exportGlobalExercises } from "./exercises";
-export type { ExerciseScope, ExerciseCatalogApiItem, GlobalExerciseExportPayload, RoutineStorePayload } from "./exercises";
+export type { ExerciseScope, ExerciseExtraMuscle, ExerciseCatalogApiItem, GlobalExerciseExportPayload, RoutineStorePayload } from "./exercises";
 export { ingestSessions, getSessions, createRun, listRuns, getRunSummary, sendSessionHeartbeat } from "./sessions";
 export type { SessionSet, SessionExercise, SessionRecord, IngestResult, RunSummaryInfo, RunCreateResponse, RunListItem, RunScenario, ExerciseState, TrainingEvent, NextSetPrediction, TrainingSignal, Projection, AthleteInsights, PredictionTrackRecord, RunSummaryResponse } from "./sessions";
 export { getAccessibleAthletes, getBodyMetricDefinitions, getBodyMeasurementsHistory, createBodyMeasurement } from "./body";

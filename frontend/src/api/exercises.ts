@@ -1,5 +1,8 @@
 import { http } from "./core";
 
+/** Musculo extra de un ejercicio compuesto: weight 1 = segundo principal, 0.5 = secundario. */
+export type ExerciseExtraMuscle = { group: string; weight: number };
+
 export type ExerciseScope = "global" | "custom";
 
 export type ExerciseCatalogApiItem = {
@@ -9,6 +12,7 @@ export type ExerciseCatalogApiItem = {
   variation?: string | null;
   subvariation?: string | null;
   aliases: string[];
+  extra_muscles?: ExerciseExtraMuscle[];
   scope: ExerciseScope;
   owner_user_id?: string | null;
   created_at_utc: string;
@@ -24,6 +28,7 @@ export type GlobalExerciseExportPayload = {
     variation?: string | null;
     subvariation?: string | null;
     aliases: string[];
+    extra_muscles?: ExerciseExtraMuscle[];
   }>;
 };
 

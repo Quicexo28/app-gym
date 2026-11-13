@@ -66,6 +66,7 @@ function mapApiItem(item: ExerciseCatalogApiItem): ExerciseCatalogItem {
     variation: item.variation || undefined,
     subvariation: item.subvariation || undefined,
     aliases: item.aliases,
+    extra_muscles: item.extra_muscles,
     scope: item.scope,
     owner_user_id: item.owner_user_id || null,
     created_at_utc: item.created_at_utc,

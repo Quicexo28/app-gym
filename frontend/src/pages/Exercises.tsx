@@ -235,7 +235,8 @@ export default function Exercises() {
     return isAdminMode || entry.scope === "custom";
   }
 
-  function startEdit(entry: ExerciseCatalogEntry) {
+  function startEdit(clicked: ExerciseCatalogEntry) {
+    const entry = entries.find((candidate) => candidate.id === clicked.source_id) ?? clicked;
     if (!canEditEntry(entry)) return;
     setError("");
     const subvariationChain = splitSubvariationChain(entry.subvariation || "");
@@ -361,7 +362,8 @@ export default function Exercises() {
     }
   }
 
-  async function remove(entry: ExerciseCatalogEntry) {
+  async function remove(clicked: ExerciseCatalogEntry) {
+    const entry = entries.find((candidate) => candidate.id === clicked.source_id) ?? clicked;
     try {
       const item = items.find((candidate) => candidate.id === entry.id);
       if (!item) return;

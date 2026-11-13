@@ -1,12 +1,18 @@
 import type { SessionRecord } from "../api";
 
-/** Los 12 grupos del mapa corporal (mismos que MUSCLE_GROUPS del backend, sin tildes y en singular). */
+/**
+ * Los 15 grupos del mapa corporal: los mismos que MUSCLE_GROUPS del backend, en el mismo orden, sin tildes y en singular.
+ * "espalda" es el grupo "Espalda Alta" del backend (romboides y espalda media).
+ */
 export const BODY_SLUGS = [
   "hombro",
   "bicep",
   "tricep",
   "pecho",
+  "dorsal",
   "espalda",
+  "trapecio",
+  "lumbar",
   "abdomen",
   "gluteo",
   "abductor",
@@ -24,7 +30,10 @@ export const BODY_SLUG_LABELS: Record<BodySlug, string> = {
   bicep: "Bíceps",
   tricep: "Tríceps",
   pecho: "Pecho",
-  espalda: "Espalda",
+  dorsal: "Dorsales",
+  espalda: "Espalda alta",
+  trapecio: "Trapecio",
+  lumbar: "Lumbares",
   abdomen: "Abdomen",
   gluteo: "Glúteos",
   abductor: "Abductores",
@@ -40,7 +49,10 @@ const ALIASES: Record<string, BodySlug> = {
   bicep: "bicep", biceps: "bicep",
   tricep: "tricep", triceps: "tricep",
   pecho: "pecho", pectoral: "pecho", pectorales: "pecho",
-  espalda: "espalda", dorsal: "espalda", dorsales: "espalda", trapecio: "espalda", trapecios: "espalda",
+  dorsal: "dorsal", dorsales: "dorsal",
+  espalda: "espalda", romboide: "espalda", romboides: "espalda",
+  trapecio: "trapecio", trapecios: "trapecio",
+  lumbar: "lumbar", lumbares: "lumbar",
   abdomen: "abdomen", abdominal: "abdomen", abdominales: "abdomen", core: "abdomen",
   gluteo: "gluteo", gluteos: "gluteo",
   abductor: "abductor", abductores: "abductor",
@@ -50,8 +62,8 @@ const ALIASES: Record<string, BodySlug> = {
   pantorrilla: "pantorrilla", pantorrillas: "pantorrilla", gemelo: "pantorrilla", gemelos: "pantorrilla",
 };
 
-/** Opacidad de un grupo sin datos: visible pero tenue. */
-export const MIN_OPACITY = 0.12;
+/** Opacidad de un grupo sin series: 0, el cuerpo queda gris. */
+export const MIN_OPACITY = 0;
 /** Opacidad del grupo mas entrenado. */
 export const MAX_OPACITY = 0.95;
 /** Opacidad del grupo con menos datos (> 0): se separa claramente de "sin entrenar". */
@@ -61,10 +73,18 @@ function stripAccents(value: string): string {
   return value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-/** Resuelve un nombre de grupo del catalogo ("Glúteos", "Hombros"...) a uno de los 12 slugs, o null. */
+// Frases de varias palabras: se miran antes que las palabras sueltas (igual que _PHRASES del backend).
+const PHRASES: Record<string, BodySlug> = {
+  "espalda alta": "espalda",
+  "espalda baja": "lumbar",
+};
+
+/** Resuelve un nombre de grupo del catalogo ("Glúteos", "Hombros"...) a uno de los 15 slugs, o null. */
 export function toBodySlug(group: string | null | undefined): BodySlug | null {
   if (!group) return null;
   const words = stripAccents(group).split(/[^a-z0-9]+/).filter(Boolean);
+  const text = words.join(" ");
+  for (const [phrase, slug] of Object.entries(PHRASES)) if (text.includes(phrase)) return slug;
   for (const word of words) {
     const slug = ALIASES[word];
     if (slug) return slug;
@@ -94,6 +114,31 @@ function normalizeName(value: string): string {
   return value.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+type MuscleItem = { group: string; extra_muscles?: Array<{ group: string; weight: number }> };
+
+/**
+ * Peso de cada grupo en un ejercicio: el principal pesa 1, los extra su `weight` (maximo 1).
+ * Dos grupos del catalogo pueden caer en el mismo slug (p.ej. Pecho y Pectorales): gana el mayor peso.
+ */
+export function muscleWeights(item: MuscleItem | undefined): Map<BodySlug, number> {
+  const weights = new Map<BodySlug, number>();
+  const main = toBodySlug(item?.group);
+  if (main) weights.set(main, 1);
+  for (const extra of item?.extra_muscles || []) {
+    const extraSlug = toBodySlug(extra.group);
+    if (!extraSlug || !(extra.weight > 0)) continue;
+    weights.set(extraSlug, Math.max(weights.get(extraSlug) ?? 0, Math.min(extra.weight, 1)));
+  }
+  return weights;
+}
+
+/** Valores 0..1 por grupo para marcar en el cuerpo los musculos que trabaja un ejercicio. */
+export function exerciseBodyValues(item: MuscleItem | undefined): BodyValues {
+  const values = emptyBodyValues();
+  for (const [slug, weight] of muscleWeights(item)) values[slug] = weight;
+  return values;
+}
+
 export type BodyAggregation = {
   /** Series registradas por grupo en el periodo. */
   sets: BodyValues;
@@ -104,15 +149,16 @@ export type BodyAggregation = {
 /**
  * Series por grupo muscular desde las sesiones ya cargadas (la misma fuente que las graficas de Cargas).
  * `catalog` mapea nombre de ejercicio -> grupo del catalogo. `sinceDays` null = todo el historico.
+ * Un ejercicio compuesto suma ademas a sus musculos extra: peso 1 = segundo principal, 0.5 = secundario.
  */
 export function aggregateSetsByBodyGroup(
   sessions: SessionRecord[],
-  catalog: Iterable<{ name: string; group: string }>,
+  catalog: Iterable<{ name: string; group: string; extra_muscles?: Array<{ group: string; weight: number }> }>,
   sinceDays: number | null,
   now: Date = new Date(),
 ): BodyAggregation {
-  const groupByName = new Map<string, string>();
-  for (const item of catalog) groupByName.set(normalizeName(item.name), item.group);
+  const itemByName = new Map<string, { group: string; extra_muscles?: Array<{ group: string; weight: number }> }>();
+  for (const item of catalog) itemByName.set(normalizeName(item.name), item);
 
   const cutoff = sinceDays == null ? -Infinity : now.getTime() - sinceDays * 86_400_000;
   const sets = emptyBodyValues();
@@ -124,9 +170,11 @@ export function aggregateSetsByBodyGroup(
     for (const exercise of session.exercises || []) {
       const count = (exercise.sets || []).length;
       if (count === 0) continue;
-      const slug = toBodySlug(groupByName.get(normalizeName(exercise.name)));
-      if (slug) sets[slug] += count;
-      else unclassifiedSets += count;
+      const item = itemByName.get(normalizeName(exercise.name));
+      const slug = toBodySlug(item?.group);
+      if (!slug) unclassifiedSets += count;
+      const weights = muscleWeights(item);
+      for (const [target, weight] of weights) sets[target] += count * weight;
     }
   }
   return { sets, unclassifiedSets };

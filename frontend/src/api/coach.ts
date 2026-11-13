@@ -1,14 +1,17 @@
 import { type JsonObject, http } from "./core";
 import { type ProgressSnapshotMetric } from "./profile";
 
-// Mismos 12 grupos y orden que coach_ai.training_core.muscle_groups (backend) -
+// Mismos 15 grupos y orden que coach_ai.training_core.muscle_groups (backend) -
 // deben coincidir literalmente: son los valores validos de AthletePlan.priority_muscle_groups.
 export const MUSCLE_GROUPS = [
   "Hombros",
   "Biceps",
   "Triceps",
   "Pecho",
-  "Espalda",
+  "Dorsales",
+  "Espalda Alta",
+  "Trapecio",
+  "Lumbares",
   "Abdomen",
   "Gluteos",
   "Abductores",

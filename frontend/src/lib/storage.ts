@@ -28,6 +28,7 @@ export type ExerciseCatalogItem = {
   variation?: string;
   subvariation?: string;
   aliases?: string[];
+  extra_muscles?: Array<{ group: string; weight: number }>;
   scope?: "global" | "custom";
   owner_user_id?: string | null;
   created_at_utc: string;

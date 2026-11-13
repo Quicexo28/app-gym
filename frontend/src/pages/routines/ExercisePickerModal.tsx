@@ -28,6 +28,8 @@ type Props = {
   isAdded: (entry: ExerciseCatalogEntry) => boolean;
   addedCount: number;
   onSelectGroup: (group: string) => void;
+  title?: string;
+  hint?: string;
 };
 
 export default function ExercisePickerModal({
@@ -48,6 +50,8 @@ export default function ExercisePickerModal({
   isAdded,
   addedCount,
   onSelectGroup,
+  title = "Agregar ejercicio",
+  hint,
 }: Props) {
   return (
     <div className="modalOverlay modalOverlaySheet" role="presentation" onClick={onClose}>
@@ -60,8 +64,8 @@ export default function ExercisePickerModal({
       >
         <div className="sectionHead pickerHead">
           <div>
-            <h3 id="routine-picker-title">Agregar ejercicio</h3>
-            <p>{addedCount > 0 ? `En la rutina: ${addedCount}` : "Elige ejercicios finales del catálogo."}</p>
+            <h3 id="routine-picker-title">{title}</h3>
+            <p>{hint ?? (addedCount > 0 ? `En la rutina: ${addedCount}` : "Elige ejercicios finales del catálogo.")}</p>
           </div>
           <button type="button" className="pickerClose" aria-label="Cerrar" onClick={onClose}>
             <svg className="iconGlyph" viewBox="0 0 24 24">

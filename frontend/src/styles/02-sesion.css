@@ -289,6 +289,15 @@
   gap: 8px;
 }
 
+.setActions {
+  margin-top: 12px;
+}
+
+.setActions .btn {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
 .setRowCard {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -863,4 +872,52 @@
   gap: 10px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+/* Temporizador de sesión: compacto; sticky lo ancla arriba solo al pasar su posición. */
+.sessionTimerBar {
+  position: sticky;
+  top: env(safe-area-inset-top);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated), transparent 6%);
+  backdrop-filter: blur(8px);
+}
+
+.sessionTimerValue {
+  font-size: 1.1rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.sessionTimerBtn {
+  margin-left: auto;
+  padding: 2px 10px;
+  min-height: 0;
+  font-size: 13px;
+}
+
+.dataSection {
+  padding: 8px 12px;
+}
+
+.dataSectionToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }

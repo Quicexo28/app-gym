@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import BodyMap from "../components/BodyMap";
 import { ChartPlaceholder, ProgressChart } from "../components/Charts";
+import { exerciseBodyValues } from "../lib/bodyMap";
 import { formatPercentDelta } from "../lib/bodyMetrics";
 import { buildExerciseHistory, type ExerciseLogPoint } from "../lib/loadHistory";
 import { formatWeight } from "../lib/units";
 import { useAthleteId } from "../state/athlete";
+import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { usePreferences } from "../state/preferences";
 import { APP_LOCALE } from "../lib/locale";
 import { useAthleteSessions } from "../lib/useAthleteSessions";
@@ -23,6 +26,12 @@ function deltaClass(deltaLabel: string | null): string {
   return deltaLabel.startsWith("-") ? "metricCardDelta down" : "metricCardDelta up";
 }
 
+function muscleRoleLabel(weight: number): string {
+  if (weight >= 1) return "principal";
+  if (weight >= 0.5) return "secundario";
+  return "apoyo";
+}
+
 function formatSetsSummary(point: ExerciseLogPoint, weightUnit: "kg" | "lb"): string {
   return point.sets
     .map((set) => `${set.reps}x${formatWeight(set.load_kg, weightUnit)}`)
@@ -36,7 +45,16 @@ export default function CargasExerciseDetail() {
   const [athleteId] = useAthleteId();
   const { prefs } = usePreferences();
   const { sessions, loading, error } = useAthleteSessions(athleteId);
+  const { entries } = useExerciseCatalog();
   const [compareDates, setCompareDates] = useState<string[]>([]);
+
+  const muscles = useMemo(() => {
+    const wanted = exerciseName.replace(/\s+/g, " ").trim().toLowerCase();
+    const entry = entries.find((e) => e.name.replace(/\s+/g, " ").trim().toLowerCase() === wanted);
+    if (!entry) return null;
+    const values = exerciseBodyValues(entry);
+    return Object.values(values).some((v) => v > 0) ? values : null;
+  }, [entries, exerciseName]);
 
   const history = useMemo(() => buildExerciseHistory(sessions, exerciseName), [sessions, exerciseName]);
   const latest = history[history.length - 1] || null;
@@ -73,6 +91,16 @@ export default function CargasExerciseDetail() {
           </button>
         </div>
       </section>
+
+      {muscles ? (
+        <section className="surface">
+          <div className="sectionHead">
+            <h3>Músculos que trabaja</h3>
+            <p>Más opacidad = más peso en este ejercicio.</p>
+          </div>
+          <BodyMap values={muscles} unit="" formatValue={muscleRoleLabel} />
+        </section>
+      ) : null}
 
       {loading ? (
         <section className="surface">

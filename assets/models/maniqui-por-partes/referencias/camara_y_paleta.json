@@ -1,0 +1,83 @@
+{
+  "paleta": {
+    "cabeza": "#A0522D",
+    "cuello": "#00FF80",
+    "trapecio": "#FF0000",
+    "dorsal": "#00FF00",
+    "lumbar": "#0000FF",
+    "hombro": "#FFFF00",
+    "pecho": "#FF8000",
+    "serrato": "#00FFFF",
+    "oblicuo": "#FF00FF",
+    "abdomen": "#8000FF",
+    "bicep": "#80FF00",
+    "tricep": "#FF0080",
+    "antebrazo": "#0080FF",
+    "gluteo": "#800000",
+    "cuadriceps": "#008000",
+    "femoral": "#000080",
+    "aductor": "#808000",
+    "abductor": "#800080",
+    "pantorrilla": "#008080",
+    "pie": "#FF8080"
+  },
+  "camara": {
+    "px_por_cm": 5.233777777777778,
+    "imagen_px": 1024,
+    "y_pie_cm": 0.0,
+    "centro_x_cm": 0.0,
+    "centro_z_cm": -0.8582824375480413,
+    "unidades_modelo_por_cm": 0.0006666666666666666,
+    "margen_inferior_px": 40.96,
+    "vistas": {
+      "frente": {
+        "u": [
+          1,
+          0,
+          0
+        ],
+        "d": [
+          0,
+          0,
+          1
+        ]
+      },
+      "espalda": {
+        "u": [
+          -1,
+          0,
+          0
+        ],
+        "d": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "lado_izq": {
+        "u": [
+          0,
+          0,
+          -1
+        ],
+        "d": [
+          1,
+          0,
+          0
+        ]
+      },
+      "lado_der": {
+        "u": [
+          0,
+          0,
+          1
+        ],
+        "d": [
+          -1,
+          0,
+          0
+        ]
+      }
+    }
+  }
+}

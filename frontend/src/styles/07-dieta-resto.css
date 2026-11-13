@@ -647,32 +647,34 @@
 
 .bodyMapStage {
   position: relative;
-  width: min(100%, 280px);
-  max-height: 460px;
+  width: min(100%, 300px);
+  aspect-ratio: 3 / 4;
 }
 
-.bodyMapBase,
-.bodyMapLayer {
+.bodyModel3D {
   position: absolute;
   inset: 0;
+  cursor: grab;
+  touch-action: pan-y; /* el scroll vertical sigue funcionando; el giro es horizontal */
+  user-select: none;
+}
+
+.bodyModel3D:active {
+  cursor: grabbing;
+}
+
+.bodyModelCanvas {
+  display: block;
   width: 100%;
   height: 100%;
 }
 
-.bodyMapBase {
-  object-fit: contain;
-  pointer-events: none;
-  user-select: none;
-}
-
-.bodyMapLayer {
-  background: var(--accent);
-  pointer-events: none;
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  transition: opacity 160ms ease;
+.bodyMapLoading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-soft);
 }
 
 .bodyMapFocus {

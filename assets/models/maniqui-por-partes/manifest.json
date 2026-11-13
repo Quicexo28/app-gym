@@ -1,0 +1,224 @@
+{
+  "fuentes": {
+    "torso": "fuentes/torso.glb",
+    "extremidades": "fuentes/extremidades.glb"
+  },
+  "escala": {
+    "torso": 0.5053691275167785,
+    "extremidades": 0.8270805369127516
+  },
+  "torso_base_y_cm": 86.15460629635892,
+  "subida_piernas_cm": 2.0,
+  "torso_z_cm": -1.2,
+  "caras_pasadas_a_lumbar": {
+    "dorsal_izq": 113,
+    "dorsal_der": 150,
+    "trapecio_medio": 4,
+    "pelvis": 264
+  },
+  "caras_quitadas_en_costura_pelvis_piernas": {
+    "pelvis": 512,
+    "gluteo_der": 91,
+    "gluteo_izq": 24,
+    "cuadriceps_der": 175,
+    "cuadriceps_izq": 51,
+    "aductor_der": 0,
+    "aductor_izq": 3
+  },
+  "caras_movidas_borde_pelvis_dorsales": {
+    "pelvis": 139,
+    "dorsal_der": 42,
+    "dorsal_izq": 5,
+    "lumbar": 7
+  },
+  "islas_absorbidas_por_lumbar": {
+    "dorsal_izq": 3,
+    "dorsal_der": 0,
+    "pelvis": 0,
+    "trapecio_medio": 2
+  },
+  "caras_internas_quitadas": {
+    "abdomen": 1253,
+    "aductor_der": 114,
+    "aductor_izq": 116,
+    "antebrazo_der": 104,
+    "antebrazo_izq": 111,
+    "biceps_der": 101,
+    "biceps_izq": 91,
+    "cabeza": 229,
+    "cuadriceps_der": 716,
+    "cuadriceps_izq": 508,
+    "cuello": 770,
+    "dorsal_der": 1731,
+    "dorsal_izq": 1572,
+    "femoral_der": 605,
+    "femoral_izq": 554,
+    "gluteo_der": 465,
+    "gluteo_izq": 287,
+    "hombro_der": 687,
+    "hombro_izq": 635,
+    "interno_cadera_der": 1461,
+    "interno_cadera_izq": 1593,
+    "interno_hombro_der": 1047,
+    "interno_hombro_izq": 1160,
+    "lumbar": 157,
+    "mano_der": 53,
+    "mano_izq": 47,
+    "pantorrilla_der": 158,
+    "pantorrilla_izq": 165,
+    "pecho": 3149,
+    "pelvis": 3733,
+    "pie_der": 60,
+    "pie_izq": 61,
+    "trapecio_medio": 756,
+    "trapecio_superior": 930,
+    "tricep_der": 516,
+    "tricep_izq": 398
+  },
+  "parts": {
+    "abdomen": {
+      "color": "#e6194b",
+      "faces": 7081
+    },
+    "aductor_der": {
+      "color": "#3cb44b",
+      "faces": 316
+    },
+    "aductor_izq": {
+      "color": "#0082c8",
+      "faces": 329
+    },
+    "antebrazo_der": {
+      "color": "#f58231",
+      "faces": 1952
+    },
+    "antebrazo_izq": {
+      "color": "#911eb4",
+      "faces": 1905
+    },
+    "biceps_der": {
+      "color": "#46f0f0",
+      "faces": 753
+    },
+    "biceps_izq": {
+      "color": "#f032e6",
+      "faces": 767
+    },
+    "cabeza": {
+      "color": "#d2f53c",
+      "faces": 6899
+    },
+    "cuadriceps_der": {
+      "color": "#000080",
+      "faces": 3523
+    },
+    "cuadriceps_izq": {
+      "color": "#aa6e28",
+      "faces": 2707
+    },
+    "cuello": {
+      "color": "#800000",
+      "faces": 2992
+    },
+    "dorsal_der": {
+      "color": "#008080",
+      "faces": 4491
+    },
+    "dorsal_izq": {
+      "color": "#6e6e6e",
+      "faces": 4339
+    },
+    "femoral_der": {
+      "color": "#ffe119",
+      "faces": 3057
+    },
+    "femoral_izq": {
+      "color": "#fabebe",
+      "faces": 2746
+    },
+    "gluteo_der": {
+      "color": "#6464ff",
+      "faces": 2518
+    },
+    "gluteo_izq": {
+      "color": "#96e696",
+      "faces": 1723
+    },
+    "hombro_der": {
+      "color": "#c878c8",
+      "faces": 1549
+    },
+    "hombro_izq": {
+      "color": "#3c3c3c",
+      "faces": 1613
+    },
+    "interno_cadera_der": {
+      "color": "#bebebe",
+      "faces": 153
+    },
+    "interno_cadera_izq": {
+      "color": "#e6194b",
+      "faces": 193
+    },
+    "interno_hombro_der": {
+      "color": "#3cb44b",
+      "faces": 13
+    },
+    "interno_hombro_izq": {
+      "color": "#0082c8",
+      "faces": 92
+    },
+    "lumbar": {
+      "color": "#f58231",
+      "faces": 374
+    },
+    "mano_der": {
+      "color": "#911eb4",
+      "faces": 3131
+    },
+    "mano_izq": {
+      "color": "#46f0f0",
+      "faces": 3007
+    },
+    "pantorrilla_der": {
+      "color": "#f032e6",
+      "faces": 4230
+    },
+    "pantorrilla_izq": {
+      "color": "#d2f53c",
+      "faces": 4059
+    },
+    "pecho": {
+      "color": "#000080",
+      "faces": 6367
+    },
+    "pelvis": {
+      "color": "#aa6e28",
+      "faces": 3183
+    },
+    "pie_der": {
+      "color": "#800000",
+      "faces": 3136
+    },
+    "pie_izq": {
+      "color": "#008080",
+      "faces": 2977
+    },
+    "trapecio_medio": {
+      "color": "#6e6e6e",
+      "faces": 2800
+    },
+    "trapecio_superior": {
+      "color": "#ffe119",
+      "faces": 3902
+    },
+    "tricep_der": {
+      "color": "#fabebe",
+      "faces": 1484
+    },
+    "tricep_izq": {
+      "color": "#6464ff",
+      "faces": 1414
+    }
+  }
+}
