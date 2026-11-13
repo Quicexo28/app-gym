@@ -268,6 +268,7 @@ export default function Home() {
 
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [plannedBlocks, setPlannedBlocks] = useState<PlannedBlock[]>([]);
+  const [plannedLoaded, setPlannedLoaded] = useState(false);
   const [weights, setWeights] = useState<number[]>([]);
   const [routinesVersion, setRoutinesVersion] = useState(0);
   const [error, setError] = useState("");
@@ -326,10 +327,12 @@ export default function Home() {
           }
         }
         setPlannedBlocks(rows);
+        setPlannedLoaded(true);
       })
       .catch(() => {
         if (cancelled) return;
         setPlannedBlocks([]);
+        setPlannedLoaded(true);
       });
 
     // Peso: solo la tendencia, el detalle vive en Progreso.
@@ -596,6 +599,16 @@ export default function Home() {
           <div className="sectionHead homeHead">
             <h3>Sesión del día</h3>
             {trainingBars.length > 0 ? <span className="chip">{trainingChartTitle}</span> : null}
+            {plannedLoaded && plannedBlocks.length === 0 ? (
+              <button
+                type="button"
+                className="btn"
+                style={{ padding: "4px 10px", fontSize: 12, minHeight: 0 }}
+                onClick={() => nav("/training/plan")}
+              >
+                Planificar entreno
+              </button>
+            ) : null}
           </div>
           {trainingBars.length > 0 ? (
             <div style={{ marginTop: 12 }}>
