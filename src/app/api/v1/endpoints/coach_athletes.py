@@ -14,10 +14,11 @@ from app.auth.deps import get_current_user, require_coach_view
 from app.coach.capacity import require_capacity
 from app.coach.muscle_groups import validate_priority_muscle_groups
 from app.db.engine import get_db
-from app.db.models import Athlete, AthletePlan, CoachAthleteAssignment
+from app.db.models import Athlete, AthletePlan, CoachAthleteAssignment, ExerciseCatalog
 from app.db.models_auth import User
 from app.db.repo import list_sessions_for_athlete
 from coach_ai.muscle_insights import compute_muscle_group_states, find_weakest_group
+from coach_ai.training_core.naming import normalize_exercise_name
 
 DbSession = Annotated[Session, Depends(get_db)]
 router = APIRouter(prefix="/coach", tags=["coach"])
@@ -187,6 +188,25 @@ class MuscleInsightsResponse(BaseModel):
     weakest_group: str | None
 
 
+def _catalog_muscle_maps(
+    db: Session,
+) -> tuple[dict[str, str | None], dict[str, list[dict]]]:
+    """Catalogo global: nombre normalizado -> grupo principal, y nombre -> musculos extra.
+
+    El grupo del catalogo se usa cuando la sesion no trae grupo o trae el antiguo "Espalda".
+    """
+    rows = db.execute(select(ExerciseCatalog).where(ExerciseCatalog.owner_user_id.is_(None))).scalars()
+    group_by_name: dict[str, str | None] = {}
+    extras_by_name: dict[str, list[dict]] = {}
+    for row in rows:
+        parts = [row.family, row.variation, row.subvariation]
+        key = normalize_exercise_name(" - ".join(p for p in parts if p))
+        group_by_name[key] = row.group
+        if row.extra_muscles:
+            extras_by_name[key] = list(row.extra_muscles)
+    return group_by_name, extras_by_name
+
+
 @router.get("/athletes/{athlete_id}/muscle-insights", response_model=MuscleInsightsResponse)
 def athlete_muscle_insights(
     athlete_id: str,
@@ -199,7 +219,13 @@ def athlete_muscle_insights(
     priority_groups = list(plan.priority_muscle_groups) if plan else []
 
     sessions = list_sessions_for_athlete(db, athlete_id)
-    states = compute_muscle_group_states(sessions, priority_groups)
+    group_by_name, extras_by_name = _catalog_muscle_maps(db)
+    states = compute_muscle_group_states(
+        sessions,
+        priority_groups,
+        catalog_group_by_name=group_by_name,
+        catalog_extras_by_name=extras_by_name,
+    )
     weakest = find_weakest_group(states)
 
     return MuscleInsightsResponse(

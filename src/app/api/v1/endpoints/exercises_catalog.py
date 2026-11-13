@@ -29,6 +29,15 @@ class NormalizedExercise:
     subvariation: str
     aliases: list[str]
     path_key: str
+    # None = no venia en la peticion: al editar o importar se conservan los actuales.
+    extra_muscles: list[dict] | None
+
+
+class ExtraMuscle(BaseModel):
+    """Musculo extra de un ejercicio compuesto. weight 1.0 = segundo principal; 0.5 = secundario."""
+
+    group: str = Field(min_length=1, max_length=120)
+    weight: float = Field(default=0.5, gt=0, le=1)
 
 
 class ExerciseCreateRequest(BaseModel):
@@ -37,6 +46,8 @@ class ExerciseCreateRequest(BaseModel):
     variation: str | None = Field(default=None, max_length=160)
     subvariation: str | None = Field(default=None, max_length=180)
     aliases: list[str] | None = None
+    # None = no tocar los actuales (editar/importar); [] = quitar todos.
+    extra_muscles: list[ExtraMuscle] | None = Field(default=None, max_length=6)
 
 
 class ExerciseResponse(BaseModel):
@@ -46,6 +57,7 @@ class ExerciseResponse(BaseModel):
     variation: str | None
     subvariation: str | None
     aliases: list[str]
+    extra_muscles: list[ExtraMuscle]
     scope: Literal["global", "custom"]
     owner_user_id: str | None
     created_at_utc: str
@@ -69,6 +81,7 @@ class ExerciseExportItem(BaseModel):
     variation: str | None = None
     subvariation: str | None = None
     aliases: list[str] = Field(default_factory=list)
+    extra_muscles: list[ExtraMuscle] = Field(default_factory=list)
 
 
 class ExerciseExportResponse(BaseModel):
@@ -95,6 +108,21 @@ def _make_path_key(group: str, family: str, variation: str, subvariation: str) -
     return "|".join([_normalize_key(group), _normalize_key(family), _normalize_key(variation), _normalize_key(subvariation)])
 
 
+def _normalize_extra_muscles(extras: list[ExtraMuscle], primary_group: str) -> list[dict]:
+    """Limpia los musculos extra: sin vacios, sin el grupo principal, sin repetidos (gana el mayor peso)."""
+    primary_key = _normalize_key(primary_group)
+    by_key: dict[str, dict] = {}
+    for extra in extras:
+        group = _clean_text(extra.group)
+        key = _normalize_key(group)
+        if not group or key == primary_key:
+            continue
+        current = by_key.get(key)
+        if current is None or extra.weight > current["weight"]:
+            by_key[key] = {"group": group, "weight": extra.weight}
+    return sorted(by_key.values(), key=lambda item: _normalize_key(item["group"]))
+
+
 def _normalize_payload(payload: ExerciseCreateRequest) -> NormalizedExercise:
     group = _clean_text(payload.group) or "General"
     family = _clean_text(payload.family)
@@ -113,6 +141,11 @@ def _normalize_payload(payload: ExerciseCreateRequest) -> NormalizedExercise:
         if _clean_text(alias)
     ]
     aliases = sorted(set(alias_candidates))
+    extra_muscles = (
+        None
+        if payload.extra_muscles is None
+        else _normalize_extra_muscles(payload.extra_muscles, group)
+    )
 
     return NormalizedExercise(
         group=group,
@@ -121,6 +154,7 @@ def _normalize_payload(payload: ExerciseCreateRequest) -> NormalizedExercise:
         subvariation=subvariation,
         aliases=aliases,
         path_key=_make_path_key(group, family, variation, subvariation),
+        extra_muscles=extra_muscles,
     )
 
 
@@ -133,6 +167,7 @@ def _to_response(row: ExerciseCatalog) -> ExerciseResponse:
         variation=row.variation,
         subvariation=row.subvariation,
         aliases=[str(x) for x in (row.aliases or [])],
+        extra_muscles=[ExtraMuscle(**x) for x in (row.extra_muscles or [])],
         scope=scope,
         owner_user_id=str(row.owner_user_id) if row.owner_user_id else None,
         created_at_utc=row.created_at_utc.isoformat(),
@@ -189,6 +224,7 @@ def _create_exercise(
         variation=normalized.variation or None,
         subvariation=normalized.subvariation or None,
         aliases=normalized.aliases or None,
+        extra_muscles=normalized.extra_muscles or None,
     )
     db.add(row)
     db.commit()
@@ -219,6 +255,8 @@ def _update_exercise(
     row.variation = normalized.variation or None
     row.subvariation = normalized.subvariation or None
     row.aliases = normalized.aliases or None
+    if normalized.extra_muscles is not None:
+        row.extra_muscles = normalized.extra_muscles or None
     db.commit()
     db.refresh(row)
     return row
@@ -361,6 +399,7 @@ def export_global_catalog(
             variation=row.variation,
             subvariation=row.subvariation,
             aliases=[str(x) for x in (row.aliases or [])],
+            extra_muscles=[ExtraMuscle(**x) for x in (row.extra_muscles or [])],
         )
         for row in ordered
     ]
@@ -396,6 +435,7 @@ def import_global_catalog(
             subvariation=normalized.subvariation,
             aliases=merged_aliases,
             path_key=normalized.path_key,
+            extra_muscles=normalized.extra_muscles,
         )
 
     total = len(normalized_items)
@@ -423,6 +463,7 @@ def import_global_catalog(
                     variation=normalized.variation or None,
                     subvariation=normalized.subvariation or None,
                     aliases=normalized.aliases or None,
+                    extra_muscles=normalized.extra_muscles or None,
                 )
             )
             imported += 1
@@ -435,6 +476,10 @@ def import_global_catalog(
             or (row.variation or "") != normalized.variation
             or (row.subvariation or "") != normalized.subvariation
             or [str(x) for x in (row.aliases or [])] != aliases
+            or (
+                normalized.extra_muscles is not None
+                and (row.extra_muscles or []) != normalized.extra_muscles
+            )
         )
         if not changed:
             skipped += 1
@@ -445,6 +490,8 @@ def import_global_catalog(
         row.variation = normalized.variation or None
         row.subvariation = normalized.subvariation or None
         row.aliases = aliases or None
+        if normalized.extra_muscles is not None:
+            row.extra_muscles = normalized.extra_muscles or None
         updated += 1
 
     db.commit()

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 from coach_ai.latents.confidence import combine_confidence
 from coach_ai.latents.plateau import compute_plateau_probability
-from coach_ai.training_core.muscle_groups import canonicalize_muscle_group
+from coach_ai.training_core.muscle_groups import muscle_shares
 from coach_ai.training_core.naming import normalize_exercise_name
 from coach_ai.training_core.normalization import fit_normalizer, normalize_series
 from coach_ai.training_core.pipeline import AthleteSeries
@@ -44,13 +44,27 @@ class MuscleGroupState:
     exercises_involved: list[str]
 
 
-def _exercise_group(
-    exercise: StrengthExercise, catalog_group_by_name: dict[str, str | None]
-) -> str | None:
+def _is_legacy_group(raw_group: str) -> bool:
+    return normalize_exercise_name(raw_group) == "espalda"
+
+
+def _exercise_shares(
+    exercise: StrengthExercise,
+    catalog_group_by_name: dict[str, str | None],
+    catalog_extras_by_name: dict[str, list[dict]],
+) -> dict[str, float]:
+    """Musculos que trabaja el ejercicio y con que peso (principal 1.0, secundario 0.5).
+
+    El grupo principal sale de la sesion (meta["group"]) o del catalogo; los
+    musculos extra siempre salen del catalogo, por nombre.
+    """
+    key = normalize_exercise_name(exercise.name)
     raw_group = (exercise.meta or {}).get("group")
-    if not raw_group:
-        raw_group = catalog_group_by_name.get(normalize_exercise_name(exercise.name))
-    return canonicalize_muscle_group(raw_group)
+    # Sesiones viejas guardaron "Espalda" (antes de separarla en Dorsales, Espalda Alta
+    # y Trapecio): si el catalogo conoce el ejercicio, manda el grupo del catalogo.
+    if not raw_group or _is_legacy_group(raw_group):
+        raw_group = catalog_group_by_name.get(key) or raw_group
+    return muscle_shares(raw_group, catalog_extras_by_name.get(key))
 
 
 def _exercise_volume_kg(exercise: StrengthExercise) -> float:
@@ -58,7 +72,9 @@ def _exercise_volume_kg(exercise: StrengthExercise) -> float:
 
 
 def _build_group_series(
-    sessions: list[Session], catalog_group_by_name: dict[str, str | None]
+    sessions: list[Session],
+    catalog_group_by_name: dict[str, str | None],
+    catalog_extras_by_name: dict[str, list[dict]],
 ) -> dict[str, tuple[list[datetime], list[float], set[str]]]:
     """Una serie temporal independiente por grupo muscular: solo las sesiones
     donde ese grupo fue efectivamente entrenado. Rellenar con ceros los dias
@@ -70,11 +86,11 @@ def _build_group_series(
         session_volume: dict[str, float] = {}
         session_exercises: dict[str, set[str]] = {}
         for exercise in session.exercises:
-            group = _exercise_group(exercise, catalog_group_by_name)
-            if group is None:
-                continue
-            session_volume[group] = session_volume.get(group, 0.0) + _exercise_volume_kg(exercise)
-            session_exercises.setdefault(group, set()).add(exercise.name)
+            volume = _exercise_volume_kg(exercise)
+            shares = _exercise_shares(exercise, catalog_group_by_name, catalog_extras_by_name)
+            for group, weight in shares.items():
+                session_volume[group] = session_volume.get(group, 0.0) + volume * weight
+                session_exercises.setdefault(group, set()).add(exercise.name)
 
         for group, volume in session_volume.items():
             times, values, names = out.setdefault(group, ([], [], set()))
@@ -90,6 +106,7 @@ def compute_muscle_group_states(
     priority_groups: list[str],
     *,
     catalog_group_by_name: dict[str, str | None] | None = None,
+    catalog_extras_by_name: dict[str, list[dict]] | None = None,
     window_days: int = 120,
 ) -> list[MuscleGroupState]:
     """Un MuscleGroupState por musculo prioritario del atleta.
@@ -107,7 +124,9 @@ def compute_muscle_group_states(
         cutoff = latest - timedelta(days=window_days)
     windowed = [s for s in sessions if cutoff is None or s.start_time >= cutoff]
 
-    group_series = _build_group_series(windowed, catalog_group_by_name or {})
+    group_series = _build_group_series(
+        windowed, catalog_group_by_name or {}, catalog_extras_by_name or {}
+    )
 
     out: list[MuscleGroupState] = []
     for group in priority_groups:

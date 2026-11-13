@@ -457,6 +457,9 @@ class ExerciseCatalog(Base):
     variation: Mapped[str | None] = mapped_column(String(160), nullable=True)
     subvariation: Mapped[str | None] = mapped_column(String(180), nullable=True)
     aliases: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Musculos extra del ejercicio compuesto: [{"group": str, "weight": float}].
+    # weight 1.0 = segundo musculo principal; 0.5 = secundario. `group` es el principal.
+    extra_muscles: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False

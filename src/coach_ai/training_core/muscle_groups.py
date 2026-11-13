@@ -10,7 +10,11 @@ _MUSCLE_GROUP_TOKENS: list[tuple[str, tuple[str, ...]]] = [
     ("Biceps", ("bicep", "biceps")),
     ("Triceps", ("tricep", "triceps")),
     ("Pecho", ("pecho", "pectoral", "pectorales")),
-    ("Espalda", ("espalda", "dorsal", "dorsales", "trapecio", "trapecios")),
+    ("Dorsales", ("dorsal", "dorsales")),
+    # "espalda" suelta (historial anterior a la separacion) cae aqui; ver _PHRASES.
+    ("Espalda Alta", ("espalda", "romboide", "romboides")),
+    ("Trapecio", ("trapecio", "trapecios")),
+    ("Lumbares", ("lumbar", "lumbares")),
     ("Abdomen", ("abdomen", "abdominales", "abdominal", "core")),
     ("Gluteos", ("gluteo", "gluteos")),
     ("Abductores", ("abductor", "abductores")),
@@ -21,6 +25,12 @@ _MUSCLE_GROUP_TOKENS: list[tuple[str, tuple[str, ...]]] = [
 ]
 
 MUSCLE_GROUPS: list[str] = [label for label, _tokens in _MUSCLE_GROUP_TOKENS]
+
+# Frases de varias palabras: se miran antes que las palabras sueltas.
+_PHRASES: dict[str, str] = {
+    "espalda alta": "Espalda Alta",
+    "espalda baja": "Lumbares",
+}
 
 _TOKEN_TO_GROUP: dict[str, str] = {
     token: label for label, tokens in _MUSCLE_GROUP_TOKENS for token in tokens
@@ -39,9 +49,43 @@ def canonicalize_muscle_group(raw: str | None) -> str | None:
     """
     if not raw:
         return None
-    words = _strip_accents(raw.lower()).replace("-", " ").split()
-    for word in words:
+    text = " ".join(_strip_accents(raw.lower()).replace("-", " ").split())
+    for phrase, group in _PHRASES.items():
+        if phrase in text:
+            return group
+    for word in text.split():
         group = _TOKEN_TO_GROUP.get(word)
         if group:
             return group
     return None
+
+
+# Peso con el que cuenta un musculo secundario respecto del principal (1.0).
+SECONDARY_WEIGHT = 0.5
+
+
+def muscle_shares(
+    primary_raw: str | None, extras: list[dict] | None = None
+) -> dict[str, float]:
+    """Reparte un ejercicio entre los musculos que trabaja: {grupo canonico: peso}.
+
+    El grupo principal pesa 1.0. Cada extra es {"group": str, "weight": float}:
+    1.0 = segundo musculo principal, 0.5 (SECONDARY_WEIGHT) = secundario.
+    Si un grupo aparece dos veces gana el peso mayor. Extras invalidos se ignoran.
+    """
+    shares: dict[str, float] = {}
+    primary = canonicalize_muscle_group(primary_raw)
+    if primary:
+        shares[primary] = 1.0
+    for extra in extras or []:
+        if not isinstance(extra, dict):
+            continue
+        group = canonicalize_muscle_group(extra.get("group"))
+        try:
+            weight = float(extra.get("weight", SECONDARY_WEIGHT))
+        except (TypeError, ValueError):
+            continue
+        if group is None or weight <= 0:
+            continue
+        shares[group] = max(shares.get(group, 0.0), min(weight, 1.0))
+    return shares
