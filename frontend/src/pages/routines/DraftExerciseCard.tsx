@@ -1,6 +1,7 @@
 import type { DragEvent, PointerEvent as ReactPointerEvent } from "react";
 
 import { formatExerciseNameForList } from "../../lib/exerciseTree";
+import { isUnilateralName, setUnilateralName } from "../../lib/laterality";
 import {
   MAX_REST_MINUTES,
   SERIES_SUGGESTIONS,
@@ -193,6 +194,14 @@ export default function DraftExerciseCard({
             </div>
           </div>
         </div>
+        <label className="hstack compact" style={{ gap: 6, marginTop: 10 }}>
+          <input
+            type="checkbox"
+            checked={isUnilateralName(exercise.name)}
+            onChange={(e) => onUpdate(exerciseIdentity, { name: setUnilateralName(exercise.name, e.target.checked) })}
+          />
+          <span>Unilateral (un lado a la vez)</span>
+        </label>
       </article>
     </div>
   );

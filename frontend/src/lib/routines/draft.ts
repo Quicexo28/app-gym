@@ -21,7 +21,7 @@ export type DraftRoutineExercise = Omit<
 };
 
 export type DraftExercisePatch = Partial<
-  Pick<DraftRoutineExercise, "target_sets" | "target_reps_min" | "target_reps_max" | "rest_minutes" | "rest_seconds">
+  Pick<DraftRoutineExercise, "name" | "target_sets" | "target_reps_min" | "target_reps_max" | "rest_minutes" | "rest_seconds">
 >;
 
 export function normalizeLookupText(value: string): string {

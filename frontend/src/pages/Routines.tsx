@@ -297,6 +297,16 @@ export default function Routines() {
   }
 
   function updateDraftExercise(identityValue: string, patch: DraftExercisePatch) {
+    if (patch.name !== undefined) {
+      // Cambiar la lateralidad cambia el nombre: no puede chocar con otro ejercicio de la rutina.
+      const source = draftExercises.find((entry) => routineExerciseIdentity(entry) === identityValue);
+      const nextIdentity = source ? routineExerciseIdentity({ name: patch.name, group: source.group }) : identityValue;
+      if (nextIdentity !== identityValue && draftExercises.some((entry) => routineExerciseIdentity(entry) === nextIdentity)) {
+        setError("Ya existe ese ejercicio en la rutina con esa lateralidad.");
+        return;
+      }
+      setError("");
+    }
     setDraftExercises((prev) =>
       prev.map((entry) => (routineExerciseIdentity(entry) === identityValue ? { ...entry, ...patch } : entry)),
     );
