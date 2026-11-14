@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from coach_ai.latents.confidence import combine_confidence
 from coach_ai.latents.plateau import compute_plateau_probability
 from coach_ai.training_core.muscle_groups import muscle_shares
-from coach_ai.training_core.naming import normalize_exercise_name
+from coach_ai.training_core.naming import normalize_exercise_name, strip_unilateral
 from coach_ai.training_core.normalization import fit_normalizer, normalize_series
 from coach_ai.training_core.pipeline import AthleteSeries
 from coach_ai.training_core.schema import Session, StrengthExercise
@@ -59,6 +59,9 @@ def _exercise_shares(
     musculos extra siempre salen del catalogo, por nombre.
     """
     key = normalize_exercise_name(exercise.name)
+    if key not in catalog_group_by_name and key not in catalog_extras_by_name:
+        # Unilateral no esta en el catalogo: se usa el ejercicio bilateral equivalente.
+        key = strip_unilateral(key)
     raw_group = (exercise.meta or {}).get("group")
     # Sesiones viejas guardaron "Espalda" (antes de separarla en Dorsales, Espalda Alta
     # y Trapecio): si el catalogo conoce el ejercicio, manda el grupo del catalogo.

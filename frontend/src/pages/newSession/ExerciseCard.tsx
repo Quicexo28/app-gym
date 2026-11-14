@@ -1,3 +1,4 @@
+import { isUnilateralName, setSides } from "../../lib/laterality";
 import type { CoachNote } from "../../api";
 import KebabMenu from "../../components/KebabMenu";
 import { APP_LOCALE } from "../../lib/locale";
@@ -20,6 +21,7 @@ type ExerciseCardProps = {
   onAthleteNoteChange: (exIdx: number, value: string) => void;
   onCommand: (command: SessionDraftCommand) => void;
   onToggleSetCompleted: (exIdx: number, setIdx: number, completed: boolean) => void;
+  onToggleSetSide: (exIdx: number, setIdx: number, side: "left" | "right", value: boolean) => void;
   onRemoveSet: (exIdx: number, setIdx: number) => void;
   onAddSet: (exIdx: number) => void;
   onDuplicateLastSet: (exIdx: number) => void;
@@ -42,6 +44,7 @@ export default function ExerciseCard({
   onAthleteNoteChange,
   onCommand,
   onToggleSetCompleted,
+  onToggleSetSide,
   onRemoveSet,
   onAddSet,
   onDuplicateLastSet,
@@ -49,6 +52,7 @@ export default function ExerciseCard({
   onReplaceExercise,
   onRemoveExercise,
 }: ExerciseCardProps) {
+  const unilateral = isUnilateralName(exercise.name);
   const hasUnreadNote = exerciseNotes.some((note) => !note.read_at_utc);
   return (
     <div className="exerciseCard">
@@ -174,20 +178,41 @@ export default function ExerciseCard({
                     placeholder={effortScale === "rir" ? "0-6" : "0-10"}
                   />
                 </div>
-                <button
-                  className={`btn iconBtn setCompleteBtn completeIconBtn ${set.completed ? "active" : ""}`}
-                  type="button"
-                  aria-pressed={set.completed}
-                  onClick={() => onToggleSetCompleted(exIdx, setIdx, set.completed)}
-                  disabled={isDeleting || isUnchecking}
-                  aria-label={set.completed ? "Serie completada" : "Marcar serie completada"}
-                  title={set.completed ? "Serie completada" : "Marcar serie completada"}
-                >
-                  <svg className="iconGlyph" viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M8.5 12.2L10.8 14.5L15.6 9.7" />
-                  </svg>
-                </button>
+                {unilateral ? (
+                  (["left", "right"] as const).map((side) => {
+                    const done = setSides(set)[side];
+                    const label = side === "left" ? "izquierdo" : "derecho";
+                    return (
+                      <button
+                        key={side}
+                        className={`btn iconBtn setCompleteBtn completeIconBtn ${done ? "active" : ""}`}
+                        type="button"
+                        aria-pressed={done}
+                        onClick={() => onToggleSetSide(exIdx, setIdx, side, !done)}
+                        disabled={isDeleting || isUnchecking}
+                        aria-label={done ? `Lado ${label} completado` : `Marcar lado ${label}`}
+                        title={done ? `Lado ${label} completado` : `Marcar lado ${label}`}
+                      >
+                        <span aria-hidden="true">{side === "left" ? "I" : "D"}</span>
+                      </button>
+                    );
+                  })
+                ) : (
+                    <button
+                      className={`btn iconBtn setCompleteBtn completeIconBtn ${set.completed ? "active" : ""}`}
+                      type="button"
+                      aria-pressed={set.completed}
+                      onClick={() => onToggleSetCompleted(exIdx, setIdx, set.completed)}
+                      disabled={isDeleting || isUnchecking}
+                      aria-label={set.completed ? "Serie completada" : "Marcar serie completada"}
+                      title={set.completed ? "Serie completada" : "Marcar serie completada"}
+                    >
+                      <svg className="iconGlyph" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M8.5 12.2L10.8 14.5L15.6 9.7" />
+                      </svg>
+                    </button>
+                )}
                 <button
                   className="btn iconBtn trashBtn compactTrashBtn"
                   onClick={() => onRemoveSet(exIdx, setIdx)}

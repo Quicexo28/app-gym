@@ -1,3 +1,4 @@
+import { baseExerciseName } from "./laterality";
 import type { SessionRecord } from "../api";
 
 /**
@@ -170,7 +171,7 @@ export function aggregateSetsByBodyGroup(
     for (const exercise of session.exercises || []) {
       const count = (exercise.sets || []).length;
       if (count === 0) continue;
-      const item = itemByName.get(normalizeName(exercise.name));
+      const item = itemByName.get(normalizeName(exercise.name)) ?? itemByName.get(normalizeName(baseExerciseName(exercise.name)));
       const slug = toBodySlug(item?.group);
       if (!slug) unclassifiedSets += count;
       const weights = muscleWeights(item);

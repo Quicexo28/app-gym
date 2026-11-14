@@ -25,6 +25,7 @@ type SessionSetOut = {
     completed: boolean;
     effort_scale?: "rpe" | "rir";
     effort_value?: number;
+    sides?: { left: boolean; right: boolean };
   };
 };
 
@@ -78,6 +79,7 @@ export function buildSessionExercises(
           completed: set.completed,
           effort_scale: effortScale,
           effort_value: parsedEffort.raw ?? undefined,
+          sides: set.sides,
         },
       });
     }

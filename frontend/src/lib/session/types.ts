@@ -1,5 +1,8 @@
 // Tipos compartidos de la captura de sesión por rutina.
-export type SetRow = { reps: string; load: string; completed: boolean; effort: string };
+import type { SetSides } from "../laterality";
+
+// `sides` solo se usa en ejercicios unilaterales; `completed` es true cuando ambos lados están marcados.
+export type SetRow = { reps: string; load: string; completed: boolean; effort: string; sides?: SetSides };
 
 export type RoutineExerciseDraft = {
   name: string;
@@ -36,7 +39,8 @@ export type SessionDraftCommand =
   | { type: "set_reps"; exercise_index: number; set_index: number; value: string }
   | { type: "set_load"; exercise_index: number; set_index: number; value: string }
   | { type: "set_set_completed"; exercise_index: number; set_index: number; value: boolean }
-  | { type: "set_set_effort"; exercise_index: number; set_index: number; value: string };
+  | { type: "set_set_effort"; exercise_index: number; set_index: number; value: string }
+  | { type: "set_set_side"; exercise_index: number; set_index: number; side: "left" | "right"; value: boolean };
 
 export type PendingSetDelete = {
   id: string;

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { MAX_REST_MINUTES, parseBoundedInt, splitRestSeconds } from "../../lib/routines/draft";
+import { isUnilateralName } from "../../lib/laterality";
 import { formatExerciseNameForCard } from "../../lib/session/format";
 import type { RoutineExerciseDraft } from "../../lib/session/types";
 
@@ -9,6 +10,7 @@ export type ExerciseSettings = {
   reps_min: number;
   reps_max: number;
   rest_seconds: number;
+  unilateral: boolean;
 };
 
 type ExerciseEditModalProps = {
@@ -25,6 +27,7 @@ export default function ExerciseEditModal({ exercise, onSave, onClose }: Exercis
   const [repsMax, setRepsMax] = useState(String(exercise.target_reps_max));
   const [restMin, setRestMin] = useState(rest.rest_minutes);
   const [restSec, setRestSec] = useState(rest.rest_seconds);
+  const [unilateral, setUnilateral] = useState(isUnilateralName(exercise.name));
 
   function save() {
     const min = parseBoundedInt(repsMin, exercise.target_reps_min, 1, 100);
@@ -36,6 +39,7 @@ export default function ExerciseEditModal({ exercise, onSave, onClose }: Exercis
       reps_min: Math.min(min, max),
       reps_max: Math.max(min, max),
       rest_seconds: Math.min(restTotal, MAX_REST_MINUTES * 60),
+      unilateral,
     });
   }
 
@@ -88,6 +92,10 @@ export default function ExerciseEditModal({ exercise, onSave, onClose }: Exercis
             </div>
           </div>
         </div>
+        <label className="hstack compact" style={{ gap: 6, marginTop: 12 }}>
+          <input type="checkbox" checked={unilateral} onChange={(e) => setUnilateral(e.target.checked)} />
+          <span>Unilateral (un lado a la vez)</span>
+        </label>
         <p className="small" style={{ marginTop: 8 }}>
           Si bajas las series, solo se quitan las últimas series vacías.
         </p>

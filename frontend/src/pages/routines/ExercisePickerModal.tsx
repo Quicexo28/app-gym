@@ -1,5 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
+import { asUnilateralEntry } from "../../lib/laterality";
 import { renderExerciseTree } from "../../components/ExerciseTree";
 import Select from "../../components/Select";
 import type { CatalogNode } from "../../lib/exerciseTree";
@@ -62,6 +63,7 @@ export default function ExercisePickerModal({
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [unilateral, setUnilateral] = useState(false);
   const drag = useRef<{ startY: number; startT: number; lastY: number; lastT: number } | null>(null);
 
   const finishClose = () => {
@@ -178,6 +180,10 @@ export default function ExercisePickerModal({
           <button type="button" className="btn" onClick={onClearFilters}>
             Limpiar filtros
           </button>
+          <label className="hstack compact" style={{ gap: 6 }}>
+            <input type="checkbox" checked={unilateral} onChange={(e) => setUnilateral(e.target.checked)} />
+            <span>Unilateral (un lado a la vez)</span>
+          </label>
         </div>
 
         {resultsCount === 0 ? (
@@ -193,10 +199,10 @@ export default function ExercisePickerModal({
               showScopeChip: true,
               filterItem: canAdd,
               renderActions: (entry) =>
-                isAdded(entry) ? (
+                isAdded(unilateral ? asUnilateralEntry(entry) : entry) ? (
                   <span className="chip pickerAdded">✓ Agregado</span>
                 ) : (
-                  <button className="btn" onClick={() => onAdd(entry)}>
+                  <button className="btn" onClick={() => onAdd(unilateral ? asUnilateralEntry(entry) : entry)}>
                     Agregar
                   </button>
                 ),

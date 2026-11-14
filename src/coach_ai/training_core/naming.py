@@ -12,3 +12,15 @@ def normalize_exercise_name(name: str) -> str:
     por musculo).
     """
     return re.sub(r"\s+", " ", (name or "").strip().lower())
+
+
+_UNILATERAL_SUFFIX = re.compile(r"(?:\s-\s|\s)unilateral$")
+
+
+def strip_unilateral(normalized_name: str) -> str:
+    """Quita el sufijo "Unilateral" de un nombre ya normalizado.
+
+    El catalogo solo lista ejercicios bilaterales; la lateralidad se guarda como
+    sufijo del nombre. Sirve para encontrar el ejercicio del catalogo.
+    """
+    return _UNILATERAL_SUFFIX.sub("", normalized_name)

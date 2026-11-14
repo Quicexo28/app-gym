@@ -5,6 +5,7 @@ import { ingestSessions, listCoachNotes, markCoachNoteRead } from "../api";
 import type { CoachNote } from "../api";
 import { dayKeyToDatetimeLocal } from "../lib/dates";
 import type { ExerciseCatalogEntry } from "../lib/exerciseCatalog";
+import { isUnilateralName, setSides, setUnilateralName } from "../lib/laterality";
 import { buildSessionExercises, buildSessionPayload } from "../lib/session/buildPayload";
 import {
   deviceDatetimeLocal,
@@ -580,6 +581,18 @@ export default function NewSession() {
   function saveExerciseSettings(exIdx: number, settings: ExerciseSettings) {
     setEditingExIdx(null);
     if (hasPendingSetDelete) return;
+    const current = routineExercises[exIdx];
+    if (!current) return;
+    // La lateralidad se guarda en el nombre: cambiarla cambia el nombre del ejercicio.
+    const nextName = setUnilateralName(current.name, settings.unilateral);
+    if (
+      nextName !== current.name &&
+      routineExercises.some((item, i) => i !== exIdx && item.name === nextName && (item.group ?? "") === (current.group ?? ""))
+    ) {
+      setError("Ya existe ese ejercicio en la sesión con esa lateralidad.");
+      return;
+    }
+    setError("");
     setRoutineExercises((prev) =>
       prev.map((item, i) => {
         if (i !== exIdx) return item;
@@ -595,7 +608,9 @@ export default function NewSession() {
             : item.sets.slice(0, targetCount);
         return {
           ...item,
-          sets,
+          name: nextName,
+          // Sin lateralidad no hay lados; `completed` ya refleja ambos lados.
+          sets: settings.unilateral ? sets : sets.map((set) => ({ ...set, sides: undefined })),
           target_reps_min: settings.reps_min,
           target_reps_max: settings.reps_max,
           rest_seconds: settings.rest_seconds,
@@ -606,6 +621,17 @@ export default function NewSession() {
 
   // Handler central para inputs manuales y comandos por voz.
   function applySessionDraftCommand(command: SessionDraftCommand) {
+    const currentEntry = routineExercises[command.exercise_index];
+    const unilateral = currentEntry ? isUnilateralName(currentEntry.name) : false;
+    const currentSet = currentEntry?.sets[command.set_index];
+    // Estado final de "completada" tras el comando; null = el comando no cambia ese dato.
+    let nextCompleted: boolean | null = null;
+    if (command.type === "set_set_completed") nextCompleted = command.value;
+    if (command.type === "set_set_side" && currentSet) {
+      const sides = { ...setSides(currentSet), [command.side]: command.value };
+      nextCompleted = sides.left && sides.right;
+    }
+
     setRoutineExercises((prev) =>
       prev.map((entry, exIdx) => {
         if (exIdx !== command.exercise_index) return entry;
@@ -614,25 +640,32 @@ export default function NewSession() {
           if (setIdx !== command.set_index) return set;
           if (command.type === "set_reps") return { ...set, reps: command.value };
           if (command.type === "set_load") return { ...set, load: command.value };
-          if (command.type === "set_set_completed") return { ...set, completed: command.value };
+          if (command.type === "set_set_completed") {
+            return unilateral
+              ? { ...set, completed: command.value, sides: { left: command.value, right: command.value } }
+              : { ...set, completed: command.value };
+          }
+          if (command.type === "set_set_side") {
+            const sides = { ...setSides(set), [command.side]: command.value };
+            return { ...set, sides, completed: sides.left && sides.right };
+          }
           return { ...set, effort: command.value };
         });
         return { ...entry, sets };
       }),
     );
 
-    if (command.type === "set_set_completed") {
-      if (command.value) {
-        startRestForSet(command.exercise_index, command.set_index);
-        return;
-      }
-
-      setRestTimer((prev) => {
-        if (!prev) return prev;
-        if (prev.exercise_index !== command.exercise_index || prev.set_index !== command.set_index) return prev;
-        return null;
-      });
+    if (nextCompleted === null) return;
+    // El descanso empieza cuando la serie queda completa (ambos lados) y se cancela si deja de estarlo.
+    if (nextCompleted) {
+      if (command.type === "set_set_completed" || !currentSet?.completed) startRestForSet(command.exercise_index, command.set_index);
+      return;
     }
+    setRestTimer((prev) => {
+      if (!prev) return prev;
+      if (prev.exercise_index !== command.exercise_index || prev.set_index !== command.set_index) return prev;
+      return null;
+    });
   }
 
   async function submit(): Promise<boolean> {
@@ -881,6 +914,9 @@ export default function NewSession() {
                 onAthleteNoteChange={updateExerciseAthleteNote}
                 onCommand={applySessionDraftCommand}
                 onToggleSetCompleted={handleSetCompletedToggle}
+                onToggleSetSide={(exIdx, setIdx, side, value) =>
+                  applySessionDraftCommand({ type: "set_set_side", exercise_index: exIdx, set_index: setIdx, side, value })
+                }
                 onRemoveSet={handleRemoveSetWithAnimation}
                 onAddSet={addSet}
                 onDuplicateLastSet={duplicateLastSet}
