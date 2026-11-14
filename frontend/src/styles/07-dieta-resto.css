@@ -801,3 +801,126 @@
     display: none;
   }
 }
+
+/* Detalle de grupo muscular y grafico de araña (Cargas) */
+.muscleDetail {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft, transparent);
+}
+
+.muscleDetailHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.muscleRank h4,
+.muscleRankTitle,
+.radarTitle {
+  margin: 0 0 4px;
+}
+
+.muscleRank ul,
+.muscleRank ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.muscleRank li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 8px;
+}
+
+.muscleRank li > .small {
+  grid-column: 1 / -1;
+  color: var(--text-soft);
+}
+
+.muscleBadge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.muscleBadge.real {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.muscleBadge.calc {
+  color: var(--text-soft);
+  border-style: dashed;
+}
+
+.radarChart {
+  display: block;
+  width: min(100%, 360px);
+  margin: 0 auto;
+}
+
+.radarRing,
+.radarAxis {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.radarArea {
+  fill: color-mix(in srgb, var(--accent) 30%, transparent);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.radarDot {
+  fill: var(--accent);
+}
+
+.radarLabel {
+  fill: var(--text-soft);
+  font-size: 10px;
+}
+
+.radarNodeActive .radarLabel {
+  fill: var(--text);
+  font-weight: 700;
+}
+
+/* Papel de cada musculo en un ejercicio (crear / editar) */
+.muscleRolesField {
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.muscleRolesList {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.muscleRolesRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.muscleRolesName {
+  min-width: 110px;
+}

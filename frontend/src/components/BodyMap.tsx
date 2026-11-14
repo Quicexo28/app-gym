@@ -25,14 +25,20 @@ export default function BodyMap({
   values,
   unit = "series",
   formatValue,
+  selected,
+  onSelect,
 }: {
   values: BodyValues;
   unit?: string;
   /** Texto del valor de cada fila; por defecto `valor unidad`. */
   formatValue?: (value: number) => string;
+  /** Grupo elegido (controlado por quien llama). Con `onSelect`, tocar el cuerpo o la lista lo cambia. */
+  selected?: BodySlug | null;
+  onSelect?: (slug: BodySlug | null) => void;
 }) {
   const [view, setView] = useState<BodyView>("front");
-  const [focus, setFocus] = useState<BodySlug | null>(null);
+  const [hover, setHover] = useState<BodySlug | null>(null);
+  const focus = hover ?? selected ?? null;
   const [modelFailed, setModelFailed] = useState(false);
 
   const max = useMemo(() => Math.max(0, ...BODY_SLUGS.map((s) => values[s])), [values]);
@@ -67,11 +73,11 @@ export default function BodyMap({
           </div>
           <div className="bodyMapStage">
             <Suspense fallback={<div className="small bodyMapLoading">Cargando modelo…</div>}>
-              <BodyModel3D ratios={ratios} view={view} focus={focus} onUnavailable={() => setModelFailed(true)} />
+              <BodyModel3D ratios={ratios} view={view} focus={focus} onSelect={onSelect ? (s) => onSelect(s === selected ? null : s) : undefined} onUnavailable={() => setModelFailed(true)} />
             </Suspense>
           </div>
           <div className="small bodyMapFocus" aria-live="polite">
-            {focusText || "Toca un grupo de la lista para resaltarlo. Arrastra el cuerpo para girarlo."}
+            {focusText || (onSelect ? "Toca un músculo del cuerpo o de la lista para ver su detalle. Arrastra para girarlo." : "Toca un grupo de la lista para resaltarlo. Arrastra el cuerpo para girarlo.")}
           </div>
         </div>
       )}
@@ -88,11 +94,11 @@ export default function BodyMap({
             <button
               type="button"
               className="bodyMapRow barRow"
-              onMouseEnter={() => setFocus(slug)}
-              onMouseLeave={() => setFocus(null)}
-              onFocus={() => setFocus(slug)}
-              onBlur={() => setFocus(null)}
-              onClick={() => setFocus((prev) => (prev === slug ? null : slug))}
+              onMouseEnter={() => setHover(slug)}
+              onMouseLeave={() => setHover(null)}
+              onFocus={() => setHover(slug)}
+              onBlur={() => setHover(null)}
+              onClick={() => (onSelect ? onSelect(selected === slug ? null : slug) : setHover((prev) => (prev === slug ? null : slug)))}
             >
               <span className="barLabel">{BODY_SLUG_LABELS[slug]}</span>
               <span className="barTrack">

@@ -59,6 +59,7 @@ export function createCustomExercise(payload: {
   variation?: string;
   subvariation?: string;
   aliases?: string[];
+  extra_muscles?: ExerciseExtraMuscle[];
 }): Promise<ExerciseCatalogApiItem> {
   return http("/api/v1/exercises/custom", {
     method: "POST",
@@ -72,6 +73,7 @@ export function createGlobalExercise(payload: {
   variation?: string;
   subvariation?: string;
   aliases?: string[];
+  extra_muscles?: ExerciseExtraMuscle[];
 }): Promise<ExerciseCatalogApiItem> {
   return http("/api/v1/exercises/global", {
     method: "POST",
@@ -87,6 +89,7 @@ export function updateCustomExercise(
     variation?: string;
     subvariation?: string;
     aliases?: string[];
+    extra_muscles?: ExerciseExtraMuscle[];
   },
 ): Promise<ExerciseCatalogApiItem> {
   return http(`/api/v1/exercises/custom/${encodeURIComponent(exerciseId)}`, {
@@ -103,6 +106,7 @@ export function updateGlobalExercise(
     variation?: string;
     subvariation?: string;
     aliases?: string[];
+    extra_muscles?: ExerciseExtraMuscle[];
   },
 ): Promise<ExerciseCatalogApiItem> {
   return http(`/api/v1/exercises/global/${encodeURIComponent(exerciseId)}`, {

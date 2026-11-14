@@ -10,6 +10,8 @@ type Props = {
   view: BodyView;
   /** Grupo resaltado: los demas se atenuan. */
   focus?: BodySlug | null;
+  /** El usuario toco una pieza muscular (o fuera del cuerpo: null). */
+  onSelect?: (slug: BodySlug | null) => void;
   /** WebGL o el modelo no estan disponibles: quien llama muestra solo la lista. */
   onUnavailable?: () => void;
 };
@@ -22,15 +24,15 @@ const FOCUS_DIM = 0.5;
  * Cuerpo 3D: un color de acento, la opacidad indica el valor del grupo (misma regla que el mapa en 2D).
  * Dibuja solo cuando algo cambia (datos, giro, tamano) para no gastar bateria.
  */
-export default function BodyModel3D({ ratios, view, focus = null, onUnavailable }: Props) {
+export default function BodyModel3D({ ratios, view, focus = null, onSelect, onUnavailable }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<Scene3D | null>(null);
-  const latest = useRef({ ratios, focus, view, onUnavailable });
+  const latest = useRef({ ratios, focus, view, onSelect, onUnavailable });
 
   useEffect(() => {
-    latest.current = { ratios, focus, view, onUnavailable };
+    latest.current = { ratios, focus, view, onSelect, onUnavailable };
     scene.current?.update();
-  }, [ratios, focus, view, onUnavailable]);
+  }, [ratios, focus, view, onSelect, onUnavailable]);
 
   useEffect(() => {
     scene.current?.setView(view);
@@ -155,9 +157,27 @@ export default function BodyModel3D({ ratios, view, focus = null, onUnavailable 
           } else if (!raf) raf = requestAnimationFrame(animate);
         };
 
+        const raycaster = new THREE.Raycaster();
+        const pick = (e: PointerEvent): BodySlug | null => {
+          const rect = el.getBoundingClientRect();
+          const ndc = new THREE.Vector2(
+            ((e.clientX - rect.left) / rect.width) * 2 - 1,
+            -(((e.clientY - rect.top) / rect.height) * 2 - 1),
+          );
+          pivot.updateMatrixWorld(true);
+          raycaster.setFromCamera(ndc, camera);
+          for (const hit of raycaster.intersectObject(model, true)) {
+            const slugs = pieceSlugs(hit.object.name || hit.object.parent?.name || "");
+            if (slugs.length > 0) return slugs[0];
+          }
+          return null;
+        };
+
         let dragX: number | null = null;
+        let dragStart = 0;
         const down = (e: PointerEvent) => {
           dragX = e.clientX;
+          dragStart = e.clientX;
           el.setPointerCapture(e.pointerId);
         };
         const move = (e: PointerEvent) => {
@@ -167,8 +187,10 @@ export default function BodyModel3D({ ratios, view, focus = null, onUnavailable 
           dragX = e.clientX;
           render();
         };
-        const up = () => {
+        const up = (e: PointerEvent) => {
+          const wasTap = dragX !== null && e.type === "pointerup" && Math.abs(e.clientX - dragStart) < 6;
           dragX = null;
+          if (wasTap) latest.current.onSelect?.(pick(e));
         };
         el.addEventListener("pointerdown", down);
         el.addEventListener("pointermove", move);

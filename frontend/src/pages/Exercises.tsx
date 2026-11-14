@@ -17,6 +17,8 @@ import {
   type ExerciseMovementFilter,
 } from "../lib/exerciseCatalog";
 import { renderExerciseTree } from "../components/ExerciseTree";
+import MuscleRolesField from "../components/MuscleRolesField";
+import { extrasFromRoles, rolesFromExtras, type MuscleRoles } from "../lib/muscleRoles";
 import Select from "../components/Select";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAuth } from "../state/auth";
@@ -78,6 +80,8 @@ export default function Exercises() {
   const [editVariation, setEditVariation] = useState("");
   const [editSubvariation, setEditSubvariation] = useState("");
   const [editExecutionType, setEditExecutionType] = useState("");
+  const [createRoles, setCreateRoles] = useState<MuscleRoles>({});
+  const [editRoles, setEditRoles] = useState<MuscleRoles>({});
 
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL);
   const [selectedZone, setSelectedZone] = useState<ExerciseBodyZoneFilter>(ALL_EXERCISE_ZONE_FILTER);
@@ -190,6 +194,7 @@ export default function Exercises() {
     setEditVariation("");
     setEditSubvariation("");
     setEditExecutionType("");
+    setEditRoles({});
   }
 
   useEffect(() => {
@@ -246,6 +251,7 @@ export default function Exercises() {
     setEditVariation(entry.variation || "");
     setEditSubvariation(subvariationChain.subvariation);
     setEditExecutionType(subvariationChain.executionType);
+    setEditRoles(rolesFromExtras(entry.extra_muscles));
   }
 
   function onEditGroupChange(nextGroup: string) {
@@ -349,6 +355,7 @@ export default function Exercises() {
       family: normalizedFamily,
       variation: normalizedVariation || undefined,
       subvariation: normalizedSubvariationChain || undefined,
+      extra_muscles: extrasFromRoles(createRoles, normalizedGroup),
     };
 
     try {
@@ -357,6 +364,7 @@ export default function Exercises() {
       } else {
         await addCustom(payload);
       }
+      setCreateRoles({});
     } catch (cause: unknown) {
       setError(String((cause as { message?: string })?.message || cause));
     }
@@ -378,6 +386,7 @@ export default function Exercises() {
               variation: item.variation,
               subvariation: item.subvariation,
               aliases: item.aliases,
+              extra_muscles: item.extra_muscles,
             };
             if (item.scope === "global") {
               await addGlobal(payload);
@@ -457,6 +466,7 @@ export default function Exercises() {
         variation: normalizedVariation || undefined,
         subvariation: normalizedSubvariationChain || undefined,
         aliases: editingItem.aliases,
+        extra_muscles: extrasFromRoles(editRoles, normalizedGroup, editingItem.extra_muscles),
       });
       clearEdit();
     } catch (cause: unknown) {
@@ -582,6 +592,8 @@ export default function Exercises() {
             </datalist>
           </div>
         </div>
+
+        <MuscleRolesField primaryGroup={group} roles={createRoles} onChange={setCreateRoles} />
 
         <div className="quickActions" style={{ marginTop: 12 }}>
           <button className="btn primary" onClick={() => void add()} disabled={loading || !ready}>
@@ -797,6 +809,8 @@ export default function Exercises() {
                 </datalist>
               </div>
             </div>
+
+            <MuscleRolesField primaryGroup={editGroup} roles={editRoles} onChange={setEditRoles} />
 
             <div className="quickActions" style={{ marginTop: 12 }}>
               <button className="btn primary" onClick={() => void saveEdit()} disabled={loading || !ready}>

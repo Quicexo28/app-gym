@@ -27,6 +27,7 @@ type ExerciseCreateInput = {
   variation?: string;
   subvariation?: string;
   aliases?: string[];
+  extra_muscles?: Array<{ group: string; weight: number }>;
 };
 
 type ExerciseImportInput = {
@@ -157,6 +158,7 @@ export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
             variation: payload.variation,
             subvariation: payload.subvariation,
             aliases: payload.aliases,
+            extra_muscles: payload.extra_muscles,
             scope: "custom",
             owner_user_id: null,
             created_at_utc: new Date().toISOString(),
@@ -197,6 +199,7 @@ export function ExerciseCatalogProvider({ children }: { children: ReactNode }) {
                 variation: payload.variation,
                 subvariation: payload.subvariation,
                 aliases: payload.aliases,
+                extra_muscles: payload.extra_muscles ?? entry.extra_muscles,
               }
             : entry,
         );

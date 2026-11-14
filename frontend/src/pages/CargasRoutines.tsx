@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import BodyMap from "../components/BodyMap";
-import { aggregateSetsByBodyGroup } from "../lib/bodyMap";
+import MuscleDetailPanel from "../components/MuscleDetailPanel";
+import RadarChart from "../components/RadarChart";
+import { aggregateSetsByBodyGroup, type BodySlug } from "../lib/bodyMap";
 import { formatSetsRange, loadRoutines, ROUTINES_HYDRATED_EVENT, type RoutineTemplate } from "../lib/storage";
 import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
@@ -29,6 +31,7 @@ export default function CargasRoutines() {
   const { sessions, loading, error } = useAthleteSessions(athleteId);
   const { entries } = useExerciseCatalog();
   const [periodDays, setPeriodDays] = useState<number | null>(28);
+  const [selectedMuscle, setSelectedMuscle] = useState<BodySlug | null>(null);
 
   // Reset sincronizado durante render al cambiar de sujeto (evita efecto + setState).
   const [renderedAthleteId, setRenderedAthleteId] = useState(athleteId);
@@ -104,7 +107,17 @@ export default function CargasRoutines() {
               </button>
             ))}
           </div>
-          <BodyMap values={bodyAgg.sets} />
+          <BodyMap values={bodyAgg.sets} selected={selectedMuscle} onSelect={setSelectedMuscle} />
+          {selectedMuscle ? (
+            <MuscleDetailPanel
+              slug={selectedMuscle}
+              sessions={sessions}
+              catalog={entries}
+              onClose={() => setSelectedMuscle(null)}
+            />
+          ) : null}
+          <h4 className="radarTitle">Equilibrio entre grupos</h4>
+          <RadarChart values={bodyAgg.sets} selected={selectedMuscle} onSelect={(s) => setSelectedMuscle((p) => (p === s ? null : s))} />
           {bodyAgg.unclassifiedSets > 0 ? (
             <p className="small">{`${bodyAgg.unclassifiedSets} series de ejercicios sin grupo en el catálogo no se muestran.`}</p>
           ) : null}
