@@ -1,3 +1,5 @@
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+
 import { renderExerciseTree } from "../../components/ExerciseTree";
 import Select from "../../components/Select";
 import type { CatalogNode } from "../../lib/exerciseTree";
@@ -32,6 +34,10 @@ type Props = {
   hint?: string;
 };
 
+const CLOSE_DISTANCE_PX = 110;
+const CLOSE_VELOCITY_PX_MS = 0.6;
+const CLOSE_ANIMATION_MS = 200;
+
 export default function ExercisePickerModal({
   selectedZone,
   selectedGroup,
@@ -53,21 +59,82 @@ export default function ExercisePickerModal({
   title = "Agregar ejercicio",
   hint,
 }: Props) {
+  const [dragY, setDragY] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const drag = useRef<{ startY: number; startT: number; lastY: number; lastT: number } | null>(null);
+
+  const finishClose = () => {
+    setClosing(true);
+    setDragY(window.innerHeight);
+    window.setTimeout(onClose, CLOSE_ANIMATION_MS);
+  };
+
+  const onDragStart = (event: ReactPointerEvent<HTMLElement>) => {
+    if (closing) return;
+    if ((event.target as HTMLElement).closest("button")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const now = performance.now();
+    drag.current = { startY: event.clientY, startT: now, lastY: event.clientY, lastT: now };
+    setDragging(true);
+  };
+
+  const onDragMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    d.lastY = event.clientY;
+    d.lastT = performance.now();
+    setDragY(Math.max(0, event.clientY - d.startY));
+  };
+
+  const onDragEnd = () => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    setDragging(false);
+    const distance = Math.max(0, d.lastY - d.startY);
+    const velocity = distance / Math.max(1, d.lastT - d.startT);
+    if (distance > CLOSE_DISTANCE_PX || (distance > 30 && velocity > CLOSE_VELOCITY_PX_MS)) {
+      finishClose();
+    } else {
+      setDragY(0);
+    }
+  };
+
+  const dragHandlers = {
+    onPointerDown: onDragStart,
+    onPointerMove: onDragMove,
+    onPointerUp: onDragEnd,
+    onPointerCancel: onDragEnd,
+  };
+
   return (
-    <div className="modalOverlay modalOverlaySheet" role="presentation" onClick={onClose}>
+    <div
+      className="modalOverlay modalOverlaySheet"
+      role="presentation"
+      style={{ opacity: closing ? 0 : Math.max(0.3, 1 - dragY / 500), transition: dragging ? "none" : `opacity ${CLOSE_ANIMATION_MS}ms ease` }}
+      onClick={finishClose}
+    >
       <section
         className="modalCard modalCardSheet"
+        style={{
+          transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+          transition: dragging ? "none" : `transform ${CLOSE_ANIMATION_MS}ms ease`,
+        }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="routine-picker-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="sectionHead pickerHead">
+        <div className="sheetGrabber" aria-hidden="true" {...dragHandlers}>
+          <span className="sheetGrabberBar" />
+        </div>
+        <div className="sectionHead pickerHead sheetDragZone" {...dragHandlers}>
           <div>
             <h3 id="routine-picker-title">{title}</h3>
             <p>{hint ?? (addedCount > 0 ? `En la rutina: ${addedCount}` : "Elige ejercicios finales del catálogo.")}</p>
           </div>
-          <button type="button" className="pickerClose" aria-label="Cerrar" onClick={onClose}>
+          <button type="button" className="pickerClose" aria-label="Cerrar" onClick={finishClose}>
             <svg className="iconGlyph" viewBox="0 0 24 24">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
