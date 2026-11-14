@@ -187,7 +187,7 @@ def test_google_login_creates_user_when_email_not_found(monkeypatch: pytest.Monk
     db = FakeDb(users=[])
     monkeypatch.setattr(auth_endpoint, "_validate_google_identity", lambda _token: ("new@example.com", "g-sub-new"))
 
-    result = auth_endpoint.google_login(GoogleLoginRequest(id_token="x" * 32), db)
+    result = auth_endpoint.google_login(GoogleLoginRequest(id_token="x" * 32, accepted_legal_version="2026-10-28"), db)
 
     assert result.user.email == "new@example.com"
     assert result.user.phone_number is None
@@ -262,3 +262,22 @@ def test_google_records_legal_consent_only_when_creating_user(monkeypatch: pytes
     assert existing.google_sub == "g-sub-old"
     assert existing.legal_version is None
     assert existing.legal_accepted_at is None
+
+
+def test_google_new_user_without_consent_is_rejected_but_existing_user_can_log_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    existing = _make_user(email="old@example.com")
+    db = FakeDb(users=[existing])
+    identities = iter([("new@example.com", "g-sub-new"), ("old@example.com", "g-sub-old")])
+    monkeypatch.setattr(auth_endpoint, "_validate_google_identity", lambda _token: next(identities))
+
+    with pytest.raises(HTTPException) as exc:
+        auth_endpoint.google_login(GoogleLoginRequest(id_token="x" * 32), db)
+    assert exc.value.status_code == 428
+    assert exc.value.detail == auth_endpoint.LEGAL_CONSENT_REQUIRED
+    assert len(db.users) == 1
+
+    # Quien ya tiene cuenta entra sin que se le pida aceptar nada.
+    result = auth_endpoint.google_login(GoogleLoginRequest(id_token="x" * 32), db)
+    assert result.user.email == "old@example.com"

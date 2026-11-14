@@ -89,6 +89,8 @@ _apple_jwks_lock = threading.Lock()
 
 # Version de Terminos/Politica que el usuario acepto (LEGAL_VERSION del frontend). Opcional
 # solo por clientes PWA viejos en cache: sin ella la cuenta se crea sin registro de consentimiento.
+# Detalle del 428 que el frontend reconoce para mostrar el paso de aceptacion.
+LEGAL_CONSENT_REQUIRED = "Legal consent required."
 LegalVersion = Annotated[str, Field(min_length=1, max_length=32, pattern=r"^[0-9A-Za-z._-]+$")]
 
 
@@ -432,6 +434,10 @@ def _add_social_user(
     display_name: str | None = None,
     accepted_legal_version: str | None = None,
 ) -> User:
+    # Una cuenta nueva por Google/Apple exige consentimiento: el cliente lo pide y reintenta.
+    # Se corta antes de crear nada (y antes de canjear el codigo de Apple).
+    if not accepted_legal_version:
+        raise HTTPException(status_code=428, detail=LEGAL_CONSENT_REQUIRED)
     user = User(
         id=uuid.uuid4(),
         email=email,

@@ -194,6 +194,17 @@ export default function Login() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedLegal, setAcceptedLegal] = useState(false);
+  // Solo se registra consentimiento si la persona marcó la casilla en "Crear cuenta".
+  // En "Iniciar sesión" no se pide ni se envía (una cuenta nueva por Google/Apple quedaría sin registro).
+  const legalVersionToSend = mode === "register" && acceptedLegal ? LEGAL_VERSION : undefined;
+  const legalVersionRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    legalVersionRef.current = legalVersionToSend;
+  }, [legalVersionToSend]);
+  // Cuenta nueva por Google/Apple sin consentimiento: el servidor responde 428 y se pide aceptar aquí.
+  const [pendingSocial, setPendingSocial] = useState<((legalVersion: string) => Promise<void>) | null>(null);
+  const [pendingAccepted, setPendingAccepted] = useState(false);
+  const socialBlockedByLegal = mode === "register" && !acceptedLegal;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -260,6 +271,41 @@ export default function Login() {
     };
   }, [isAuthenticated]);
 
+  // Intenta entrar con la versión legal que ya se aceptó (solo en "Crear cuenta"). Si el servidor pide
+  // consentimiento (cuenta nueva), guarda el intento y muestra el paso de aceptación.
+  async function runSocial(run: (legalVersion?: string) => Promise<void>) {
+    try {
+      await run(legalVersionRef.current);
+      nav("/home", { replace: true });
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 428 && e.detail.includes("Legal consent required")) {
+        setPendingAccepted(false);
+        setPendingSocial(() => run);
+        return;
+      }
+      throw e;
+    }
+  }
+  const runSocialRef = useRef(runSocial);
+  useEffect(() => {
+    runSocialRef.current = runSocial;
+  });
+
+  async function confirmPendingSocial() {
+    if (!pendingSocial || !pendingAccepted) return;
+    setBusy(true);
+    setError("");
+    try {
+      await pendingSocial(LEGAL_VERSION);
+      nav("/home", { replace: true });
+    } catch (e: unknown) {
+      setPendingSocial(null);
+      setError(toFriendlyError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitAppleNative() {
     setBusy(true);
     setError("");
@@ -279,8 +325,9 @@ export default function Login() {
         .map((part) => part?.trim())
         .filter(Boolean)
         .join(" ");
-      await loginWithApple(identityToken, { authorizationCode, fullName, acceptedLegalVersion: LEGAL_VERSION });
-      nav("/home", { replace: true });
+      const run = (legalVersion?: string) =>
+        loginWithApple(identityToken, { authorizationCode, fullName, acceptedLegalVersion: legalVersion });
+      await runSocial(run);
     } catch (e: unknown) {
       // el usuario cancelo el dialogo nativo: no mostrar error
       if (isUserCancelled(e)) return;
@@ -304,8 +351,7 @@ export default function Login() {
         setError("No se pudo obtener la credencial de Google.");
         return;
       }
-      await loginWithGoogle(idToken, LEGAL_VERSION);
-      nav("/home", { replace: true });
+      await runSocial((legalVersion) => loginWithGoogle(idToken, legalVersion));
     } catch (e: unknown) {
       // el usuario cancelo el dialogo nativo: no mostrar error
       if (isUserCancelled(e)) return;
@@ -339,8 +385,8 @@ export default function Login() {
             }
             setBusy(true);
             setError("");
-            loginWithGoogle(credential, LEGAL_VERSION)
-              .then(() => nav("/home", { replace: true }))
+            runSocialRef
+              .current((legalVersion) => loginWithGoogle(credential, legalVersion))
               .catch((cause: unknown) => setError(toFriendlyError(cause)))
               .finally(() => setBusy(false));
           },
@@ -389,7 +435,7 @@ export default function Login() {
       if (mode === "login") {
         await login(cleanIdentifier, password);
       } else {
-        await register(cleanEmail, password, cleanPhone || undefined, LEGAL_VERSION);
+        await register(cleanEmail, password, cleanPhone || undefined, legalVersionToSend);
       }
       nav("/home", { replace: true });
     } catch (e: unknown) {
@@ -420,6 +466,46 @@ export default function Login() {
         confirmPassword.length > 0 &&
         password === confirmPassword &&
         acceptedLegal;
+
+  if (pendingSocial) {
+    return (
+      <div className="loginWrap">
+        <section className="surface loginCard">
+          <div className="titleBlock">
+            <h1>Alzo</h1>
+            <p>No encontramos una cuenta con estos datos. Para crearla, acepta los términos.</p>
+          </div>
+          <label
+            style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "var(--text-soft)" }}
+          >
+            <input
+              type="checkbox"
+              checked={pendingAccepted}
+              onChange={(e) => setPendingAccepted(e.target.checked)}
+              style={{ marginTop: 2, flexShrink: 0 }}
+            />
+            <span>
+              Acepto los <Link to={LEGAL_ROUTES.terms}>Términos</Link> y autorizo el tratamiento de mis datos,
+              incluidos datos de salud, según la <Link to={LEGAL_ROUTES.privacy}>Política de privacidad</Link>.
+            </span>
+          </label>
+          <div className="quickActions">
+            <button
+              type="button"
+              className="btn primary"
+              onClick={confirmPendingSocial}
+              disabled={busy || !pendingAccepted}
+            >
+              {busy ? "Procesando..." : "Aceptar y crear cuenta"}
+            </button>
+            <button type="button" className="btn" onClick={() => setPendingSocial(null)} disabled={busy}>
+              Cancelar
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="loginWrap">
@@ -560,7 +646,7 @@ export default function Login() {
                 type="button"
                 className="btn"
                 onClick={submitAppleNative}
-                disabled={busy}
+                disabled={busy || socialBlockedByLegal}
                 style={{
                   ...nativeSocialButtonStyle,
                   // HIG: negro sobre fondo claro, blanco sobre fondo oscuro.
@@ -579,15 +665,23 @@ export default function Login() {
                   type="button"
                   className="btn"
                   onClick={submitGoogleNative}
-                  disabled={busy}
+                  disabled={busy || socialBlockedByLegal}
                   style={nativeSocialButtonStyle}
                 >
                   Continuar con Google
                 </button>
               ) : null
             ) : (
-              <div ref={googleButtonRef} className="googleSignInButton" />
+              <div
+                ref={googleButtonRef}
+                className="googleSignInButton"
+                aria-disabled={socialBlockedByLegal}
+                style={socialBlockedByLegal ? { opacity: 0.45, pointerEvents: "none" } : undefined}
+              />
             )}
+            {socialBlockedByLegal ? (
+              <div className="smallLabel">Marca la casilla de Términos para continuar con Google o Apple.</div>
+            ) : null}
             {googleStatus === "idle" ? <div className="smallLabel">Cargando Google...</div> : null}
             {googleStatus === "unavailable" ? (
               <div className="smallLabel">
@@ -607,11 +701,6 @@ export default function Login() {
             </button>
           ) : null}
         </div>
-
-        <p className="smallLabel" style={{ margin: 0, textAlign: "center" }}>
-          Al continuar aceptas los <Link to={LEGAL_ROUTES.terms}>Términos</Link> y autorizas el tratamiento de tus
-          datos, incluidos datos de salud, según la <Link to={LEGAL_ROUTES.privacy}>Política de privacidad</Link>.
-        </p>
       </section>
     </div>
   );

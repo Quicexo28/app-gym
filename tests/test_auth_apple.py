@@ -182,7 +182,7 @@ def test_valid_apple_token_creates_user_and_settings() -> None:
     db = FakeDb()
 
     result = auth_endpoint.apple_login(
-        AppleLoginRequest(identity_token=_apple_token(), full_name="  Ana Atleta  "),
+        AppleLoginRequest(identity_token=_apple_token(), full_name="  Ana Atleta  ", accepted_legal_version="2026-10-28"),
         db,
     )
 
@@ -283,7 +283,7 @@ def test_fetch_apple_jwks_parses_keys_and_maps_network_errors(monkeypatch: pytes
 
 def test_second_login_without_email_finds_user_by_apple_sub() -> None:
     db = FakeDb()
-    first = auth_endpoint.apple_login(AppleLoginRequest(identity_token=_apple_token()), db)
+    first = auth_endpoint.apple_login(AppleLoginRequest(identity_token=_apple_token(), accepted_legal_version="2026-10-28"), db)
 
     second = auth_endpoint.apple_login(AppleLoginRequest(identity_token=_apple_token(email=None)), db)
 
@@ -358,7 +358,7 @@ def test_apple_endpoint_is_routed() -> None:
     app.dependency_overrides[get_db] = lambda: db
     client = TestClient(app)
 
-    ok = client.post("/api/v1/auth/apple", json={"identity_token": _apple_token()})
+    ok = client.post("/api/v1/auth/apple", json={"identity_token": _apple_token(), "accepted_legal_version": "2026-10-28"})
     bad = client.post("/api/v1/auth/apple", json={"identity_token": _apple_token(aud="com.evil.app")})
 
     assert ok.status_code == 200
@@ -382,7 +382,7 @@ def test_login_with_code_stores_refresh_token_using_valid_client_secret(
     db = FakeDb()
 
     auth_endpoint.apple_login(
-        AppleLoginRequest(identity_token=_apple_token(), authorization_code="auth-code-xyz"),
+        AppleLoginRequest(identity_token=_apple_token(), authorization_code="auth-code-xyz", accepted_legal_version="2026-10-28"),
         db,
     )
 
@@ -411,7 +411,7 @@ def test_login_with_code_but_no_config_skips_exchange() -> None:
     db = FakeDb()  # _post_apple_form explota si se llama (fixture autouse)
 
     auth_endpoint.apple_login(
-        AppleLoginRequest(identity_token=_apple_token(), authorization_code="auth-code-xyz"),
+        AppleLoginRequest(identity_token=_apple_token(), authorization_code="auth-code-xyz", accepted_legal_version="2026-10-28"),
         db,
     )
 
@@ -428,7 +428,7 @@ def test_failed_code_exchange_does_not_block_login(
     db = FakeDb()
 
     result = auth_endpoint.apple_login(
-        AppleLoginRequest(identity_token=_apple_token(), authorization_code="auth-code-xyz"),
+        AppleLoginRequest(identity_token=_apple_token(), authorization_code="auth-code-xyz", accepted_legal_version="2026-10-28"),
         db,
     )
 
@@ -508,3 +508,16 @@ def test_google_still_accepts_web_audience_and_rejects_others(monkeypatch: pytes
     with pytest.raises(HTTPException) as exc:
         auth_endpoint._validate_google_identity("x" * 32)
     assert exc.value.status_code == 401
+
+
+def test_apple_new_user_without_consent_is_rejected_and_nothing_is_created() -> None:
+    db = FakeDb()
+
+    with pytest.raises(HTTPException) as exc:
+        auth_endpoint.apple_login(
+            AppleLoginRequest(identity_token=_apple_token(), authorization_code="auth-code-xyz"), db
+        )
+
+    assert exc.value.status_code == 428
+    assert exc.value.detail == auth_endpoint.LEGAL_CONSENT_REQUIRED
+    assert db.users == []
