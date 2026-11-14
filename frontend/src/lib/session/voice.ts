@@ -1,4 +1,5 @@
 import type { OfflineRecognizerState } from "../voice/types";
+import { loadString, saveString } from "../storage";
 
 export const MAX_VOICE_AUDIT_ENTRIES = 50;
 
@@ -15,14 +16,16 @@ export const VOICE_LANGUAGE = "es-ES";
 
 export const VOICE_WAKE_PHRASE = "alzo";
 
-export const VOICE_ASSIST_DESKTOP_KEY = "coach_ai_voice_assist_desktop_v1";
+const VOICE_ASSIST_DESKTOP_KEY = "coach_ai_voice_assist_desktop_v1";
 
 export function readVoiceAssistDesktopPreference(): boolean {
-  if (typeof window === "undefined") return true;
-  const raw = window.localStorage.getItem(VOICE_ASSIST_DESKTOP_KEY);
+  const raw = loadString(VOICE_ASSIST_DESKTOP_KEY);
   if (raw === "0") return false;
-  if (raw === "1") return true;
   return true;
+}
+
+export function writeVoiceAssistDesktopPreference(enabled: boolean): void {
+  saveString(VOICE_ASSIST_DESKTOP_KEY, enabled ? "1" : "0");
 }
 
 export function voiceStatusLabel(status: OfflineRecognizerState): string {

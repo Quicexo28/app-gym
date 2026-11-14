@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -42,6 +42,8 @@ import {
 import "../styles.ajustes.css";
 import { useAthleteId } from "../state/athlete";
 import { useUndo } from "../state/undo";
+import { errorMessage } from "../lib/errors";
+import { useAsyncLoad } from "../lib/useAsyncLoad";
 
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
@@ -49,38 +51,21 @@ function round1(value: number): number {
 
 type WeekPoint = { day: string; kcal: number };
 
+const NO_POINTS: WeekPoint[] = [];
+
 /** Últimos 7 días de kcal registradas: solo lo justo para la vista previa de tendencia. */
 function useDietWeekTrend(athleteId: string) {
-  const [points, setPoints] = useState<WeekPoint[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      if (!athleteId) {
-        if (!cancelled) setPoints([]);
-        return;
-      }
-      if (!cancelled) setLoading(true);
-      try {
-        const today = parseDayKey(todayKey());
-        const fromKey = dayKey(addDays(today, -6));
-        const res = await getDietSummary(athleteId, fromKey, todayKey());
-        if (cancelled) return;
-        setPoints(res.days.map((day) => ({ day: day.date, kcal: Math.round(day.totals.energy_kcal) })));
-      } catch {
-        if (!cancelled) setPoints([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId]);
+  const { data, loading } = useAsyncLoad(
+    async () => {
+      const today = parseDayKey(todayKey());
+      const fromKey = dayKey(addDays(today, -6));
+      const res = await getDietSummary(athleteId, fromKey, todayKey());
+      return res.days.map((day) => ({ day: day.date, kcal: Math.round(day.totals.energy_kcal) }));
+    },
+    [athleteId],
+    { skip: !athleteId },
+  );
+  const points = data ?? NO_POINTS;
 
   const loggedDays = useMemo(() => points.filter((point) => point.kcal > 0), [points]);
   const avgKcal = loggedDays.length > 0 ? Math.round(loggedDays.reduce((acc, point) => acc + point.kcal, 0) / loggedDays.length) : 0;
@@ -90,36 +75,18 @@ function useDietWeekTrend(athleteId: string) {
 
 /** kcal por día de la semana visible en el `WeekDayPicker` (se refetch al cambiar de semana), para pintar el punto "done". */
 function useVisibleWeekKcal(athleteId: string, selectedKey: string) {
-  const [kcalByDay, setKcalByDay] = useState<Map<string, number>>(new Map());
-
   const selectedDate = useMemo(() => parseDayKey(selectedKey), [selectedKey]);
   const fromKey = useMemo(() => dayKey(addDays(selectedDate, -3)), [selectedDate]);
   const toKey = useMemo(() => dayKey(addDays(selectedDate, 3)), [selectedDate]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const { data } = useAsyncLoad(() => getDietSummary(athleteId, fromKey, toKey), [athleteId, fromKey, toKey], {
+    skip: !athleteId,
+  });
 
-    const load = async () => {
-      if (!athleteId) {
-        if (!cancelled) setKcalByDay(new Map());
-        return;
-      }
-      try {
-        const res = await getDietSummary(athleteId, fromKey, toKey);
-        if (cancelled) return;
-        setKcalByDay(new Map(res.days.map((day) => [day.date, day.totals.energy_kcal])));
-      } catch {
-        if (!cancelled) setKcalByDay(new Map());
-      }
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId, fromKey, toKey]);
-
-  return kcalByDay;
+  return useMemo(
+    () => new Map((data?.days ?? []).map((day) => [day.date, day.totals.energy_kcal] as [string, number])),
+    [data],
+  );
 }
 
 export default function DietToday() {
@@ -198,7 +165,7 @@ export default function DietToday() {
       await putDietTargets(targetsToPayload(athleteId, targets, { meal_labels: nextLabels }));
       refresh();
     } catch (cause: unknown) {
-      setMealsError(String((cause as { message?: string })?.message || cause));
+      setMealsError(errorMessage(cause));
     }
   }
 
@@ -287,7 +254,7 @@ export default function DietToday() {
       setEditingEntryId(null);
       refresh();
     } catch (cause: unknown) {
-      setMealsError(String((cause as { message?: string })?.message || cause));
+      setMealsError(errorMessage(cause));
     } finally {
       setEntrySaving(false);
     }

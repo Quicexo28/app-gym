@@ -1,4 +1,5 @@
 import type { SessionRecord } from "../api";
+import { round1 } from "./format";
 import { muscleWeights, type BodySlug } from "./bodyMap";
 
 type CatalogItem = { name: string; group: string; extra_muscles?: Array<{ group: string; weight: number }> };
@@ -55,8 +56,6 @@ function routineNameOf(session: SessionRecord): string | null {
 function top(entries: MuscleRankEntry[]): MuscleRankEntry[] {
   return entries.sort((a, b) => b.value - a.value || a.exercise.localeCompare(b.exercise)).slice(0, RANK_LIMIT);
 }
-
-const round1 = (v: number) => Math.round(v * 10) / 10;
 
 /** Resumen de un grupo muscular desde las sesiones ya cargadas. Funcion pura. */
 export function buildMuscleStats(sessions: SessionRecord[], catalog: Iterable<CatalogItem>, slug: BodySlug): MuscleStats {

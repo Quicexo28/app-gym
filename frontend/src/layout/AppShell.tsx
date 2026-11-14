@@ -81,6 +81,7 @@ export default function AppShell() {
         links: [
           { to: "/home", label: "Home", end: true },
           { to: "/session/new", label: "Nueva sesión" },
+          { to: "/historial", label: "Historial" },
           { to: "/diet", label: "Dieta" },
         ],
       },

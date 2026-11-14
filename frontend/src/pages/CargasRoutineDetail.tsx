@@ -1,3 +1,4 @@
+import { formatExerciseNameForList } from "../lib/exerciseTree";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -9,10 +10,6 @@ import { formatWeight } from "../lib/units";
 import { useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import { useAthleteSessions } from "../lib/useAthleteSessions";
-
-function formatExerciseNameForDisplay(name: string): string {
-  return name.replace(/\s*>\s*/g, " - ").trim();
-}
 
 function deltaClass(deltaLabel: string | null): string {
   if (!deltaLabel || deltaLabel === "Sin cambio") return "metricCardDelta flat";
@@ -89,7 +86,7 @@ export default function CargasRoutineDetail() {
               className="surfaceButton"
               onClick={() => navigate(`/profile/progress/cargas/ejercicio/${encodeURIComponent(item.name)}`)}
             >
-              <strong>{formatExerciseNameForDisplay(item.name)}</strong>
+              <strong>{formatExerciseNameForList(item.name)}</strong>
               <Sparkline values={item.history.map((point) => point.topLoadKg)} />
               <div className="chipRow">
                 <span className="chip">

@@ -13,17 +13,13 @@ import {
 } from "../lib/bodyMetrics";
 import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
-import { APP_LOCALE } from "../lib/locale";
+import { formatDateMedium } from "../lib/locale";
 
 const VALID_KEYS = new Set<string>(FIELD_GROUPS.flatMap((group) => group.keys));
 
 function deltaClass(deltaLabel: string | null): string {
   if (!deltaLabel || deltaLabel === "Sin cambio") return "metricCardDelta flat";
   return deltaLabel.startsWith("-") ? "metricCardDelta down" : "metricCardDelta up";
-}
-
-function formatDateShort(iso: string): string {
-  return new Date(iso).toLocaleDateString(APP_LOCALE, { day: "numeric", month: "short", year: "numeric" });
 }
 
 export default function MetricDetail() {
@@ -144,8 +140,8 @@ export default function MetricDetail() {
             <div style={{ marginTop: 12 }}>
               <ProgressChart
                 values={points.map((point) => point.value)}
-                startLabel={formatDateShort(points[0].date)}
-                endLabel={formatDateShort(points[points.length - 1].date)}
+                startLabel={formatDateMedium(points[0].date)}
+                endLabel={formatDateMedium(points[points.length - 1].date)}
               />
             </div>
           </section>
@@ -163,7 +159,7 @@ export default function MetricDetail() {
                   className={`pill ${compareIds.includes(point.id) ? "active" : ""}`}
                   onClick={() => toggleCompare(point.id)}
                 >
-                  <span>{formatDateShort(point.date)}</span>
+                  <span>{formatDateMedium(point.date)}</span>
                   <small>{`${point.value.toFixed(1)} ${unit}`}</small>
                 </button>
               ))}
@@ -172,10 +168,10 @@ export default function MetricDetail() {
             {comparePair.length === 2 ? (
               <div className="surface" style={{ marginTop: 12 }}>
                 <div className="chipRow">
-                  <span className="chip">{formatDateShort(comparePair[0].date)}</span>
+                  <span className="chip">{formatDateMedium(comparePair[0].date)}</span>
                   <span className="chip">{`${comparePair[0].value.toFixed(1)} ${unit}`}</span>
                   <span className="chip">→</span>
-                  <span className="chip">{formatDateShort(comparePair[1].date)}</span>
+                  <span className="chip">{formatDateMedium(comparePair[1].date)}</span>
                   <span className="chip">{`${comparePair[1].value.toFixed(1)} ${unit}`}</span>
                 </div>
                 <strong className={deltaClass(compareGain)} style={{ display: "block", marginTop: 8 }}>
@@ -199,7 +195,7 @@ export default function MetricDetail() {
               {[...points].reverse().map((point) => (
                 <article key={point.id} className="listItem">
                   <div className="listMain">
-                    <strong>{formatDateShort(point.date)}</strong>
+                    <strong>{formatDateMedium(point.date)}</strong>
                     <span className="small">{`${point.value.toFixed(1)} ${unit}`}</span>
                   </div>
                 </article>

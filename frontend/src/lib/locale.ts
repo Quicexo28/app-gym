@@ -13,18 +13,32 @@ export function formatDateLong(value: Date | string): string {
   return date.toLocaleDateString(APP_LOCALE, { weekday: "long", day: "numeric", month: "long" });
 }
 
-/** "17/09/2026" */
-export function formatDate(value: Date | string): string {
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "";
+type DateInput = Date | string | null | undefined;
+
+function toDate(value: DateInput): Date {
+  if (value instanceof Date) return value;
+  return new Date(value ?? "");
+}
+
+/** "17/09/2026" (`fallback` si la fecha falta o no es válida) */
+export function formatDate(value: DateInput, fallback = ""): string {
+  const date = toDate(value);
+  if (Number.isNaN(date.getTime())) return fallback;
   return date.toLocaleDateString(APP_LOCALE);
 }
 
 /** "17 sept 2026" */
-export function formatDateMedium(value: Date | string): string {
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "";
+export function formatDateMedium(value: DateInput, fallback = ""): string {
+  const date = toDate(value);
+  if (Number.isNaN(date.getTime())) return fallback;
   return date.toLocaleDateString(APP_LOCALE, { day: "numeric", month: "short", year: "numeric" });
+}
+
+/** "17 sept" */
+export function formatDateDayMonth(value: DateInput, fallback = ""): string {
+  const date = toDate(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return date.toLocaleDateString(APP_LOCALE, { day: "numeric", month: "short" });
 }
 
 /** "17/09/2026, 5:25 p. m." */

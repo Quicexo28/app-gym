@@ -102,9 +102,7 @@ export function unitLabelSingular(level: CycleLevel): string {
   return level === "micro" ? "Sesión" : level === "meso" ? "Ciclo" : "Bloque";
 }
 
-export function errorMessage(cause: unknown): string {
-  return String((cause as { message?: string })?.message || cause);
-}
+export { errorMessage } from "../errors";
 
 export function defaultDurationForLevel(level: CycleLevel): number {
   if (level === "micro") return 7;

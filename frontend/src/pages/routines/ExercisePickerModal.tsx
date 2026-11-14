@@ -2,6 +2,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 
 import { asUnilateralEntry } from "../../lib/laterality";
 import { renderExerciseTree } from "../../components/ExerciseTree";
+import Modal from "../../components/Modal";
 import Select from "../../components/Select";
 import type { CatalogNode } from "../../lib/exerciseTree";
 import {
@@ -111,8 +112,9 @@ export default function ExercisePickerModal({
   };
 
   return (
-    <div
-      className="modalOverlay modalOverlaySheet"
+    <Modal
+      className="modalOverlaySheet"
+      onClose={onClose}
       role="presentation"
       style={{ opacity: closing ? 0 : Math.max(0.3, 1 - dragY / 500), transition: dragging ? "none" : `opacity ${CLOSE_ANIMATION_MS}ms ease` }}
       onClick={finishClose}
@@ -210,6 +212,6 @@ export default function ExercisePickerModal({
           </div>
         )}
       </section>
-    </div>
+    </Modal>
   );
 }

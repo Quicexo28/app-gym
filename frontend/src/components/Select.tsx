@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { useDismissOnOutside } from "../lib/useDismissOnOutside";
+
 export type SelectOption = {
   value: string;
   label: ReactNode;
@@ -30,16 +32,7 @@ export default function Select({ value, onChange, options, disabled, ariaLabel, 
   const selectedIndex = options.findIndex((option) => option.value === value);
   const selected = selectedIndex >= 0 ? options[selectedIndex] : undefined;
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDocMouseDown = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocMouseDown);
-    return () => document.removeEventListener("mousedown", onDocMouseDown);
-  }, [open]);
+  useDismissOnOutside(open, rootRef, () => setOpen(false), { closeOnEscape: false });
 
   useEffect(() => {
     if (open) {

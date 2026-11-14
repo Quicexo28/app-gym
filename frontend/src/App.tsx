@@ -18,6 +18,9 @@ import DietHistory from "./pages/DietHistory";
 import DietNutrition from "./pages/DietNutrition";
 import DietToday from "./pages/DietToday";
 import Exercises from "./pages/Exercises";
+import DietTab from "./pages/historial/DietTab";
+import SessionsTab from "./pages/historial/SessionsTab";
+import Historial from "./pages/Historial";
 import Home from "./pages/Home";
 import DeleteAccount from "./pages/legal/DeleteAccount";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
@@ -104,6 +107,11 @@ export default function App() {
 
         <Route path="steps" element={<Steps />} />
 
+        <Route path="historial" element={<Historial />}>
+          <Route index element={<SessionsTab />} />
+          <Route path="dieta" element={<DietTab />} />
+        </Route>
+
         <Route path="training" element={<Training />}>
           <Route index element={<Routines />} />
           <Route path="plan" element={<Planning />} />
@@ -146,7 +154,8 @@ export default function App() {
         <Route path="athlete/:athleteId" element={<Navigate to="/users" replace />} />
 
         {/* Rutas previas a la reestructuracion de pestañas. */}
-        <Route path="history" element={<Navigate to="/home" replace />} />
+        <Route path="history" element={<Navigate to="/historial" replace />} />
+        <Route path="training/historial" element={<Navigate to="/historial" replace />} />
         <Route path="achievements" element={<Navigate to="/home" replace />} />
         <Route path="routines" element={<Navigate to="/training" replace />} />
         <Route path="planning" element={<Navigate to="/training/plan" replace />} />

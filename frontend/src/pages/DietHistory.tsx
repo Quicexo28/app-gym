@@ -1,65 +1,34 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { getDietSummary, getDietTargets, type DietSummaryDayItem, type NutritionTarget } from "../api";
+import { getDietSummary, getDietTargets, type DietSummaryDayItem } from "../api";
 import { DietTrendChart } from "../components/NutritionCharts";
 import { addDays, dayKey, formatDayShort, parseDayKey } from "../lib/dates";
 import { todayKey } from "../lib/nutrition/dietApi";
 import { useAthleteId } from "../state/athlete";
+import { useAsyncLoad } from "../lib/useAsyncLoad";
 
 type TrendRange = 7 | 30 | 90;
 
 const RANGES: TrendRange[] = [7, 30, 90];
 
+const NO_DAYS: DietSummaryDayItem[] = [];
+
 function useDietRangeSummary(athleteId: string, range: TrendRange) {
-  const [days, setDays] = useState<DietSummaryDayItem[]>([]);
-  const [targets, setTargets] = useState<NutritionTarget | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      if (!athleteId) {
-        if (!cancelled) {
-          setDays([]);
-          setTargets(null);
-        }
-        return;
-      }
-      if (!cancelled) {
-        setLoading(true);
-        setError("");
-      }
-
+  const { data, loading, error } = useAsyncLoad(
+    async () => {
       const today = parseDayKey(todayKey());
       const fromKey = dayKey(addDays(today, -(range - 1)));
-
-      try {
-        const [summary, targetsRes] = await Promise.all([
-          getDietSummary(athleteId, fromKey, todayKey()),
-          getDietTargets(athleteId),
-        ]);
-        if (cancelled) return;
-        setDays(summary.days);
-        setTargets(targetsRes);
-      } catch (cause: unknown) {
-        if (cancelled) return;
-        setDays([]);
-        setError(String((cause as { message?: string })?.message || cause));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId, range]);
-
-  return { days, targets, loading, error };
+      const [summary, targets] = await Promise.all([
+        getDietSummary(athleteId, fromKey, todayKey()),
+        getDietTargets(athleteId),
+      ]);
+      return { days: summary.days, targets };
+    },
+    [athleteId, range],
+    { skip: !athleteId },
+  );
+  return { days: data?.days ?? NO_DAYS, targets: data?.targets ?? null, loading, error };
 }
 
 export default function DietHistory() {

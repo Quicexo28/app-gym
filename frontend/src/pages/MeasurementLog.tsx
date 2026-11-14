@@ -14,6 +14,8 @@ import {
 } from "../lib/bodyMetrics";
 import { useAthleteId } from "../state/athlete";
 import "../styles.perfil.css";
+import { errorMessage } from "../lib/errors";
+import { NAV_DELAY_MS } from "../lib/ui";
 
 const VALID_KEYS = new Set<string>(FIELD_GROUPS.flatMap((group) => group.keys));
 
@@ -92,9 +94,9 @@ export default function MeasurementLog() {
 
       await createBodyMeasurement(payload);
       setMsg("Medición guardada.");
-      setTimeout(() => goBack(), 400);
+      setTimeout(() => goBack(), NAV_DELAY_MS);
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setSaving(false);
     }

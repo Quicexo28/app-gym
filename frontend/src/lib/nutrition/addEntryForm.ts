@@ -30,9 +30,7 @@ export function emptyPhotoMacroForm(): PhotoMacroForm {
 
 export type CapturedPhotoState = { blob: Blob; previewUrl: string; ocrPath: string | null };
 
-export function errorMessage(cause: unknown): string {
-  return String((cause as { message?: string })?.message || cause);
-}
+export { errorMessage } from "../errors";
 
 /**
  * Cantidad con la que arranca el formulario para un alimento.

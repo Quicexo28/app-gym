@@ -2,16 +2,12 @@ import { useMemo } from "react";
 
 import type { SessionRecord } from "../api";
 import { BODY_SLUG_LABELS, type BodySlug } from "../lib/bodyMap";
-import { APP_LOCALE } from "../lib/locale";
+import { formatDateDayMonth } from "../lib/locale";
 import { buildMuscleStats, type MuscleRankEntry } from "../lib/muscleStats";
 import { formatWeight } from "../lib/units";
 import { usePreferences } from "../state/preferences";
 
 type Catalog = Parameters<typeof buildMuscleStats>[1];
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(APP_LOCALE, { day: "numeric", month: "short" });
-}
 
 function RankList({
   title,
@@ -85,7 +81,7 @@ export default function MuscleDetailPanel({
             {stats.recent.map((item) => (
               <li key={item.start_time}>
                 <strong>{item.routineName ?? "Sesión libre"}</strong>
-                <span className="small">{`${formatDate(item.start_time)} · ${item.sets} series · ${item.exercises.join(", ")}`}</span>
+                <span className="small">{`${formatDateDayMonth(item.start_time)} · ${item.sets} series · ${item.exercises.join(", ")}`}</span>
               </li>
             ))}
           </ul>

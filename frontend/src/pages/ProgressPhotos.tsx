@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import DatePicker from "../components/DatePicker";
+import Modal from "../components/Modal";
 import Select from "../components/Select";
 import {
   addProgressPhoto,
@@ -19,6 +20,8 @@ import { useAuth } from "../state/auth";
 import { usePreferences } from "../state/preferences";
 import { APP_LOCALE } from "../lib/locale";
 import "../styles.ajustes.css";
+import { errorMessage } from "../lib/errors";
+import { useConfirm } from "../lib/useConfirm";
 
 function todayInputValue(): string {
   const now = new Date();
@@ -43,6 +46,7 @@ function formatTakenAt(iso: string): string {
 }
 
 export default function ProgressPhotos() {
+  const { confirm, dialog } = useConfirm();
   const { user } = useAuth();
   const { prefs } = usePreferences();
   const ownerId = user?.id || "";
@@ -100,7 +104,7 @@ export default function ProgressPhotos() {
       setCompareIds((prev) => prev.filter((id) => nextUrls[id]));
       setUsageMb(await estimateStorageUsageMb());
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setLoading(false);
     }
@@ -137,7 +141,7 @@ export default function ProgressPhotos() {
       setShowForm(false);
       await refresh();
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -153,7 +157,7 @@ export default function ProgressPhotos() {
       setMsg("Foto borrada del dispositivo.");
       await refresh();
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -161,9 +165,12 @@ export default function ProgressPhotos() {
 
   async function removeAll() {
     if (!ownerId) return;
-    const confirmed = window.confirm(
-      "Se borraran TODAS tus fotos de progreso de este dispositivo. No hay copia en el servidor, la acción no se puede deshacer.",
-    );
+    const confirmed = await confirm({
+      title: "Borrar todas las fotos",
+      message:
+        "Se borraran TODAS tus fotos de progreso de este dispositivo. No hay copia en el servidor, la acción no se puede deshacer.",
+      confirmLabel: "Borrar todo",
+    });
     if (!confirmed) return;
 
     setBusy(true);
@@ -174,7 +181,7 @@ export default function ProgressPhotos() {
       setMsg(`Borradas ${total} fotos.`);
       await refresh();
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -213,6 +220,7 @@ export default function ProgressPhotos() {
 
   return (
     <>
+      {dialog}
       {error ? <section className="message error">{error}</section> : null}
       {msg ? <section className="message">{msg}</section> : null}
 
@@ -357,7 +365,7 @@ export default function ProgressPhotos() {
       </section>
 
       {viewer ? (
-        <div className="modalOverlay" role="dialog" aria-modal="true" onClick={() => setViewerId(null)}>
+        <Modal role="dialog" aria-modal="true" onClose={() => setViewerId(null)} onClick={() => setViewerId(null)}>
           <div className="modalCard photoViewer" onClick={(e) => e.stopPropagation()}>
             <img src={urls[viewer.id]} alt={`Progreso ${formatTakenAt(viewer.takenAt)}`} />
             <div className="stack compactStack" style={{ marginTop: 10 }}>
@@ -380,7 +388,7 @@ export default function ProgressPhotos() {
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       ) : null}
     </>
   );

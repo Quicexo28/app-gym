@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import Modal from "../../components/Modal";
 import { MAX_REST_MINUTES, parseBoundedInt, splitRestSeconds } from "../../lib/routines/draft";
 import { isUnilateralName } from "../../lib/laterality";
 import { formatExerciseNameForCard } from "../../lib/session/format";
@@ -44,7 +45,7 @@ export default function ExerciseEditModal({ exercise, onSave, onClose }: Exercis
   }
 
   return (
-    <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Editar ejercicio" onClick={onClose}>
+    <Modal role="dialog" aria-modal="true" aria-label="Editar ejercicio" onClose={onClose} onClick={onClose}>
       <div className="modalCard closeRoutineModal" onClick={(event) => event.stopPropagation()}>
         <div className="sectionHead">
           <h3>Editar ejercicio</h3>
@@ -109,6 +110,6 @@ export default function ExerciseEditModal({ exercise, onSave, onClose }: Exercis
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

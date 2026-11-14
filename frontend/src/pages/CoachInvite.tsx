@@ -14,6 +14,7 @@ import {
   type CoachInvite as CoachInviteData,
 } from "../api";
 import { useViewScopes } from "../state/viewScopes";
+import { errorMessage } from "../lib/errors";
 
 // Nativo: la suscripcion no se gestiona desde la app (Apple 3.1.1 / Google Play Payments).
 const isNativeApp = Capacitor.isNativePlatform();
@@ -35,7 +36,7 @@ export default function CoachInvite() {
       setInvite(inviteRes);
       setBilling(billingRes);
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     }
   }, []);
 
@@ -85,7 +86,7 @@ export default function CoachInvite() {
       setInvite(res);
       setInfo("Código regenerado.");
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -99,7 +100,7 @@ export default function CoachInvite() {
       const res = await setCoachInviteEnabled(!invite.invite_enabled);
       setInvite(res);
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -112,7 +113,7 @@ export default function CoachInvite() {
       const res = await subscribeCoachPlan();
       window.location.href = res.checkout_url;
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
       setBusy(false);
     }
   }
@@ -126,7 +127,7 @@ export default function CoachInvite() {
       setBilling(res);
       setInfo("Asiento extra agregado. Se cobra en tu próximo ciclo.");
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -139,7 +140,7 @@ export default function CoachInvite() {
       const res = await openCoachBillingPortal();
       window.location.href = res.portal_url;
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
       setBusy(false);
     }
   }

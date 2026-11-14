@@ -25,6 +25,7 @@ import {
   type NutritionTargetPayload,
 } from "../../api";
 import { dayKey } from "../dates";
+import { useAsyncLoad } from "../useAsyncLoad";
 
 // Personalizacion de comidas (doc `modulo-dieta.md`): el atleta elige cuantas
 // comidas registra por día (1-8) y como se llama cada una. El id interno
@@ -292,6 +293,8 @@ export function useMicronutrientRegistry(): {
   return { registry, byKey, loading };
 }
 
+const NO_ENTRIES: MealEntry[] = [];
+
 export type DietTodayState = {
   targets: NutritionTarget | null;
   entries: MealEntry[];
@@ -308,58 +311,22 @@ export type DietTodayState = {
  * con el mismo selector de días (doc `modulo-dieta.md` #6.4).
  */
 export function useDietToday(athleteId: string, dateKey: string = todayKey()): DietTodayState {
-  const [targets, setTargets] = useState<NutritionTarget | null>(null);
-  const [entries, setEntries] = useState<MealEntry[]>([]);
-  const [totals, setTotals] = useState<DailyTotals | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [versión, setVersion] = useState(0);
+  const { data, loading, error, reload } = useAsyncLoad(
+    async () => {
+      const [targetsRes, entriesRes] = await Promise.all([
+        getDietTargets(athleteId),
+        getDietEntries(athleteId, dateKey),
+      ]);
+      return { targets: targetsRes, entries: entriesRes.items, totals: entriesRes.totals };
+    },
+    [athleteId, dateKey],
+    { skip: !athleteId },
+  );
+  const targets = data?.targets ?? null;
+  const entries = data?.entries ?? NO_ENTRIES;
+  const totals = data?.totals ?? null;
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      if (!athleteId) {
-        if (!cancelled) {
-          setTargets(null);
-          setEntries([]);
-          setTotals(null);
-        }
-        return;
-      }
-
-      if (!cancelled) {
-        setLoading(true);
-        setError("");
-      }
-
-      try {
-        const [targetsRes, entriesRes] = await Promise.all([
-          getDietTargets(athleteId),
-          getDietEntries(athleteId, dateKey),
-        ]);
-        if (cancelled) return;
-        setTargets(targetsRes);
-        setEntries(entriesRes.items);
-        setTotals(entriesRes.totals);
-      } catch (cause: unknown) {
-        if (cancelled) return;
-        setTargets(null);
-        setEntries([]);
-        setTotals(null);
-        setError(String((cause as { message?: string })?.message || cause));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId, dateKey, versión]);
-
-  const refresh = useCallback(() => setVersion((v) => v + 1), []);
+  const refresh = reload;
 
   const removeEntry = useCallback(
     async (entryId: string) => {
@@ -374,34 +341,11 @@ export function useDietToday(athleteId: string, dateKey: string = todayKey()): D
 
 /** Solo los slots de comida activos de un atleta (sin el resto de `useDietToday`), para pantallas que no necesitan las entries de hoy. */
 export function useMealSlots(athleteId: string): { slots: MealSlotDef[]; loading: boolean } {
-  const [targets, setTargets] = useState<NutritionTarget | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Un error se ignora: sin objetivos se usan los slots por defecto.
+  const { data: targets, loading } = useAsyncLoad(() => getDietTargets(athleteId), [athleteId], {
+    skip: !athleteId,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      if (!athleteId) {
-        if (!cancelled) setTargets(null);
-        return;
-      }
-      if (!cancelled) setLoading(true);
-      try {
-        const res = await getDietTargets(athleteId);
-        if (!cancelled) setTargets(res);
-      } catch {
-        if (!cancelled) setTargets(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId]);
-
-  const slots = useMemo(() => mealSlotsFromTargets(targets), [targets]);
+  const slots = useMemo(() => mealSlotsFromTargets(targets ?? null), [targets]);
   return { slots, loading };
 }

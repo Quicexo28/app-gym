@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -21,6 +21,8 @@ import {
   type MacroValues,
 } from "../lib/nutrition/dietApi";
 import { useAthleteId } from "../state/athlete";
+import { errorMessage } from "../lib/errors";
+import { useAsyncLoad } from "../lib/useAsyncLoad";
 
 const WEEK_DAYS = 7;
 
@@ -51,39 +53,17 @@ function formToValues(target: NutritionTarget | null): Record<FieldKey, string> 
   return next;
 }
 
+const NO_DAYS: DietSummaryDayItem[] = [];
+
 /** Los 7 días que terminan en el día seleccionado (el rango "semanal" de esta pantalla). */
 function useDietWeek(athleteId: string, selectedKey: string) {
-  const [days, setDays] = useState<DietSummaryDayItem[]>([]);
-  const [loading, setLoading] = useState(false);
-
   const fromKey = useMemo(() => dayKey(addDays(parseDayKey(selectedKey), -(WEEK_DAYS - 1))), [selectedKey]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const { data, loading } = useAsyncLoad(() => getDietSummary(athleteId, fromKey, selectedKey), [athleteId, fromKey, selectedKey], {
+    skip: !athleteId,
+  });
 
-    const load = async () => {
-      if (!athleteId) {
-        if (!cancelled) setDays([]);
-        return;
-      }
-      if (!cancelled) setLoading(true);
-      try {
-        const res = await getDietSummary(athleteId, fromKey, selectedKey);
-        if (!cancelled) setDays(res.days);
-      } catch {
-        if (!cancelled) setDays([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId, fromKey, selectedKey]);
-
-  return { days, loading };
+  return { days: data?.days ?? NO_DAYS, loading };
 }
 
 export default function DietNutrition() {
@@ -155,7 +135,7 @@ export default function DietNutrition() {
       setEditing(false);
       setMsg("Objetivos guardados.");
     } catch (cause: unknown) {
-      setSaveError(String((cause as { message?: string })?.message || cause));
+      setSaveError(errorMessage(cause));
     } finally {
       setSaving(false);
     }

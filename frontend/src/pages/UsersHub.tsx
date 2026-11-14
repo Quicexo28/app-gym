@@ -13,6 +13,8 @@ import KebabMenu from "../components/KebabMenu";
 import { useAthleteAccess } from "../state/athlete";
 import { useViewScopes } from "../state/viewScopes";
 import { APP_LOCALE } from "../lib/locale";
+import { errorMessage } from "../lib/errors";
+import { useConfirm } from "../lib/useConfirm";
 
 /** "12 sesiones · última: 16/09/2026" */
 function athleteSummaryLine(subject: HubSubject): string {
@@ -22,6 +24,7 @@ function athleteSummaryLine(subject: HubSubject): string {
 }
 
 export default function UsersHub() {
+  const { confirm, dialog } = useConfirm();
   const { coachView } = useViewScopes();
   const { setAthleteId } = useAthleteAccess();
   const nav = useNavigate();
@@ -44,7 +47,7 @@ export default function UsersHub() {
         setSubjects(res.subjects.filter((subject) => subject.kind === "assigned"));
       })
       .catch((cause: unknown) => {
-        setError(String((cause as { message?: string })?.message || cause));
+        setError(errorMessage(cause));
         setSubjects([]);
       })
       .finally(() => setLoading(false));
@@ -76,19 +79,24 @@ export default function UsersHub() {
       setShowAddForm(false);
       refresh();
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setCreating(false);
     }
   }
 
   async function removeAthlete(subject: HubSubject) {
-    if (!window.confirm(`¿Quitar a ${subject.display_name || subject.label} de tu cartera?`)) return;
+    const accepted = await confirm({
+      title: "Quitar de la cartera",
+      message: `¿Quitar a ${subject.display_name || subject.label} de tu cartera?`,
+      confirmLabel: "Quitar",
+    });
+    if (!accepted) return;
     try {
       await removeCoachAthlete(subject.id);
       refresh();
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     }
   }
 
@@ -101,6 +109,7 @@ export default function UsersHub() {
 
   return (
     <div className="container stack">
+      {dialog}
       <header className="titleBlock">
         <h1>Usuarios</h1>
       </header>

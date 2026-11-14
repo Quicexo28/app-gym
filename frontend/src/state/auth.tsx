@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { loadJSON, removeKey, saveJSON } from "../lib/storage";
 
 import {
   ApiError,
@@ -45,26 +46,20 @@ const KEY = "coach_ai_auth_v1";
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function readStoredSession(): AuthSession | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<AuthSession>;
-    if (!parsed?.token || !parsed.user) return null;
-    return {
-      token: parsed.token,
-      user: parsed.user,
-    };
-  } catch {
-    return null;
-  }
+  const parsed = loadJSON<Partial<AuthSession> | null>(KEY, null);
+  if (!parsed?.token || !parsed.user) return null;
+  return {
+    token: parsed.token,
+    user: parsed.user,
+  };
 }
 
 function persistSession(session: AuthSession | null): void {
   if (!session) {
-    localStorage.removeItem(KEY);
+    removeKey(KEY);
     return;
   }
-  localStorage.setItem(KEY, JSON.stringify(session));
+  saveJSON(KEY, session);
 }
 
 function toSession(payload: AuthResponse): AuthSession {

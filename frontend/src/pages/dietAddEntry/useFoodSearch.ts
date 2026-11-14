@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { getDietFoodCategories, getRecentDietFoods, searchDietFoods, type FoodProduct } from "../../api";
+import { useDebouncedValue } from "../../lib/useDebouncedValue";
 import { foodCategoryGroup, visibleFoodCategoryGroups } from "../../lib/nutrition/foodCategories";
 
 // Buscador de alimentos: termino, categoria elegida, recientes y resultados.
@@ -42,36 +43,38 @@ export function useFoodSearch(athleteId: string | null | undefined, selectedFood
 
   // Con categoria elegida el termino vacio es válido: lista el grupo entero
   // (el backend admite `q=""`), y escribir filtra dentro de ese grupo.
+  const term = query.trim();
+  const debouncedTerm = useDebouncedValue(term, 300);
+  // Un termino vacio busca sin demora; con texto espera a que `debouncedTerm` lo alcance.
+  const termSettled = term === "" || term === debouncedTerm;
+
   useEffect(() => {
-    const term = query.trim();
     if (selectedFood || (!term && !activeCategory)) {
       setResults([]);
       return;
     }
+    if (!termSettled) return;
     let cancelled = false;
-    const timeoutId = window.setTimeout(() => {
-      setSearching(true);
-      searchDietFoods({
-        q: term,
-        scope: "all",
-        category: activeCategory ? activeCategory.tcac : undefined,
-        limit: activeCategory ? 60 : undefined,
+    setSearching(true);
+    searchDietFoods({
+      q: term,
+      scope: "all",
+      category: activeCategory ? activeCategory.tcac : undefined,
+      limit: activeCategory ? 60 : undefined,
+    })
+      .then((rows) => {
+        if (!cancelled) setResults(rows);
       })
-        .then((rows) => {
-          if (!cancelled) setResults(rows);
-        })
-        .catch(() => {
-          if (!cancelled) setResults([]);
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false);
-        });
-    }, term ? 300 : 0);
+      .catch(() => {
+        if (!cancelled) setResults([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSearching(false);
+      });
     return () => {
       cancelled = true;
-      window.clearTimeout(timeoutId);
     };
-  }, [query, selectedFood, activeCategory]);
+  }, [term, termSettled, selectedFood, activeCategory]);
 
   const categoryGroups = useMemo(
     () => visibleFoodCategoryGroups(catalogCategories),

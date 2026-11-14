@@ -1,3 +1,4 @@
+export { formatRepsRange, formatRestRecommendation as formatRestSeconds } from "../session/format";
 import { formatSetsRange } from "../storage";
 import type { RoutineExerciseTemplate, RoutineTemplate } from "../storage";
 import {
@@ -89,16 +90,6 @@ export function buildRoutineSeriesByGroup(
       if (b.sets !== a.sets) return b.sets - a.sets;
       return a.group.localeCompare(b.group);
     });
-}
-
-export function formatRepsRange(min: number, max: number): string {
-  if (min === max) return String(min);
-  return `${min}-${max}`;
-}
-
-export function formatRestSeconds(restSeconds: number): string {
-  if (restSeconds <= 0) return "Sin descanso";
-  return `${restSeconds}s`;
 }
 
 export function buildRoutineRadar(seriesByGroup: RoutineGroupSeries[], maxSeries: number) {

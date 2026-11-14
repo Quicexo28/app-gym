@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { loadJSON, saveJSON } from "../lib/storage";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
@@ -39,25 +40,20 @@ const DEFAULT_PREFS: UserPreferences = {
 const PreferencesContext = createContext<PreferencesContextValue | null>(null);
 
 function readStoredPreferences(): UserPreferences {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return DEFAULT_PREFS;
-    const parsed = JSON.parse(raw) as Partial<UserPreferences>;
-    const parsedTheme: ThemePreference =
-      parsed.theme === "dark" || parsed.theme === "light" || parsed.theme === "system" ? parsed.theme : "system";
-    return {
-      theme: parsedTheme,
-      effortScale: parsed.effortScale === "rir" ? "rir" : "rpe",
-      weightUnit: parsed.weightUnit === "lb" ? "lb" : "kg",
-      distanceUnit: parsed.distanceUnit === "mi" ? "mi" : "m",
-    };
-  } catch {
-    return DEFAULT_PREFS;
-  }
+  const parsed = loadJSON<Partial<UserPreferences> | null>(KEY, null);
+  if (!parsed || typeof parsed !== "object") return DEFAULT_PREFS;
+  const parsedTheme: ThemePreference =
+    parsed.theme === "dark" || parsed.theme === "light" || parsed.theme === "system" ? parsed.theme : "system";
+  return {
+    theme: parsedTheme,
+    effortScale: parsed.effortScale === "rir" ? "rir" : "rpe",
+    weightUnit: parsed.weightUnit === "lb" ? "lb" : "kg",
+    distanceUnit: parsed.distanceUnit === "mi" ? "mi" : "m",
+  };
 }
 
 function writeStoredPreferences(next: UserPreferences): void {
-  localStorage.setItem(KEY, JSON.stringify(next));
+  saveJSON(KEY, next);
 }
 
 function getSystemTheme(): ResolvedTheme {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useClampPopover } from "../lib/useClampPopover";
+import { useDismissOnOutside } from "../lib/useDismissOnOutside";
 
 type TimePickerProps = {
   value: string;
@@ -32,21 +33,7 @@ export default function TimePicker({ value, onChange, label }: TimePickerProps) 
   const minuteListRef = useRef<HTMLDivElement | null>(null);
   const shiftX = useClampPopover(open, popoverRef);
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  useDismissOnOutside(open, rootRef, () => setOpen(false));
 
   useEffect(() => {
     if (!open) return;

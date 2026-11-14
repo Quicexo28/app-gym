@@ -1,3 +1,4 @@
+import { formatExerciseNameForList } from "../exerciseTree";
 import { APP_LOCALE } from "../locale";
 import type { NotificationCapability } from "./types";
 
@@ -34,7 +35,7 @@ export function formatRestRecommendation(restSeconds: number): string {
 }
 
 export function formatExerciseNameForCard(name: string): string {
-  return name.replace(/\s*>\s*/g, " - ");
+  return formatExerciseNameForList(name);
 }
 
 export function detectNotificationCapability(): NotificationCapability {

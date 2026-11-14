@@ -6,6 +6,7 @@ import { parseExerciseImportFile, type LegacyImportMode } from "../lib/legacyImp
 import { useAuth } from "../state/auth";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useUndo } from "../state/undo";
+import { errorMessage } from "../lib/errors";
 
 const SESSION_IMPORT_SAMPLE = [
   {
@@ -73,7 +74,7 @@ export default function AdminTools() {
         await refreshMe();
       }
     } catch (e: unknown) {
-      setSwitchMsg(String((e as { message?: string })?.message || e));
+      setSwitchMsg(errorMessage(e));
     } finally {
       setSwitchBusy(false);
     }
@@ -92,7 +93,7 @@ export default function AdminTools() {
         `Import global completo: +${result.imported} nuevos, ${result.updated} actualizados, ${result.skipped} duplicados sin cambios. Total procesado: ${result.total}.`,
       );
     } catch (e: unknown) {
-      setImportMsg(String((e as { message?: string })?.message || e));
+      setImportMsg(errorMessage(e));
     } finally {
       setImportBusy(false);
     }
@@ -119,7 +120,7 @@ export default function AdminTools() {
       URL.revokeObjectURL(url);
       setImportMsg(`Export global generado: ${payload.total} ejercicios (${fileName}).`);
     } catch (e: unknown) {
-      setImportMsg(String((e as { message?: string })?.message || e));
+      setImportMsg(errorMessage(e));
     } finally {
       setExportBusy(false);
     }
@@ -154,7 +155,7 @@ export default function AdminTools() {
       setSessionImportInfo("Batch importado correctamente.");
       setSessionImportResult(JSON.stringify(result, null, 2));
     } catch (e: unknown) {
-      setSessionImportError(String((e as { message?: string })?.message || e));
+      setSessionImportError(errorMessage(e));
     } finally {
       setSessionImportBusy(false);
     }
@@ -215,14 +216,14 @@ export default function AdminTools() {
             setDangerError("");
             setDangerInfo(`Ejercicios globales restaurados: ${globalCount}.`);
           } catch (cause: unknown) {
-            const message = String((cause as { message?: string })?.message || cause);
+            const message = errorMessage(cause);
             setDangerError(message);
             throw cause;
           }
         },
       });
     } catch (e: unknown) {
-      setDangerError(String((e as { message?: string })?.message || e));
+      setDangerError(errorMessage(e));
     } finally {
       setDangerBusy(false);
     }

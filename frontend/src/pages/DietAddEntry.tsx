@@ -36,6 +36,7 @@ import SelectedFoodCard from "./dietAddEntry/SelectedFoodCard";
 import { useFoodSearch } from "./dietAddEntry/useFoodSearch";
 import { usePhotoCapture } from "./dietAddEntry/usePhotoCapture";
 import "../styles.ajustes.css";
+import { NAV_DELAY_MS } from "../lib/ui";
 
 export default function DietAddEntry() {
   const nav = useNavigate();
@@ -303,7 +304,7 @@ export default function DietAddEntry() {
       });
 
       setMsg("Alimento y comida registrados.");
-      setTimeout(() => nav(`/diet?day=${targetDayKey}`), 400);
+      setTimeout(() => nav(`/diet?day=${targetDayKey}`), NAV_DELAY_MS);
     } catch (cause: unknown) {
       setError(errorMessage(cause));
     } finally {
@@ -365,14 +366,14 @@ export default function DietAddEntry() {
 
       await createDietEntry(payload);
       setMsg("Comida registrada.");
-      setTimeout(() => nav(`/diet?day=${targetDayKey}`), 400);
+      setTimeout(() => nav(`/diet?day=${targetDayKey}`), NAV_DELAY_MS);
     } catch (cause: unknown) {
       if (payload && isNetworkError(cause)) {
         // Puede que el servidor ya haya comiteado antes del timeout; el
         // client_ref generado al encolar evita que un reintento la duplique.
         enqueueMealEntry(payload);
         setMsg("Sin conexión: la comida quedo guardada y se subira sola al reconectar.");
-        setTimeout(() => nav(`/diet?day=${targetDayKey}`), 400);
+        setTimeout(() => nav(`/diet?day=${targetDayKey}`), NAV_DELAY_MS);
       } else {
         setError(errorMessage(cause));
       }

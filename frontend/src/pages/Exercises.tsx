@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import Modal from "../components/Modal";
 import {
   ALL_EXERCISE_FILTER as ALL,
   ALL_EXERCISE_MOVEMENT_FILTER,
@@ -28,6 +29,7 @@ import {
   buildTree,
   toTreeItems,
 } from "../lib/exerciseTree";
+import { errorMessage } from "../lib/errors";
 
 type SubvariationChain = {
   subvariation: string;
@@ -218,24 +220,6 @@ export default function Exercises() {
     };
   }, [filterMenuOpen]);
 
-  useEffect(() => {
-    if (!editingItem) return;
-
-    const previousOverflow = document.body.style.overflow;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        clearEdit();
-      }
-    };
-
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [editingItem]);
-
   function canEditEntry(entry: ExerciseCatalogEntry): boolean {
     return isAdminMode || entry.scope === "custom";
   }
@@ -366,7 +350,7 @@ export default function Exercises() {
       }
       setCreateRoles({});
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     }
   }
 
@@ -395,7 +379,7 @@ export default function Exercises() {
             }
             setError("");
           } catch (cause: unknown) {
-            const message = String((cause as { message?: string })?.message || cause);
+            const message = errorMessage(cause);
             setError(message);
             throw cause;
           }
@@ -405,7 +389,7 @@ export default function Exercises() {
         clearEdit();
       }
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     }
   }
 
@@ -470,7 +454,7 @@ export default function Exercises() {
       });
       clearEdit();
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     }
   }
 
@@ -712,7 +696,7 @@ export default function Exercises() {
       </section>
 
       {editingItem ? (
-        <div className="modalOverlay" role="presentation" onClick={clearEdit}>
+        <Modal role="presentation" onClose={clearEdit} onClick={clearEdit}>
           <section
             className="modalCard"
             role="dialog"
@@ -821,7 +805,7 @@ export default function Exercises() {
               </button>
             </div>
           </section>
-        </div>
+        </Modal>
       ) : null}
     </>
   );

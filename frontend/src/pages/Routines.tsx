@@ -21,6 +21,7 @@ import {
   uid,
 } from "../lib/storage";
 import KebabMenu from "../components/KebabMenu";
+import { useConfirm } from "../lib/useConfirm";
 import type { RoutineExerciseTemplate, RoutineTemplate } from "../lib/storage";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { useAthleteAccess } from "../state/athlete";
@@ -52,6 +53,7 @@ import RoutineInfoModal from "./routines/RoutineInfoModal";
 import { useDraftDrag } from "./routines/useDraftDrag";
 
 export default function Routines() {
+  const { confirm, dialog } = useConfirm();
   const { athleteId, subjects } = useAthleteAccess();
   const { coachView } = useViewScopes();
   const { loading, syncError, entries: catalogEntries } = useExerciseCatalog();
@@ -186,28 +188,6 @@ export default function Routines() {
     return !nonLeafPathKeys.has(pathKey(entry.path));
   }
 
-
-  useEffect(() => {
-    if (!pickerOpen && !infoRoutineId) return;
-
-    const previousOverflow = document.body.style.overflow;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        if (infoRoutineId) {
-          setInfoRoutineId(null);
-          return;
-        }
-        setPickerOpen(false);
-      }
-    };
-
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [infoRoutineId, pickerOpen]);
 
   useEffect(() => {
     if (!openCardMenuIdentity) return;
@@ -349,7 +329,7 @@ export default function Routines() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function saveRoutineDraft() {
+  async function saveRoutineDraft() {
     setError("");
     setFeedback("");
     const trimmed = name.trim();
@@ -458,9 +438,12 @@ export default function Routines() {
             .map((target) => subjectLabelById.get(target.athlete_id) || target.athlete_id)
             .join(", ");
           const previewSuffix = targets.length > 3 ? ", ..." : "";
-          const shouldPropagate = window.confirm(
-            `Desea actualizar esta rutina para todos tus usuarios que la posean?\nCoincidencias: ${targets.length} (${preview}${previewSuffix})`,
-          );
+          const shouldPropagate = await confirm({
+            title: "Actualizar a otros usuarios",
+            message: `Desea actualizar esta rutina para todos tus usuarios que la posean?\nCoincidencias: ${targets.length} (${preview}${previewSuffix})`,
+            confirmLabel: "Actualizar a todos",
+            cancelLabel: "Solo esta",
+          });
 
           if (shouldPropagate) {
             for (const target of targets) {
@@ -605,6 +588,7 @@ export default function Routines() {
 
   return (
     <>
+      {dialog}
       {syncError ? <div className="message error">{syncError}</div> : null}
       {error ? <div className="message error">{error}</div> : null}
       {feedback ? <div className="message">{feedback}</div> : null}

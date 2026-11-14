@@ -32,6 +32,9 @@ import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import { useViewScopes } from "../state/viewScopes";
 import { APP_LOCALE, formatDateTime } from "../lib/locale";
+import { errorMessage } from "../lib/errors";
+import { useAsyncLoad } from "../lib/useAsyncLoad";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
 
 const isNativeApp = Capacitor.isNativePlatform();
 
@@ -73,45 +76,27 @@ function AthleteMiniCard({ subject, onOpen }: { subject: HubSubject; onOpen: () 
   );
 }
 
+const NO_SUBJECTS: HubSubject[] = [];
+const NO_REPORTS: CoachReportItem[] = [];
+
 function CoachPortfolioCard() {
   const nav = useNavigate();
   const { setAthleteId } = useAthleteAccess();
-  const [subjects, setSubjects] = useState<HubSubject[]>([]);
-  const [reports, setReports] = useState<CoachReportItem[]>([]);
   const [query, setQuery] = useState("");
   const [activeOnly, setActiveOnly] = useState(false);
+  const debouncedQuery = useDebouncedValue(query, 250);
 
-  useEffect(() => {
-    let cancelled = false;
-    const timeoutId = window.setTimeout(() => {
-      getAthleteHub({ q: query.trim() || undefined, active_only: activeOnly })
-        .then((res) => {
-          if (cancelled) return;
-          setSubjects(res.subjects.filter((subject) => subject.kind === "assigned"));
-        })
-        .catch(() => {
-          if (!cancelled) setSubjects([]);
-        });
-    }, 250);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [query, activeOnly]);
-
-  useEffect(() => {
-    let cancelled = false;
-    listCoachReports({ limit: 5 })
-      .then((rows) => {
-        if (!cancelled) setReports(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setReports([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Un error se ignora: ambas listas quedan vacías.
+  const { data: subjectsData } = useAsyncLoad(
+    async () => {
+      const res = await getAthleteHub({ q: debouncedQuery.trim() || undefined, active_only: activeOnly });
+      return res.subjects.filter((subject) => subject.kind === "assigned");
+    },
+    [debouncedQuery, activeOnly],
+  );
+  const subjects = subjectsData ?? NO_SUBJECTS;
+  const { data: reportsData } = useAsyncLoad(() => listCoachReports({ limit: 5 }), []);
+  const reports = reportsData ?? NO_REPORTS;
 
   function openAthlete(subject: HubSubject) {
     setAthleteId(subject.id);
@@ -308,7 +293,7 @@ export default function Home() {
       .catch((cause: unknown) => {
         if (cancelled) return;
         setSessions([]);
-        setError(String((cause as { message?: string })?.message || cause));
+        setError(errorMessage(cause));
       });
 
     // La planificación es opcional: si falla no debe tumbar el resto de la vista.

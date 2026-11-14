@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { cancelRestNotification, scheduleRestNotification } from "../lib/restNotification";
 import { endSessionLiveActivity, syncSessionLiveActivity } from "../lib/sessionLiveActivity";
 import type { SessionLiveActivityState } from "../lib/sessionLiveActivity";
+import { loadJSON, removeKey, saveJSON } from "../lib/storage";
 
 export type ActiveSessionStep = "pick_routine" | "capture_session";
 
@@ -245,10 +246,10 @@ function normalizeDraft(raw: unknown): ActiveSessionDraft | null {
 }
 
 function readStoredDraft(): ActiveSessionDraft | null {
+  const raw = loadJSON<unknown>(KEY, null);
+  if (raw === null) return null;
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    return normalizeDraft(JSON.parse(raw));
+    return normalizeDraft(raw);
   } catch {
     return null;
   }
@@ -256,15 +257,11 @@ function readStoredDraft(): ActiveSessionDraft | null {
 
 function writeStoredDraft(next: ActiveSessionDraft | null): void {
   if (!next) {
-    localStorage.removeItem(KEY);
+    removeKey(KEY);
     return;
   }
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch (err) {
-    // QuotaExceededError: la sesión sigue en memoria; no tumbar la captura.
-    console.error("No se pudo persistir la sesión activa en localStorage", err);
-  }
+  // Si falla (cuota), la sesión sigue en memoria; saveJSON no tumba la captura.
+  saveJSON(KEY, next);
 }
 
 function findFirstPendingSet(exercises: ActiveSessionExerciseDraft[]): { exerciseIndex: number; setIndex: number } | null {

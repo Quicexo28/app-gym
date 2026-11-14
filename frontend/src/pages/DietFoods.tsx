@@ -18,6 +18,8 @@ import { genericMealSlotLabel, parseOptionalNumber } from "../lib/nutrition/diet
 import { foodEmoji } from "../lib/nutrition/foodEmoji";
 import { useAthleteId } from "../state/athlete";
 import { useAuth } from "../state/auth";
+import { errorMessage } from "../lib/errors";
+import { useConfirm } from "../lib/useConfirm";
 
 const ALL_CATEGORIES = "";
 
@@ -81,6 +83,7 @@ function macroSummary(food: FoodProduct): string {
 }
 
 export default function DietFoods() {
+  const { confirm, dialog } = useConfirm();
   const nav = useNavigate();
   const [athleteId] = useAthleteId();
   const { user } = useAuth();
@@ -156,7 +159,7 @@ export default function DietFoods() {
           .catch((cause: unknown) => {
             if (cancelled) return;
             setResults([]);
-            setSearchError(String((cause as { message?: string })?.message || cause));
+            setSearchError(errorMessage(cause));
           })
           .finally(() => {
             if (!cancelled) setSearching(false);
@@ -176,7 +179,7 @@ export default function DietFoods() {
     setPresetsError("");
     getDietPresets()
       .then(setPresets)
-      .catch((cause: unknown) => setPresetsError(String((cause as { message?: string })?.message || cause)))
+      .catch((cause: unknown) => setPresetsError(errorMessage(cause)))
       .finally(() => setPresetsLoading(false));
   }
 
@@ -185,12 +188,12 @@ export default function DietFoods() {
   }, []);
 
   async function removeFood(food: FoodProduct) {
-    if (!window.confirm(`Eliminar "${food.name}"?`)) return;
+    if (!(await confirm({ title: "Eliminar alimento", message: `Eliminar "${food.name}"?`, confirmLabel: "Eliminar" }))) return;
     try {
       await deleteDietFood(food.id);
       setResults((prev) => prev.filter((item) => item.id !== food.id));
     } catch (cause: unknown) {
-      setSearchError(String((cause as { message?: string })?.message || cause));
+      setSearchError(errorMessage(cause));
     }
   }
 
@@ -217,7 +220,7 @@ export default function DietFoods() {
       setNewFood(EMPTY_NEW_FOOD);
       setShowNewFood(false);
     } catch (cause: unknown) {
-      setFoodError(String((cause as { message?: string })?.message || cause));
+      setFoodError(errorMessage(cause));
     } finally {
       setSavingFood(false);
     }
@@ -236,24 +239,25 @@ export default function DietFoods() {
       });
       setPresetMsg(`"${preset.name}" registrado en el día de hoy.`);
     } catch (cause: unknown) {
-      setPresetsError(String((cause as { message?: string })?.message || cause));
+      setPresetsError(errorMessage(cause));
     } finally {
       setPresetBusyId(null);
     }
   }
 
   async function removePreset(preset: MealPreset) {
-    if (!window.confirm(`Eliminar la preestablecida "${preset.name}"?`)) return;
+    if (!(await confirm({ title: "Eliminar preestablecida", message: `Eliminar la preestablecida "${preset.name}"?`, confirmLabel: "Eliminar" }))) return;
     try {
       await deleteDietPreset(preset.id);
       setPresets((prev) => prev.filter((item) => item.id !== preset.id));
     } catch (cause: unknown) {
-      setPresetsError(String((cause as { message?: string })?.message || cause));
+      setPresetsError(errorMessage(cause));
     }
   }
 
   return (
     <>
+      {dialog}
       <section className="surface">
         <div className="sectionHead">
           <h3>Buscar alimentos</h3>

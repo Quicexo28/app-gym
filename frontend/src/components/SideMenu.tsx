@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
+import { useModalBehavior } from "../lib/useModalBehavior";
+
 export type MenuLink = {
   to: string;
   label: string;
@@ -30,22 +32,7 @@ export default function SideMenu({
     onClose();
   }, [location.pathname, onClose]);
 
-  useEffect(() => {
-    if (!open) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open, onClose]);
+  useModalBehavior(open, onClose);
 
   if (!open) return null;
 

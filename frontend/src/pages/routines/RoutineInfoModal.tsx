@@ -1,3 +1,4 @@
+import Modal from "../../components/Modal";
 import { ChartPlaceholder } from "../../components/Charts";
 import { formatExerciseNameForList } from "../../lib/exerciseTree";
 import {
@@ -21,7 +22,7 @@ type Props = {
 
 export default function RoutineInfoModal({ routine, seriesByGroup, maxSeries, radar, onClose }: Props) {
   return (
-    <div className="modalOverlay" role="presentation" onClick={onClose}>
+    <Modal role="presentation" onClose={onClose} onClick={onClose}>
       <section
         className="modalCard"
         role="dialog"
@@ -121,6 +122,6 @@ export default function RoutineInfoModal({ routine, seriesByGroup, maxSeries, ra
           </button>
         </div>
       </section>
-    </div>
+    </Modal>
   );
 }

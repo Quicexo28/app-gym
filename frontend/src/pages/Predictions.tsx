@@ -1,34 +1,24 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { createRun, listRuns } from "../api";
 import type { RunListItem } from "../api";
 import { useAthleteId } from "../state/athlete";
 import { APP_LOCALE } from "../lib/locale";
+import { errorMessage } from "../lib/errors";
+import { useAsyncLoad } from "../lib/useAsyncLoad";
+
+const NO_RUNS: RunListItem[] = [];
 
 export default function Predictions() {
   const [athleteId] = useAthleteId();
-  const [runs, setRuns] = useState<RunListItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const nav = useNavigate();
 
-  useEffect(() => {
-    if (!athleteId) return;
-
-    let cancelled = false;
-    listRuns(athleteId, 20)
-      .then((rows) => {
-        if (!cancelled) setRuns(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setRuns([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId]);
+  // Un error al listar se ignora: la lista queda vacía.
+  const { data: runsData } = useAsyncLoad(() => listRuns(athleteId, 20), [athleteId], { skip: !athleteId });
+  const runs = runsData ?? NO_RUNS;
 
   async function runNow() {
     if (!athleteId) return;
@@ -39,7 +29,7 @@ export default function Predictions() {
       const res = await createRun(athleteId, "volume_load_kg", true);
       nav(`/predictions/run/${encodeURIComponent(res.run_id)}`);
     } catch (e: unknown) {
-      setError(String((e as { message?: string })?.message || e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }

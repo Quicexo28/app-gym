@@ -10,11 +10,12 @@ import {
   MAX_VOICE_AUDIT_ENTRIES,
   normalizeTranscriptText,
   readVoiceAssistDesktopPreference,
-  VOICE_ASSIST_DESKTOP_KEY,
+  writeVoiceAssistDesktopPreference,
   VOICE_MODEL_URL,
 } from "../../lib/session/voice";
 import type { SessionStep } from "../../lib/session/types";
 import type { ActiveSessionVoiceCommandAudit } from "../../state/activeSession";
+import { errorMessage } from "../../lib/errors";
 
 type UseSessionVoiceArgs = {
   step: SessionStep;
@@ -41,8 +42,7 @@ export function useSessionVoice({ step, initialAudit, initialUsed }: UseSessionV
   const voiceStatusPulseTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(VOICE_ASSIST_DESKTOP_KEY, voiceAssistDesktopEnabled ? "1" : "0");
+    writeVoiceAssistDesktopPreference(voiceAssistDesktopEnabled);
   }, [voiceAssistDesktopEnabled]);
 
   const appendVoiceAuditEntry = useCallback((entry: ActiveSessionVoiceCommandAudit) => {
@@ -89,7 +89,7 @@ export function useSessionVoice({ step, initialAudit, initialUsed }: UseSessionV
         reason: "Transcripción manual desde portapapeles.",
       });
     } catch (cause: unknown) {
-      const message = String((cause as { message?: string })?.message || cause);
+      const message = errorMessage(cause);
       setVoiceError(`No pude leer el portapapeles: ${message}`);
       setVoiceStatus("error");
     } finally {
@@ -133,7 +133,7 @@ export function useSessionVoice({ step, initialAudit, initialUsed }: UseSessionV
     try {
       voiceModule = await import("../../lib/voice/offlineRecognizer");
     } catch (cause: unknown) {
-      const message = String((cause as { message?: string })?.message || cause);
+      const message = errorMessage(cause);
       setVoiceError(`No pude cargar el motor de voz: ${message}`);
       setVoiceStatus("error");
       return;
@@ -186,7 +186,7 @@ export function useSessionVoice({ step, initialAudit, initialUsed }: UseSessionV
     try {
       await recognizer.arm();
     } catch (cause: unknown) {
-      const message = String((cause as { message?: string })?.message || cause);
+      const message = errorMessage(cause);
       setVoiceError(`No se pudo iniciar la escucha: ${message}`);
       setVoiceStatus("error");
     }
@@ -219,7 +219,7 @@ export function useSessionVoice({ step, initialAudit, initialUsed }: UseSessionV
       await recognizer.disarm();
       setVoiceError("");
     } catch (cause: unknown) {
-      const message = String((cause as { message?: string })?.message || cause);
+      const message = errorMessage(cause);
       setVoiceError(message);
       setVoiceStatus("error");
     }

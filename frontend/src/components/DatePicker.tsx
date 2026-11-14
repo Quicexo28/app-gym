@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { MONTHS_LONG, WEEKDAY_LETTERS, addDays, dayKey, formatDayLong, parseDayKey, weekdayIndex } from "../lib/dates";
 import { useClampPopover } from "../lib/useClampPopover";
+import { useDismissOnOutside } from "../lib/useDismissOnOutside";
 
 type DatePickerProps = {
   value: string;
@@ -25,21 +26,7 @@ export default function DatePicker({ value, onChange, label, max }: DatePickerPr
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const shiftX = useClampPopover(open, popoverRef);
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  useDismissOnOutside(open, rootRef, () => setOpen(false));
 
   const grid = useMemo(() => buildMonthGrid(viewYear, viewMonth), [viewMonth, viewYear]);
   const todayKey = dayKey(new Date());

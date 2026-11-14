@@ -4,20 +4,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { sendSessionHeartbeat } from "../api";
 import { useAthleteAccess } from "../state/athlete";
 import { useActiveSession } from "../state/activeSession";
+import { formatTimer } from "../lib/session/sessionTimer";
 
 const TICK_MS = 1_000;
 const HEARTBEAT_MS = 60_000;
-
-function formatTimer(totalSeconds: number): string {
-  const safe = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(safe / 3600);
-  const minutes = Math.floor((safe % 3600) / 60);
-  const seconds = safe % 60;
-  if (hours > 0) {
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
 
 function findFirstPendingSet(
   exercises: Array<{

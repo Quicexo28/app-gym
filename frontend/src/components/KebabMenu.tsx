@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { useClampPopover } from "../lib/useClampPopover";
+import { useDismissOnOutside } from "../lib/useDismissOnOutside";
 
 export type KebabAction = {
   label: string;
@@ -20,23 +21,7 @@ export default function KebabMenu({ actions, ariaLabel = "Más opciones" }: Keba
   const panelRef = useRef<HTMLDivElement>(null);
   const shiftX = useClampPopover(open, panelRef);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDocMouseDown = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDocMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onDocMouseDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  useDismissOnOutside(open, rootRef, () => setOpen(false));
 
   return (
     <div ref={rootRef} className="kebabMenu">

@@ -18,7 +18,8 @@ import DatePicker from "../components/DatePicker";
 import Select from "../components/Select";
 import { useAthleteAccess } from "../state/athlete";
 import { useAuth } from "../state/auth";
-import { APP_LOCALE } from "../lib/locale";
+import { formatDate } from "../lib/locale";
+import { errorMessage } from "../lib/errors";
 
 const GENDER_OPTIONS: { value: ProfileGender; label: string }[] = [
   { value: "male", label: "Hombre" },
@@ -36,15 +37,8 @@ function formatDelta(delta: number | null | undefined, unit: string): string {
   return ` (${sign}${delta.toFixed(1)} ${unit})`;
 }
 
-function formatDate(iso: string | null | undefined): string {
-  if (!iso) return "-";
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return "-";
-  return parsed.toLocaleDateString(APP_LOCALE);
-}
-
 function shareText(item: ProgressShareItem): string {
-  const lines = [`Progreso ${formatDate(item.created_at_utc)}`];
+  const lines = [`Progreso ${formatDate(item.created_at_utc, "-")}`];
   for (const metric of item.metrics) {
     lines.push(`${metric.label}: ${metric.value} ${metric.unit}${formatDelta(metric.delta, metric.unit)}`);
   }
@@ -96,7 +90,7 @@ export default function Profile() {
       const res = await getMyProfile();
       applyProfile(res);
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     }
   }, [applyProfile]);
 
@@ -121,7 +115,7 @@ export default function Profile() {
       setInfo("Te uniste a tu coach.");
       await reloadProfile();
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -136,7 +130,7 @@ export default function Profile() {
       setInfo("Saliste de tu coach.");
       await reloadProfile();
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -152,7 +146,7 @@ export default function Profile() {
       const res = await listProgressShares(threadAthleteId, 20);
       setShares(res.items || []);
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setSharesLoading(false);
     }
@@ -190,7 +184,7 @@ export default function Profile() {
       setEditing(false);
       setInfo("Perfil actualizado.");
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -207,7 +201,7 @@ export default function Profile() {
       setInfo("Progreso compartido.");
       await refreshShares();
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -222,7 +216,7 @@ export default function Profile() {
       setReplyDrafts((prev) => ({ ...prev, [shareId]: "" }));
       setShares((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -234,7 +228,7 @@ export default function Profile() {
       await deleteProgressShare(shareId);
       setShares((prev) => prev.filter((item) => item.id !== shareId));
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -434,7 +428,7 @@ export default function Profile() {
             {shares.map((item) => (
                 <article key={item.id} className="listItem shareCard">
                   <div className="listMain">
-                    <strong>{`${item.author.label} | ${formatDate(item.created_at_utc)}`}</strong>
+                    <strong>{`${item.author.label} | ${formatDate(item.created_at_utc, "-")}`}</strong>
                     {item.note ? <span className="small">{item.note}</span> : null}
                   </div>
   

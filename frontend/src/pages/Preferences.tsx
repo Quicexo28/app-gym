@@ -11,6 +11,7 @@ import { useAuth } from "../state/auth";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { usePreferences } from "../state/preferences";
 import { useUndo } from "../state/undo";
+import { errorMessage } from "../lib/errors";
 
 type Option<T extends string> = {
   label: string;
@@ -105,7 +106,7 @@ export default function Preferences() {
         },
       });
     } catch (e: unknown) {
-      setDangerError(String((e as { message?: string })?.message || e));
+      setDangerError(errorMessage(e));
     } finally {
       setDangerBusy(false);
     }
@@ -155,14 +156,14 @@ export default function Preferences() {
             setDangerError("");
             setDangerInfo(`Ejercicios personalizados restaurados: ${customSnapshots.length}.`);
           } catch (cause: unknown) {
-            const message = String((cause as { message?: string })?.message || cause);
+            const message = errorMessage(cause);
             setDangerError(message);
             throw cause;
           }
         },
       });
     } catch (e: unknown) {
-      setDangerError(String((e as { message?: string })?.message || e));
+      setDangerError(errorMessage(e));
     } finally {
       setDangerBusy(false);
     }
@@ -187,7 +188,7 @@ export default function Preferences() {
       logout();
       nav("/login", { replace: true });
     } catch (e: unknown) {
-      setDangerError(String((e as { message?: string })?.message || e));
+      setDangerError(errorMessage(e));
     } finally {
       setDangerBusy(false);
     }

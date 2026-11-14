@@ -10,16 +10,9 @@ import { formatWeight } from "../lib/units";
 import { useAthleteId } from "../state/athlete";
 import { useExerciseCatalog } from "../state/exerciseCatalog";
 import { usePreferences } from "../state/preferences";
-import { APP_LOCALE } from "../lib/locale";
+import { formatDateMedium } from "../lib/locale";
+import { formatExerciseNameForList } from "../lib/exerciseTree";
 import { useAthleteSessions } from "../lib/useAthleteSessions";
-
-function formatExerciseNameForDisplay(name: string): string {
-  return name.replace(/\s*>\s*/g, " - ").trim();
-}
-
-function formatDateShort(iso: string): string {
-  return new Date(iso).toLocaleDateString(APP_LOCALE, { day: "numeric", month: "short", year: "numeric" });
-}
 
 function deltaClass(deltaLabel: string | null): string {
   if (!deltaLabel || deltaLabel === "Sin cambio") return "metricCardDelta flat";
@@ -82,7 +75,7 @@ export default function CargasExerciseDetail() {
 
       <section className="surface">
         <div className="sectionHead">
-          <h3>{formatExerciseNameForDisplay(exerciseName)}</h3>
+          <h3>{formatExerciseNameForList(exerciseName)}</h3>
           <p>Progreso de carga registrado en tus sesiones.</p>
         </div>
         <div className="quickActions" style={{ marginTop: 10 }}>
@@ -139,8 +132,8 @@ export default function CargasExerciseDetail() {
             <div style={{ marginTop: 12 }}>
               <ProgressChart
                 values={history.map((point) => point.topLoadKg)}
-                startLabel={formatDateShort(history[0].date)}
-                endLabel={formatDateShort(history[history.length - 1].date)}
+                startLabel={formatDateMedium(history[0].date)}
+                endLabel={formatDateMedium(history[history.length - 1].date)}
               />
             </div>
           </section>
@@ -158,7 +151,7 @@ export default function CargasExerciseDetail() {
                   className={`pill ${compareDates.includes(point.date) ? "active" : ""}`}
                   onClick={() => toggleCompare(point.date)}
                 >
-                  <span>{formatDateShort(point.date)}</span>
+                  <span>{formatDateMedium(point.date)}</span>
                   <small>{formatWeight(point.topLoadKg, prefs.weightUnit)}</small>
                 </button>
               ))}
@@ -168,11 +161,11 @@ export default function CargasExerciseDetail() {
               <div className="surface" style={{ marginTop: 12 }}>
                 <div className="stack compactStack">
                   <div>
-                    <strong>{formatDateShort(comparePair[0].date)}</strong>
+                    <strong>{formatDateMedium(comparePair[0].date)}</strong>
                     <div className="small">{formatSetsSummary(comparePair[0], prefs.weightUnit)}</div>
                   </div>
                   <div>
-                    <strong>{formatDateShort(comparePair[1].date)}</strong>
+                    <strong>{formatDateMedium(comparePair[1].date)}</strong>
                     <div className="small">{formatSetsSummary(comparePair[1], prefs.weightUnit)}</div>
                   </div>
                 </div>
@@ -197,7 +190,7 @@ export default function CargasExerciseDetail() {
               {[...history].reverse().map((point) => (
                 <article key={point.date} className="listItem">
                   <div className="listMain">
-                    <strong>{formatDateShort(point.date)}</strong>
+                    <strong>{formatDateMedium(point.date)}</strong>
                     <span className="small">{formatSetsSummary(point, prefs.weightUnit)}</span>
                   </div>
                 </article>

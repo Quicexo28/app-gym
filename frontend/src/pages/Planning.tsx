@@ -43,6 +43,7 @@ import {
   type PlanningTab,
 } from "../lib/planning/builders";
 import { loadRoutines, type RoutineTemplate } from "../lib/storage";
+import { useConfirm } from "../lib/useConfirm";
 import { useAthleteAccess } from "../state/athlete";
 import { useUndo } from "../state/undo";
 import AssignmentsTab from "./planning/AssignmentsTab";
@@ -61,6 +62,7 @@ const PLANNING_TABS: ReadonlyArray<{ key: PlanningTab; label: string }> = [
 ];
 
 export default function Planning() {
+  const { confirm, dialog } = useConfirm();
   const { athleteId, subjects } = useAthleteAccess();
   const { registerUndo } = useUndo();
   const pendingDeleteTimerByTemplateRef = useRef<Map<string, number>>(new Map());
@@ -425,7 +427,7 @@ export default function Planning() {
     }
   }
   async function deleteTemplateItem(templateId: string) {
-    if (!window.confirm("Confirma eliminar esta plantilla.")) return;
+    if (!(await confirm({ title: "Eliminar plantilla", message: "Confirma eliminar esta plantilla.", confirmLabel: "Eliminar" }))) return;
     const template =
       templates.micro.find((item) => item.id === templateId) ||
       templates.meso.find((item) => item.id === templateId) ||
@@ -565,6 +567,7 @@ export default function Planning() {
 
   return (
     <>
+      {dialog}
       {templatesError ? <section className="message error">{templatesError}</section> : null}
       {feedback ? <section className="message">{feedback}</section> : null}
 

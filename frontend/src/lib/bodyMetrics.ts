@@ -9,6 +9,7 @@ import {
 } from "../api";
 import type { WeightUnit } from "../state/preferences";
 import { fromKg, formatWeight } from "./units";
+import { useAsyncLoad } from "./useAsyncLoad";
 
 export const FIELD_GROUPS: Array<{
   title: string;
@@ -200,13 +201,11 @@ export type BodyMeasurementsState = {
   reload: () => void;
 };
 
+const NO_HISTORY: BodyMeasurementItem[] = [];
+
 /** Carga compartida de definiciones + histórico de medidas para un atleta; usada por las 3 pantallas de Medidas. */
 export function useBodyMeasurements(athleteId: string | null, limit = 120): BodyMeasurementsState {
   const [definitions, setDefinitions] = useState<BodyMetricDefinition[]>(FALLBACK_DEFINITIONS);
-  const [history, setHistory] = useState<BodyMeasurementItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,32 +222,15 @@ export function useBodyMeasurements(athleteId: string | null, limit = 120): Body
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (!athleteId) {
-        setHistory([]);
-        return;
-      }
-      setLoading(true);
-      setError("");
-      try {
-        const response = await getBodyMeasurementsHistory(athleteId, limit);
-        if (cancelled) return;
-        setHistory(response.items || []);
-      } catch (cause: unknown) {
-        if (cancelled) return;
-        setHistory([]);
-        setError(String((cause as { message?: string })?.message || cause));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId, limit, reloadTick]);
+  const {
+    data: historyData,
+    loading,
+    error,
+    reload,
+  } = useAsyncLoad(async () => (await getBodyMeasurementsHistory(athleteId as string, limit)).items || [], [athleteId, limit], {
+    skip: !athleteId,
+  });
+  const history = historyData ?? NO_HISTORY;
 
-  return { definitions, history, loading, error, reload: () => setReloadTick((tick) => tick + 1) };
+  return { definitions, history, loading, error, reload };
 }

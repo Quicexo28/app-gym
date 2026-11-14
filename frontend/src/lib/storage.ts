@@ -21,6 +21,32 @@ export function saveJSON(key: string, value: unknown): boolean {
   }
 }
 
+export function loadString(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function saveString(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err) {
+    console.error(`No se pudo guardar "${key}" en localStorage`, err);
+    return false;
+  }
+}
+
+export function removeKey(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Almacenamiento no disponible: nada que borrar.
+  }
+}
+
 export type ExerciseCatalogItem = {
   id: string;
   group: string;

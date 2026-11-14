@@ -1,24 +1,29 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { ingestSessions, listCoachNotes, markCoachNoteRead } from "../api";
-import type { CoachNote } from "../api";
+import { ingestSessions } from "../api";
 import { dayKeyToDatetimeLocal } from "../lib/dates";
 import type { ExerciseCatalogEntry } from "../lib/exerciseCatalog";
-import { isUnilateralName, setSides, setUnilateralName } from "../lib/laterality";
+import { setSides, setUnilateralName } from "../lib/laterality";
+import {
+  appendEmptySet,
+  applyCommandToExercises,
+  duplicateLastSetOf,
+  exerciseHasData,
+  newExerciseFromCatalog,
+  replaceExerciseIdentity,
+  resizeSets,
+  sameExercise,
+  setAthleteNote,
+  shiftRestTimerAfterRemoval,
+} from "../lib/session/exerciseOps";
 import { buildSessionExercises, buildSessionPayload } from "../lib/session/buildPayload";
 import {
   deviceDatetimeLocal,
   formatStartLabel,
   normalizeExerciseNameForNotes,
 } from "../lib/session/format";
-import {
-  DEFAULT_REST_SECONDS,
-  DEFAULT_TARGET_REPS_MAX,
-  DEFAULT_TARGET_REPS_MIN,
-  DEFAULT_TARGET_SETS,
-} from "../lib/routines/draft";
-import { defaultSetForExercise, EMPTY_SET, parseSetEffortValue, routineToDraft } from "../lib/session/routine";
+import { parseSetEffortValue, routineToDraft } from "../lib/session/routine";
 import {
   completeSessionTimerState,
   computeSessionElapsedMs,
@@ -41,6 +46,7 @@ import { useActiveSession } from "../state/activeSession";
 import { useAthleteAccess, useAthleteId } from "../state/athlete";
 import { usePreferences } from "../state/preferences";
 import CloseRoutineModal from "./newSession/CloseRoutineModal";
+import ExtrasMenu from "./newSession/ExtrasMenu";
 import ExerciseCard from "./newSession/ExerciseCard";
 import ExerciseEditModal from "./newSession/ExerciseEditModal";
 import type { ExerciseSettings } from "./newSession/ExerciseEditModal";
@@ -48,14 +54,22 @@ import PickRoutineStep from "./newSession/PickRoutineStep";
 import RestFloatBar from "./newSession/RestFloatBar";
 import SessionExercisePicker from "./newSession/SessionExercisePicker";
 import SessionTimerCard from "./newSession/SessionTimerCard";
+import { useCoachNotes } from "./newSession/useCoachNotes";
 import { useRestFinishedNotice, useRestTimer } from "./newSession/useRestTimer";
 import { useSessionVoice } from "./newSession/useSessionVoice";
 import { useSetRowAnimations } from "./newSession/useSetRowAnimations";
 import VoiceDock from "./newSession/VoiceDock";
 import WellnessPanel from "./newSession/WellnessPanel";
 import "../styles.rutinas.css";
+import { errorMessage } from "../lib/errors";
+import { useConfirm } from "../lib/useConfirm";
+
+const DEFAULT_SLEEP_SCORE = 7;
+const DEFAULT_STRESS_SCORE = 5;
+const DEFAULT_SENSATION_SCORE = 7;
 
 export default function NewSession() {
+  const { confirm, dialog } = useConfirm();
   const { athleteIds, canSwitch, ready: athleteReady } = useAthleteAccess();
   const [athleteId] = useAthleteId();
   const { prefs } = usePreferences();
@@ -76,15 +90,13 @@ export default function NewSession() {
   const [sessionAthleteId, setSessionAthleteId] = useState<string>(() => draftForAthlete?.athleteId || athleteId);
   const [startLocal, setStartLocal] = useState<string>(() => draftForAthlete?.startLocal ?? "");
   const [notes, setNotes] = useState<string>(() => draftForAthlete?.notes ?? "");
-  const [sleepScore, setSleepScore] = useState<number>(() => draftForAthlete?.sleepScore ?? 7);
-  const [stressScore, setStressScore] = useState<number>(() => draftForAthlete?.stressScore ?? 5);
-  const [sensationScore, setSensationScore] = useState<number>(() => draftForAthlete?.sensationScore ?? 7);
+  const [sleepScore, setSleepScore] = useState<number>(() => draftForAthlete?.sleepScore ?? DEFAULT_SLEEP_SCORE);
+  const [stressScore, setStressScore] = useState<number>(() => draftForAthlete?.stressScore ?? DEFAULT_STRESS_SCORE);
+  const [sensationScore, setSensationScore] = useState<number>(() => draftForAthlete?.sensationScore ?? DEFAULT_SENSATION_SCORE);
 
   const [routineId, setRoutineId] = useState<string>(() => draftForAthlete?.routineId ?? "");
   const [routines, setRoutines] = useState<RoutineTemplate[]>([]);
   const [routineExercises, setRoutineExercises] = useState<RoutineExerciseDraft[]>(() => draftForAthlete?.routineExercises ?? []);
-  const [coachNotesByExercise, setCoachNotesByExercise] = useState<Record<string, CoachNote[]>>({});
-  const [expandedNoteExercise, setExpandedNoteExercise] = useState<number | null>(null);
 
   const [sessionTimer, setSessionTimer] = useState<SessionTimerState>(() => draftForAthlete?.sessionTimer ?? IDLE_SESSION_TIMER);
   const {
@@ -132,7 +144,6 @@ export default function NewSession() {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
-  const [extrasMenuOpen, setExtrasMenuOpen] = useState(false);
   const [closeRoutineOpen, setCloseRoutineOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<{ type: "add" } | { type: "replace"; exIdx: number } | null>(null);
   const [editingExIdx, setEditingExIdx] = useState<number | null>(null);
@@ -158,25 +169,30 @@ export default function NewSession() {
     activeSessionDraftRef.current = activeSessionDraft;
   }, [activeSessionDraft]);
 
+  // Deja la captura en blanco (paso 1, sin rutina, temporizadores y voz a cero).
+  const resetDraftFields = useCallback((nextSessionAthleteId: string) => {
+    resetSetAnimations();
+    setRoutineId("");
+    setRoutineExercises([]);
+    setStep("pick_routine");
+    setSessionAthleteId(nextSessionAthleteId);
+    setStartLocal("");
+    setNotes("");
+    setSleepScore(DEFAULT_SLEEP_SCORE);
+    setStressScore(DEFAULT_STRESS_SCORE);
+    setSensationScore(DEFAULT_SENSATION_SCORE);
+    setSessionTimer(IDLE_SESSION_TIMER);
+    setRestTimer(null);
+    setVoiceAudit([]);
+    setVoiceUsed(false);
+    clearVoiceFeedback();
+  }, [clearVoiceFeedback, resetSetAnimations, setRestTimer, setVoiceAudit, setVoiceUsed]);
+
   useEffect(() => {
     const resetToIdle = (nextSessionAthleteId: string) => {
       disarmVoiceRecognizer();
-      resetSetAnimations();
-      setRoutineId("");
-      setRoutineExercises([]);
-      setStep("pick_routine");
-      setSessionAthleteId(nextSessionAthleteId);
-      setStartLocal("");
-      setNotes("");
-      setSleepScore(7);
-      setStressScore(5);
-      setSensationScore(7);
-      setSessionTimer(IDLE_SESSION_TIMER);
-      setRestTimer(null);
-      setVoiceAudit([]);
+      resetDraftFields(nextSessionAthleteId);
       setVoiceTranscript("");
-      setVoiceUsed(false);
-      clearVoiceFeedback();
     };
 
     if (!athleteId) {
@@ -213,6 +229,7 @@ export default function NewSession() {
     athleteId,
     clearVoiceFeedback,
     disarmVoiceRecognizer,
+    resetDraftFields,
     resetSetAnimations,
     setRestTimer,
     setVoiceAudit,
@@ -226,53 +243,13 @@ export default function NewSession() {
   const selectedRoutine = useMemo(() => sortedRoutines.find((routine) => routine.id === routineId) || null, [routineId, sortedRoutines]);
   const selectedRoutineName = selectedRoutine?.name || "";
 
-  // Indicaciones del entrenador para los ejercicios de esta rutina - se cargan
-  // una vez al elegir rutina, no por set (ver notepad icon en cada exerciseCard).
-  useEffect(() => {
-    if (!athleteId || !selectedRoutine) {
-      setCoachNotesByExercise({});
-      return;
-    }
-    let cancelled = false;
-    listCoachNotes({ athlete_id: athleteId, routine_id: selectedRoutine.id })
-      .then((notes) => {
-        if (cancelled) return;
-        const grouped: Record<string, CoachNote[]> = {};
-        for (const note of notes) {
-          const key = note.exercise_name_normalized || "";
-          (grouped[key] ||= []).push(note);
-        }
-        setCoachNotesByExercise(grouped);
-      })
-      .catch(() => {
-        if (!cancelled) setCoachNotesByExercise({});
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [athleteId, selectedRoutine]);
+  const { coachNotesByExercise, expandedNoteExercise, setExpandedNoteExercise, toggleExerciseNote } =
+    useCoachNotes(athleteId, selectedRoutine?.id ?? "");
 
   function updateExerciseAthleteNote(exIdx: number, value: string) {
-    setRoutineExercises((prev) => prev.map((entry, i) => (i === exIdx ? { ...entry, athleteNote: value } : entry)));
+    setRoutineExercises((prev) => setAthleteNote(prev, exIdx, value));
   }
 
-  function handleToggleExerciseNote(exIdx: number, notes: CoachNote[]) {
-    setExpandedNoteExercise((prev) => (prev === exIdx ? null : exIdx));
-    const unread = notes.filter((note) => !note.read_at_utc);
-    if (unread.length === 0) return;
-    const nowIso = new Date().toISOString();
-    setCoachNotesByExercise((prev) => {
-      const next = { ...prev };
-      for (const note of unread) {
-        const key = note.exercise_name_normalized || "";
-        next[key] = (next[key] || []).map((item) => (item.id === note.id ? { ...item, read_at_utc: nowIso } : item));
-      }
-      return next;
-    });
-    for (const note of unread) {
-      void markCoachNoteRead(note.id).catch(() => {});
-    }
-  }
   const sessionElapsedMs = useMemo(() => computeSessionElapsedMs(sessionTimer, nowMs), [sessionTimer, nowMs]);
   const sessionElapsedSec = useMemo(() => Math.floor(sessionElapsedMs / 1000), [sessionElapsedMs]);
   const sessionTimerRunning = sessionTimer.running_since_ms !== null && sessionTimer.completed_at_ms === null;
@@ -411,18 +388,7 @@ export default function NewSession() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [athleteId, requestedRoutineId, routines, step]);
 
-  useEffect(() => {
-    if (!extrasMenuOpen) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setExtrasMenuOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [extrasMenuOpen]);
-
   function goBackToRoutineStep() {
-    setExtrasMenuOpen(false);
     void deactivateVoiceCapture();
     resetSetAnimations();
     setStep("pick_routine");
@@ -435,25 +401,10 @@ export default function NewSession() {
   function exitSession() {
     if (step !== "capture_session") return;
 
-    setExtrasMenuOpen(false);
     setCloseRoutineOpen(false);
     void deactivateVoiceCapture();
     clearDraft();
-    resetSetAnimations();
-    setStep("pick_routine");
-    setSessionAthleteId(athleteId);
-    setRoutineId("");
-    setRoutineExercises([]);
-    setStartLocal("");
-    setNotes("");
-    setSleepScore(7);
-    setStressScore(5);
-    setSensationScore(7);
-    setSessionTimer(IDLE_SESSION_TIMER);
-    setRestTimer(null);
-    setVoiceAudit([]);
-    setVoiceUsed(false);
-    clearVoiceFeedback();
+    resetDraftFields(athleteId);
     setNowMs(Date.now());
     setError("");
     nav("/home");
@@ -474,71 +425,23 @@ export default function NewSession() {
 
   function addSet(exIdx: number) {
     if (hasPendingSetDelete) return;
-    setRoutineExercises((prev) =>
-      prev.map((entry, i) =>
-        i === exIdx
-          ? {
-              ...entry,
-              sets: [
-                ...entry.sets,
-                {
-                  reps: "",
-                  load: "",
-                  completed: false,
-                  effort: "",
-                },
-              ],
-            }
-          : entry,
-      ),
-    );
+    setRoutineExercises((prev) => appendEmptySet(prev, exIdx));
   }
 
   function duplicateLastSet(exIdx: number) {
     if (hasPendingSetDelete) return;
-    setRoutineExercises((prev) =>
-      prev.map((entry, i) => {
-        if (i !== exIdx) return entry;
-        const last = entry.sets[entry.sets.length - 1] || EMPTY_SET;
-        return { ...entry, sets: [...entry.sets, { ...last }] };
-      }),
-    );
-  }
-
-  function exerciseHasData(entry: RoutineExerciseDraft): boolean {
-    return entry.sets.some((set) => set.completed || set.reps.trim() || set.load.trim() || set.effort.trim());
-  }
-
-  // Los índices cambian al quitar ejercicios: el descanso en curso se reajusta o se cancela.
-  function shiftRestTimerAfterRemoval(removedIdx: number) {
-    setRestTimer((prev) => {
-      if (!prev) return prev;
-      if (prev.exercise_index === removedIdx) return null;
-      if (prev.exercise_index > removedIdx) return { ...prev, exercise_index: prev.exercise_index - 1 };
-      return prev;
-    });
+    setRoutineExercises((prev) => duplicateLastSetOf(prev, exIdx));
   }
 
   function addExerciseFromCatalog(entry: ExerciseCatalogEntry) {
-    const duplicated = routineExercises.some((item) => item.name === entry.name && (item.group ?? "") === (entry.group ?? ""));
+    const duplicated = routineExercises.some((item) => sameExercise(item, entry));
     if (duplicated) {
       setError("Ese ejercicio ya está en la sesión.");
       setPickerMode(null);
       return;
     }
     setError("");
-    setRoutineExercises((prev) => [
-      ...prev,
-      {
-        name: entry.name,
-        group: entry.group,
-        athleteNote: "",
-        target_reps_min: DEFAULT_TARGET_REPS_MIN,
-        target_reps_max: DEFAULT_TARGET_REPS_MAX,
-        rest_seconds: DEFAULT_REST_SECONDS,
-        sets: Array.from({ length: DEFAULT_TARGET_SETS }, () => defaultSetForExercise()),
-      },
-    ]);
+    setRoutineExercises((prev) => [...prev, newExerciseFromCatalog(entry)]);
     setPickerMode(null);
   }
 
@@ -546,35 +449,29 @@ export default function NewSession() {
     const current = routineExercises[exIdx];
     setPickerMode(null);
     if (!current || hasPendingSetDelete) return;
-    if (routineExercises.some((item, i) => i !== exIdx && item.name === entry.name && (item.group ?? "") === (entry.group ?? ""))) {
+    if (routineExercises.some((item, i) => i !== exIdx && sameExercise(item, entry))) {
       setError("Ese ejercicio ya está en la sesión.");
       return;
     }
     setError("");
     setExpandedNoteExercise(null);
     setRestTimer((prev) => (prev && prev.exercise_index === exIdx ? null : prev));
-    // Se conservan objetivos y número de series; los datos capturados eran del ejercicio anterior.
-    setRoutineExercises((prev) =>
-      prev.map((item, i) =>
-        i === exIdx
-          ? {
-              ...item,
-              name: entry.name,
-              group: entry.group,
-              athleteNote: "",
-              sets: item.sets.map(() => defaultSetForExercise()),
-            }
-          : item,
-      ),
-    );
+    setRoutineExercises((prev) => replaceExerciseIdentity(prev, exIdx, entry));
   }
 
-  function removeExercise(exIdx: number) {
+  async function removeExercise(exIdx: number) {
     const current = routineExercises[exIdx];
     if (!current || hasPendingSetDelete) return;
-    if (exerciseHasData(current) && !window.confirm(`¿Eliminar "${current.name}" con sus series capturadas?`)) return;
+    if (exerciseHasData(current)) {
+      const accepted = await confirm({
+        title: "Eliminar ejercicio",
+        message: `¿Eliminar "${current.name}" con sus series capturadas?`,
+        confirmLabel: "Eliminar",
+      });
+      if (!accepted) return;
+    }
     setExpandedNoteExercise(null);
-    shiftRestTimerAfterRemoval(exIdx);
+    setRestTimer((prev) => shiftRestTimerAfterRemoval(prev, exIdx));
     setRoutineExercises((prev) => prev.filter((_, i) => i !== exIdx));
   }
 
@@ -587,7 +484,7 @@ export default function NewSession() {
     const nextName = setUnilateralName(current.name, settings.unilateral);
     if (
       nextName !== current.name &&
-      routineExercises.some((item, i) => i !== exIdx && item.name === nextName && (item.group ?? "") === (current.group ?? ""))
+      routineExercises.some((item, i) => i !== exIdx && sameExercise(item, { name: nextName, group: current.group }))
     ) {
       setError("Ya existe ese ejercicio en la sesión con esa lateralidad.");
       return;
@@ -596,16 +493,7 @@ export default function NewSession() {
     setRoutineExercises((prev) =>
       prev.map((item, i) => {
         if (i !== exIdx) return item;
-        // Nunca se quita una serie con datos: el mínimo llega hasta la última serie usada.
-        let lastUsed = -1;
-        item.sets.forEach((set, idx) => {
-          if (set.completed || set.reps.trim() || set.load.trim() || set.effort.trim()) lastUsed = idx;
-        });
-        const targetCount = Math.max(settings.sets, lastUsed + 1, 1);
-        const sets =
-          targetCount >= item.sets.length
-            ? [...item.sets, ...Array.from({ length: targetCount - item.sets.length }, () => defaultSetForExercise())]
-            : item.sets.slice(0, targetCount);
+        const sets = resizeSets(item.sets, settings.sets);
         return {
           ...item,
           name: nextName,
@@ -622,7 +510,6 @@ export default function NewSession() {
   // Handler central para inputs manuales y comandos por voz.
   function applySessionDraftCommand(command: SessionDraftCommand) {
     const currentEntry = routineExercises[command.exercise_index];
-    const unilateral = currentEntry ? isUnilateralName(currentEntry.name) : false;
     const currentSet = currentEntry?.sets[command.set_index];
     // Estado final de "completada" tras el comando; null = el comando no cambia ese dato.
     let nextCompleted: boolean | null = null;
@@ -632,28 +519,7 @@ export default function NewSession() {
       nextCompleted = sides.left && sides.right;
     }
 
-    setRoutineExercises((prev) =>
-      prev.map((entry, exIdx) => {
-        if (exIdx !== command.exercise_index) return entry;
-        if (command.set_index < 0 || command.set_index >= entry.sets.length) return entry;
-        const sets = entry.sets.map((set, setIdx) => {
-          if (setIdx !== command.set_index) return set;
-          if (command.type === "set_reps") return { ...set, reps: command.value };
-          if (command.type === "set_load") return { ...set, load: command.value };
-          if (command.type === "set_set_completed") {
-            return unilateral
-              ? { ...set, completed: command.value, sides: { left: command.value, right: command.value } }
-              : { ...set, completed: command.value };
-          }
-          if (command.type === "set_set_side") {
-            const sides = { ...setSides(set), [command.side]: command.value };
-            return { ...set, sides, completed: sides.left && sides.right };
-          }
-          return { ...set, effort: command.value };
-        });
-        return { ...entry, sets };
-      }),
-    );
+    setRoutineExercises((prev) => applyCommandToExercises(prev, command));
 
     if (nextCompleted === null) return;
     // El descanso empieza cuando la serie queda completa (ambos lados) y se cancela si deja de estarlo.
@@ -751,7 +617,7 @@ export default function NewSession() {
         nav("/home");
         return true;
       }
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
       return false;
     } finally {
       setBusy(false);
@@ -777,6 +643,7 @@ export default function NewSession() {
 
   return (
     <div className="container stack">
+      {dialog}
       <header className="titleBlock">
         <h1>Sesión por rutina</h1>
       </header>
@@ -795,40 +662,10 @@ export default function NewSession() {
         ) : null}
 
         <div className="quickActions" style={{ marginTop: 12 }}>
-          <div className="extrasMenu">
-            <button
-              type="button"
-              className="menuBtn"
-              aria-label="Funciones extra"
-              aria-haspopup="menu"
-              aria-expanded={extrasMenuOpen}
-              onClick={() => setExtrasMenuOpen((prev) => !prev)}
-            >
-              <span className="menuBtnBars" aria-hidden="true" />
-            </button>
-
-            {extrasMenuOpen ? (
-              <>
-                <div className="extrasMenuBackdrop" onClick={() => setExtrasMenuOpen(false)} />
-                <div className="extrasMenuPanel" role="menu" aria-label="Funciones extra">
-                  <button className="extrasMenuItem" type="button" role="menuitem" onClick={goBackToRoutineStep}>
-                    Cambiar rutina
-                  </button>
-                  <button
-                    className="extrasMenuItem danger"
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setExtrasMenuOpen(false);
-                      setCloseRoutineOpen(true);
-                    }}
-                  >
-                    Cerrar rutina
-                  </button>
-                </div>
-              </>
-            ) : null}
-          </div>
+          <ExtrasMenu
+            onChangeRoutine={goBackToRoutineStep}
+            onCloseRoutine={() => setCloseRoutineOpen(true)}
+          />
         </div>
       </section>
 
@@ -910,7 +747,7 @@ export default function NewSession() {
                 uncheckingSetKeys={uncheckingSetKeys}
                 deletingSetKeys={deletingSetKeys}
                 hasPendingSetDelete={hasPendingSetDelete}
-                onToggleNote={handleToggleExerciseNote}
+                onToggleNote={toggleExerciseNote}
                 onAthleteNoteChange={updateExerciseAthleteNote}
                 onCommand={applySessionDraftCommand}
                 onToggleSetCompleted={handleSetCompletedToggle}
@@ -993,7 +830,7 @@ export default function NewSession() {
               : `Reemplaza: ${routineExercises[pickerMode.exIdx]?.name ?? ""}`
           }
           addedCount={routineExercises.length}
-          isAdded={(entry) => routineExercises.some((item) => item.name === entry.name && (item.group ?? "") === (entry.group ?? ""))}
+          isAdded={(entry) => routineExercises.some((item) => sameExercise(item, entry))}
           onPick={(entry) =>
             pickerMode.type === "add" ? addExerciseFromCatalog(entry) : replaceExerciseFromCatalog(pickerMode.exIdx, entry)
           }

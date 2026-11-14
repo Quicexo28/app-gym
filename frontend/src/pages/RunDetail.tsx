@@ -9,6 +9,7 @@ import type {
   TrainingSignal,
 } from "../api";
 import { formatDateTime } from "../lib/locale";
+import { asPct as pct, kg, signedKg as signed } from "../lib/format";
 
 const EVENT_LABEL: Record<TrainingEvent["kind"], string> = {
   personal_record: "Marca personal",
@@ -36,21 +37,6 @@ const SIGNAL_LABEL: Record<TrainingSignal["kind"], string> = {
   deload_suggested: "Descarga",
   low_adherence: "Adherencia",
 };
-function kg(value: number): string {
-  return `${Math.round(value * 10) / 10} kg`;
-}
-
-function pct(value: number): string {
-  const rounded = Math.round(value * 1000) / 10;
-  return `${rounded > 0 ? "+" : ""}${rounded}%`;
-}
-
-function signed(value: number | null): string {
-  if (value == null) return "-";
-  const rounded = Math.round(value * 10) / 10;
-  return `${rounded > 0 ? "+" : ""}${rounded} kg`;
-}
-
 /**
  * Proyección basada en la propia tendencia del atleta. El texto es condicional
  * a propósito: si cambia el cumplimiento, deja de valer.

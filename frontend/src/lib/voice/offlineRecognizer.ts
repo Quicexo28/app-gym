@@ -5,6 +5,7 @@ import type {
   OfflineRecognizerFinalTranscript,
   OfflineRecognizerState,
 } from "./types";
+import { errorMessage } from "../errors";
 
 type OfflineRecognizerOptions = {
   modelUrl: string;
@@ -154,7 +155,7 @@ export class OfflineVoskRecognizer {
       try {
         this.recognizer?.acceptWaveform(event.inputBuffer);
       } catch (cause) {
-        const message = String((cause as { message?: string })?.message || cause);
+        const message = errorMessage(cause);
         this.setError(`Fallo procesando audio: ${message}`);
       }
     };
@@ -200,7 +201,7 @@ export class OfflineVoskRecognizer {
         this.callbacks.onPartialTranscript?.("");
         this.setState("armed");
       } catch (cause) {
-        const message = String((cause as { message?: string })?.message || cause);
+        const message = errorMessage(cause);
         this.setError(message);
         throw cause;
       } finally {

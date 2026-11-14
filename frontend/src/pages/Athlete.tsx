@@ -18,17 +18,8 @@ import type {
 } from "../api";
 import { Sparkline } from "../components/Charts";
 import { useAthleteAccess } from "../state/athlete";
-
-function asPct(value: number): string {
-  const rounded = Math.round(value * 1000) / 10;
-  return `${rounded > 0 ? "+" : ""}${rounded}%`;
-}
-
-function asKg(value: number | null): string {
-  if (value == null) return "-";
-  const rounded = Math.round(value * 10) / 10;
-  return `${rounded > 0 ? "+" : ""}${rounded} kg`;
-}
+import { errorMessage } from "../lib/errors";
+import { asPct, signedKg as asKg } from "../lib/format";
 
 const TREND_LABEL: Record<string, string> = {
   up: "Progresando",
@@ -133,7 +124,7 @@ export default function AthleteDetail() {
       setInsights(res);
       setEditingPlan(false);
     } catch (cause: unknown) {
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
     } finally {
       setSaving(false);
     }

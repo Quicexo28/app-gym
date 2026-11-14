@@ -1,3 +1,5 @@
+import Modal from "../../components/Modal";
+
 type CloseRoutineModalProps = {
   error: string;
   busy: boolean;
@@ -9,7 +11,7 @@ type CloseRoutineModalProps = {
 
 export default function CloseRoutineModal({ error, busy, canSave, onComplete, onCancelRoutine, onBack }: CloseRoutineModalProps) {
   return (
-    <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Cerrar rutina">
+    <Modal role="dialog" aria-modal="true" aria-label="Cerrar rutina" onClose={onBack}>
       <div className="modalCard closeRoutineModal">
         <div className="sectionHead">
           <h3>Cerrar rutina</h3>
@@ -34,6 +36,6 @@ export default function CloseRoutineModal({ error, busy, canSave, onComplete, on
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { setApiViewScopes, type AuthUser, type ViewScopes } from "../api";
 import { useAuth } from "./auth";
+import { loadJSON, loadString, removeKey, saveJSON } from "../lib/storage";
 
 type ViewScopesContextValue = {
   ready: boolean;
@@ -24,19 +25,14 @@ const OFF: ViewScopes = { admin: false, coach: false };
 const ViewScopesContext = createContext<ViewScopesContextValue | null>(null);
 
 function readStoredScopes(): ViewScopes {
-  const raw = localStorage.getItem(KEY);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as Partial<ViewScopes>;
-      return { admin: parsed?.admin === true, coach: parsed?.coach === true };
-    } catch {
-      return OFF;
-    }
+  const stored = loadJSON<Partial<ViewScopes> | null>(KEY, null);
+  if (stored && typeof stored === "object") {
+    return { admin: stored.admin === true, coach: stored.coach === true };
   }
 
   // Migración del enum de vista anterior (admin | coach | user_plus | user_normal).
-  const legacy = localStorage.getItem(LEGACY_KEY)?.trim().toLowerCase();
-  localStorage.removeItem(LEGACY_KEY);
+  const legacy = loadString(LEGACY_KEY)?.trim().toLowerCase();
+  removeKey(LEGACY_KEY);
   if (legacy === "admin") return { admin: true, coach: false };
   if (legacy === "coach") return { admin: false, coach: true };
   return OFF;
@@ -44,10 +40,10 @@ function readStoredScopes(): ViewScopes {
 
 function persistScopes(scopes: ViewScopes | null): void {
   if (!scopes) {
-    localStorage.removeItem(KEY);
+    removeKey(KEY);
     return;
   }
-  localStorage.setItem(KEY, JSON.stringify(scopes));
+  saveJSON(KEY, scopes);
 }
 
 function canAdminViewFor(user: AuthUser): boolean {

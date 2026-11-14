@@ -39,6 +39,7 @@
  *   palabra ("t0tal") se lea como si fuera un valor nutricional.
  */
 
+import { round1 } from "../format";
 import { MICRONUTRIENT_ALIASES } from "./micronutrients";
 import type {
   ConfidenceLevel,
@@ -153,10 +154,6 @@ function extractLineNumbers(cleanedLine: string, lineWasAdjusted: boolean): Cand
     }
   }
   return candidates;
-}
-
-function round1(value: number): number {
-  return Math.round(value * 10) / 10;
 }
 
 const CONFIDENCE_ORDER: ConfidenceLevel[] = ["high", "medium", "low"];

@@ -6,6 +6,8 @@ import type { AccessibleAthletesResponse, AccessibleSubject } from "../api";
 import { getAccessibleAthletes } from "../api";
 import { useAuth } from "./auth";
 import { useViewScopes } from "./viewScopes";
+import { errorMessage } from "../lib/errors";
+import { loadString, removeKey, saveString } from "../lib/storage";
 
 type AthleteContextValue = {
   ready: boolean;
@@ -24,7 +26,7 @@ const KEY = "coach_ai_active_subject_id_v1";
 const AthleteContext = createContext<AthleteContextValue | null>(null);
 
 function readStoredAthleteId(): string | null {
-  const raw = localStorage.getItem(KEY);
+  const raw = loadString(KEY);
   if (!raw) return null;
   const value = raw.trim();
   return value || null;
@@ -32,10 +34,10 @@ function readStoredAthleteId(): string | null {
 
 function persistAthleteId(value: string | null): void {
   if (!value) {
-    localStorage.removeItem(KEY);
+    removeKey(KEY);
     return;
   }
-  localStorage.setItem(KEY, value);
+  saveString(KEY, value);
 }
 
 export function AthleteProvider({ children }: { children: ReactNode }) {
@@ -140,7 +142,7 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
       setSelfAthleteId("");
       setAthleteIdState("");
       setCanSwitch(false);
-      setError(String((cause as { message?: string })?.message || cause));
+      setError(errorMessage(cause));
       persistAthleteId(null);
     } finally {
       setLoading(false);

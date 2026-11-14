@@ -22,6 +22,36 @@ export type SessionRecord = {
   meta?: JsonObject;
 };
 
+/** Serie guardada. Los campos extra (rir, rpe, calentamiento) se conservan al editar. */
+export type HistorySet = { reps: number; load_kg: number } & JsonObject;
+
+export type HistoryExercise = { name: string; sets: HistorySet[] } & JsonObject;
+
+/** Sesión hecha, con id para poder editarla o borrarla. */
+export type SessionHistoryItem = {
+  id: string;
+  athlete_id: string;
+  start_time: string;
+  duration_min: number;
+  rpe: number | null;
+  modality: string | null;
+  source: string | null;
+  routine_name: string | null;
+  note: string | null;
+  volume_load_kg: number | null;
+  sets_total: number | null;
+  reps_total: number | null;
+  exercises: HistoryExercise[];
+  meta: JsonObject;
+};
+
+export type SessionUpdatePayload = {
+  duration_min?: number;
+  rpe?: number | null;
+  note?: string | null;
+  exercises?: HistoryExercise[];
+};
+
 export type IngestResult = {
   inserted: number;
   duplicates: number;
@@ -206,4 +236,19 @@ export function sendSessionHeartbeat(payload: {
   routine_name?: string | null;
 }): Promise<{ ok: boolean }> {
   return http("/api/v1/me/session-heartbeat", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function getSessionHistory(athleteId: string): Promise<SessionHistoryItem[]> {
+  return http(`/api/v1/sessions/${encodeURIComponent(athleteId)}/history`);
+}
+
+export function updateSession(sessionId: string, payload: SessionUpdatePayload): Promise<SessionHistoryItem> {
+  return http(`/api/v1/sessions/item/${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteSession(sessionId: string): Promise<{ deleted: boolean }> {
+  return http(`/api/v1/sessions/item/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
 }
