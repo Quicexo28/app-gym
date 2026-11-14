@@ -11,9 +11,12 @@ from sqlalchemy.orm import Session
 from app.auth.athlete_access import require_athlete_access
 from app.auth.deps import get_current_user
 from app.coach.reports import build_measurement_report
+from app.core.text import clean_text
+from app.core.time import to_utc
 from app.db.engine import get_db
-from app.db.models import Athlete, BodyMeasurement, CoachReport, CoachReportKind
+from app.db.models import BodyMeasurement, CoachReport, CoachReportKind
 from app.db.models_auth import User
+from app.db.repo import ensure_athlete_row
 
 router = APIRouter(prefix="/body-metrics", tags=["body-metrics"])
 DbSession = Session
@@ -181,25 +184,6 @@ def _metric_definitions() -> list[BodyMetricDefinition]:
     ]
 
 
-def _normalize_notes(raw: str | None) -> str | None:
-    if raw is None:
-        return None
-    value = " ".join(raw.split()).strip()
-    return value or None
-
-
-def _to_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
-
-
-def _ensure_athlete_row(db: DbSession, athlete_id: str) -> None:
-    if db.get(Athlete, athlete_id) is not None:
-        return
-    db.add(Athlete(athlete_id=athlete_id))
-
-
 def _round(value: float | None, digits: int) -> float | None:
     if value is None:
         return None
@@ -258,8 +242,7 @@ def get_body_measurements_history(
     db: Annotated[DbSession, Depends(get_db)],
     limit: int = Query(default=100, ge=1, le=365),
 ) -> BodyMeasurementHistoryResponse:
-    require_athlete_access(db, user, athlete_id)
-    normalized_athlete_id = athlete_id.strip()
+    normalized_athlete_id = require_athlete_access(db, user, athlete_id)
     rows = (
         db.execute(
             select(BodyMeasurement)
@@ -284,11 +267,10 @@ def create_body_measurement(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> BodyMeasurementItem:
-    athlete_id = payload.athlete_id.strip()
-    require_athlete_access(db, user, athlete_id)
+    athlete_id = require_athlete_access(db, user, payload.athlete_id)
 
-    measured_at = _to_utc(payload.measured_at or datetime.now(UTC))
-    _ensure_athlete_row(db, athlete_id)
+    measured_at = to_utc(payload.measured_at or datetime.now(UTC))
+    ensure_athlete_row(db, athlete_id)
 
     previous = (
         db.execute(
@@ -318,7 +300,7 @@ def create_body_measurement(
         thigh_cm=payload.thigh_cm,
         calf_cm=payload.calf_cm,
         body_fat_pct=payload.body_fat_pct,
-        notes=_normalize_notes(payload.notes),
+        notes=clean_text(payload.notes),
     )
     db.add(row)
     db.commit()

@@ -10,7 +10,7 @@ from app.api.v1.endpoints.body_metrics import (
     BodyMeasurementCreateRequest,
     _metric_definitions,
     _serialize_item,
-    _to_utc,
+    to_utc,
 )
 from app.db.models import BodyMeasurement
 
@@ -27,7 +27,7 @@ def test_body_measurement_payload_accepts_weight_only() -> None:
 
 def test_to_utc_normalizes_naive_datetime() -> None:
     naive = datetime(2026, 2, 20, 14, 30, 0)
-    normalized = _to_utc(naive)
+    normalized = to_utc(naive)
     assert normalized.tzinfo is not None
     assert normalized.utcoffset() == UTC.utcoffset(normalized)
 

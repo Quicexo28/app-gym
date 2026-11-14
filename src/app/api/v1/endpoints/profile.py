@@ -12,6 +12,7 @@ from app.api.v1.endpoints.progress import display_label
 from app.auth.athlete_access import personal_athlete_id_for_user
 from app.auth.deps import get_current_user
 from app.auth.types import Plan, Role
+from app.core.text import clean_text
 from app.db.engine import get_db
 from app.db.models import CoachAthleteAssignment, Run, TrainingSession
 from app.db.models_auth import User, UserSettings
@@ -105,13 +106,6 @@ class ProfileUpdateRequest(BaseModel):
         if not MIN_HEIGHT_CM <= value <= MAX_HEIGHT_CM:
             raise ValueError(f"Height must be between {MIN_HEIGHT_CM} and {MAX_HEIGHT_CM} cm.")
         return round(float(value), 1)
-
-
-def _clean_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    cleaned = " ".join(value.split()).strip()
-    return cleaned or None
 
 
 def _ensure_settings(db: DbSession, user: User) -> UserSettings:
@@ -215,16 +209,16 @@ def update_my_profile(
     sent = payload.model_fields_set
 
     if "username" in sent:
-        username = _clean_text(payload.username)
+        username = clean_text(payload.username)
         if username is not None and len(username) < 3:
             raise HTTPException(status_code=400, detail="Username must be at least 3 characters.")
         row.profile_username = username
 
     if "display_name" in sent:
-        row.profile_display_name = _clean_text(payload.display_name)
+        row.profile_display_name = clean_text(payload.display_name)
 
     if "bio" in sent:
-        row.profile_bio = _clean_text(payload.bio)
+        row.profile_bio = clean_text(payload.bio)
 
     if "birth_date" in sent:
         row.profile_birth_date = payload.birth_date

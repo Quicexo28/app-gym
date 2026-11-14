@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from app.api.v1.endpoints.profile import ProfileUpdateRequest, _clean_text
+from app.api.v1.endpoints.profile import ProfileUpdateRequest, clean_text
 
 
 def test_profile_update_accepts_account_fields() -> None:
@@ -47,5 +47,5 @@ def test_profile_update_distinguishes_omitted_from_cleared() -> None:
 
 
 def test_clean_text_collapses_whitespace_and_empties_to_none() -> None:
-    assert _clean_text("  Santiago   Quiceno  ") == "Santiago Quiceno"
-    assert _clean_text("   ") is None
+    assert clean_text("  Santiago   Quiceno  ") == "Santiago Quiceno"
+    assert clean_text("   ") is None

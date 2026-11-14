@@ -8,6 +8,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.athlete_access import get_or_404
+from app.core.text import clean_text
 from app.db.models import (
     CycleAssignment,
     CycleAssignmentBlock,
@@ -47,24 +49,13 @@ def _to_int(name: str, value: int | None, *, min_value: int | None = None) -> in
     return out
 
 
-def _normalize_text(value: str | None, *, max_len: int | None = None) -> str | None:
-    if value is None:
-        return None
-    cleaned = " ".join(value.split()).strip()
-    if not cleaned:
-        return None
-    if max_len is not None and len(cleaned) > max_len:
-        cleaned = cleaned[:max_len].rstrip()
-    return cleaned or None
-
-
 def _normalize_focus_tags(raw: list[str] | None) -> list[str]:
     if not raw:
         return []
     out: list[str] = []
     seen: set[str] = set()
     for item in raw:
-        cleaned = _normalize_text(item, max_len=48)
+        cleaned = clean_text(item, max_len=48)
         if not cleaned:
             continue
         key = cleaned.lower()
@@ -87,10 +78,7 @@ def _template_or_404(db: Session, template_id: uuid.UUID, *, owner_user_id: uuid
 
 
 def _assignment_or_404(db: Session, assignment_id: uuid.UUID) -> CycleAssignment:
-    row = db.get(CycleAssignment, assignment_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Assignment not found.")
-    return row
+    return get_or_404(db, CycleAssignment, assignment_id, "Assignment not found.")
 
 
 def _blocks_for_micro_template(db: Session, template_id: uuid.UUID) -> list[MicroTemplateBlock]:

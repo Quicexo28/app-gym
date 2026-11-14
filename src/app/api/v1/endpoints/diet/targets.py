@@ -10,12 +10,13 @@ from fastapi import (
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 
-from app.api.v1.endpoints.diet.common import MAX_MEAL_LABELS, DbSession, _ensure_athlete_row
+from app.api.v1.endpoints.diet.common import MAX_MEAL_LABELS, DbSession
 from app.auth.athlete_access import require_athlete_access
 from app.auth.deps import get_current_user
 from app.db.engine import get_db
 from app.db.models import NutritionTarget
 from app.db.models_auth import User
+from app.db.repo import ensure_athlete_row
 
 router = APIRouter()
 
@@ -89,8 +90,7 @@ def get_nutrition_targets(
     db: Annotated[DbSession, Depends(get_db)],
     athlete_id: str = Query(min_length=1, max_length=255),
 ) -> NutritionTargetResponse:
-    normalized = athlete_id.strip()
-    require_athlete_access(db, user, normalized)
+    normalized = require_athlete_access(db, user, athlete_id)
     row = db.execute(
         select(NutritionTarget).where(NutritionTarget.athlete_id == normalized)
     ).scalar_one_or_none()
@@ -103,9 +103,8 @@ def put_nutrition_targets(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> NutritionTargetResponse:
-    athlete_id = payload.athlete_id.strip()
-    require_athlete_access(db, user, athlete_id)
-    _ensure_athlete_row(db, athlete_id)
+    athlete_id = require_athlete_access(db, user, payload.athlete_id)
+    ensure_athlete_row(db, athlete_id)
 
     row = db.execute(
         select(NutritionTarget).where(NutritionTarget.athlete_id == athlete_id)

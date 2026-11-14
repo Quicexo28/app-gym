@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from dataclasses import asdict
 from typing import Annotated
 
@@ -9,7 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
 from app.analytics.prediction_log import coverage_report, record_predictions, resolve_pending
-from app.auth.athlete_access import require_athlete_access
+from app.auth.athlete_access import get_owned_or_404, parse_uuid_or_404, require_athlete_access
 from app.auth.deps import get_current_user
 from app.db.engine import get_db
 from app.db.models import Run
@@ -86,15 +85,8 @@ def get_run(
     user: Annotated[User, Depends(get_current_user)],
     db: DbSession,
 ) -> dict:
-    try:
-        rid = uuid.UUID(run_id)
-    except ValueError as err:
-        raise HTTPException(status_code=400, detail="Invalid run_id UUID.") from err
-
-    row = db.get(Run, rid)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Run not found.")
-    require_athlete_access(db, user, row.athlete_id)
+    rid = parse_uuid_or_404(run_id, "Invalid run_id UUID.", status_code=400)
+    row = get_owned_or_404(db, user, Run, rid, "Run not found.")
 
     return {
         "run_id": str(row.run_id),
@@ -125,15 +117,8 @@ def get_run_summary(
     """
     from collections import Counter
 
-    try:
-        rid = uuid.UUID(run_id)
-    except ValueError as err:
-        raise HTTPException(status_code=400, detail="Invalid run_id UUID.") from err
-
-    row = db.get(Run, rid)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Run not found.")
-    require_athlete_access(db, user, row.athlete_id)
+    rid = parse_uuid_or_404(run_id, "Invalid run_id UUID.", status_code=400)
+    row = get_owned_or_404(db, user, Run, rid, "Run not found.")
 
     suggestions = row.suggestions or {}
     scenarios = suggestions.get("scenarios", []) if isinstance(suggestions, dict) else []

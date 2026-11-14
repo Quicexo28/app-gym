@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, require_coach_view
-from app.coach.capacity import CoachCapacity, coach_capacity
+from app.coach.capacity import CoachCapacityOut, coach_capacity
 from app.core.config import Settings
 from app.db.engine import get_db
 from app.db.models_auth import User
@@ -38,19 +38,6 @@ def _get_or_create_billing(db: DbSession, coach_user_id: uuid.UUID) -> CoachBill
     return billing
 
 
-class CoachCapacityOut(BaseModel):
-    used: int
-    included: int
-    extra: int
-    total: int
-
-
-def _capacity_out(capacity: CoachCapacity) -> CoachCapacityOut:
-    return CoachCapacityOut(
-        used=capacity.used, included=capacity.included, extra=capacity.extra, total=capacity.total
-    )
-
-
 class CoachBillingOut(BaseModel):
     status: str
     has_subscription: bool
@@ -67,7 +54,7 @@ def get_coach_billing(
     return CoachBillingOut(
         status=(billing.status if billing else CoachBillingStatus.NONE),
         has_subscription=bool(billing and billing.stripe_subscription_id),
-        capacity=_capacity_out(capacity),
+        capacity=capacity.to_out(),
     )
 
 
@@ -157,7 +144,7 @@ def adjust_coach_seats(
     capacity = coach_capacity(db, coach.id)
     return CoachBillingOut(
         status=billing.status, has_subscription=bool(billing.stripe_subscription_id),
-        capacity=_capacity_out(capacity),
+        capacity=capacity.to_out(),
     )
 
 

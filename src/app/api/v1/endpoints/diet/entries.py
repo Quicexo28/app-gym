@@ -25,14 +25,14 @@ from app.api.v1.endpoints.diet.common import (
     DbSession,
     MealSlot,
     _day_range_utc,
-    _ensure_athlete_row,
-    _to_utc,
 )
-from app.auth.athlete_access import require_athlete_access
+from app.auth.athlete_access import get_owned_or_404, require_athlete_access
 from app.auth.deps import get_current_user
+from app.core.time import to_utc
 from app.db.engine import get_db
 from app.db.models import FoodProduct, MealEntry, MealPreset
 from app.db.models_auth import User
+from app.db.repo import ensure_athlete_row
 from app.nutrition.mapping import (
     scale_micronutrients_per_100g,
     scale_per_100g,
@@ -310,13 +310,6 @@ def _resolve_entry_quantity(
     return quantity_g, quantity_g, default_unit_for_basis(product.basis if product else None)
 
 
-def _get_entry_or_404(db: DbSession, entry_id: uuid.UUID) -> MealEntry:
-    row = db.get(MealEntry, entry_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Meal entry not found.")
-    return row
-
-
 def _find_meal_entry_by_client_ref(
     db: DbSession, athlete_id: str, client_ref: str
 ) -> MealEntry | None:
@@ -363,8 +356,7 @@ def list_meal_entries(
     date: Annotated[date_cls, Query()],
     athlete_id: str = Query(min_length=1, max_length=255),
 ) -> MealEntriesResponse:
-    normalized = athlete_id.strip()
-    require_athlete_access(db, user, normalized)
+    normalized = require_athlete_access(db, user, athlete_id)
 
     start_utc, end_utc = _day_range_utc(date)
     rows = (
@@ -406,9 +398,8 @@ def create_meal_entry(
     servidor no duplica la comida al reintentar. Sin `client_ref` el
     comportamiento es el de siempre: cada POST crea una entrada nueva.
     """
-    athlete_id = payload.athlete_id.strip()
-    require_athlete_access(db, user, athlete_id)
-    _ensure_athlete_row(db, athlete_id)
+    athlete_id = require_athlete_access(db, user, payload.athlete_id)
+    ensure_athlete_row(db, athlete_id)
 
     client_ref = (payload.client_ref or "").strip() or None
     if client_ref:
@@ -417,7 +408,7 @@ def create_meal_entry(
             response.status_code = status.HTTP_200_OK
             return _serialize_entry(existing)
 
-    consumed_at = _to_utc(payload.consumed_at or datetime.now(UTC))
+    consumed_at = to_utc(payload.consumed_at or datetime.now(UTC))
 
     food_product_id: uuid.UUID | None = None
     product: FoodProduct | None = None
@@ -513,8 +504,7 @@ def update_meal_entry(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> MealEntryItem:
-    row = _get_entry_or_404(db, entry_id)
-    require_athlete_access(db, user, row.athlete_id)
+    row = get_owned_or_404(db, user, MealEntry, entry_id, "Meal entry not found.")
 
     sent = payload.model_fields_set
 
@@ -536,7 +526,7 @@ def update_meal_entry(
             row.micronutrients = snapshot["micronutrients"] or None
 
     if "consumed_at" in sent and payload.consumed_at is not None:
-        row.consumed_at = _to_utc(payload.consumed_at)
+        row.consumed_at = to_utc(payload.consumed_at)
     if "meal_slot" in sent and payload.meal_slot is not None:
         row.meal_slot = payload.meal_slot
     if "food_name" in sent and payload.food_name is not None:
@@ -565,8 +555,7 @@ def delete_meal_entry(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> dict:
-    row = _get_entry_or_404(db, entry_id)
-    require_athlete_access(db, user, row.athlete_id)
+    row = get_owned_or_404(db, user, MealEntry, entry_id, "Meal entry not found.")
     db.delete(row)
     db.commit()
     return {"ok": True, "id": str(entry_id)}
@@ -597,9 +586,8 @@ def create_entries_from_preset(
     offline en la misma sesion). Sin `client_ref` el comportamiento es el de
     siempre.
     """
-    athlete_id = payload.athlete_id.strip()
-    require_athlete_access(db, user, athlete_id)
-    _ensure_athlete_row(db, athlete_id)
+    athlete_id = require_athlete_access(db, user, payload.athlete_id)
+    ensure_athlete_row(db, athlete_id)
 
     try:
         preset_id = uuid.UUID(payload.preset_id)
@@ -623,7 +611,7 @@ def create_entries_from_preset(
             response.status_code = status.HTTP_200_OK
             return [_serialize_entry(row) for row in existing]
 
-    consumed_at = _to_utc(payload.consumed_at or datetime.now(UTC))
+    consumed_at = to_utc(payload.consumed_at or datetime.now(UTC))
     meal_slot = payload.meal_slot or preset.meal_slot or "snack"
 
     created: list[MealEntry] = []
@@ -691,8 +679,7 @@ def get_diet_summary(
     to: Annotated[date_cls, Query(alias="to")],
     athlete_id: str = Query(min_length=1, max_length=255),
 ) -> DietSummaryResponse:
-    normalized = athlete_id.strip()
-    require_athlete_access(db, user, normalized)
+    normalized = require_athlete_access(db, user, athlete_id)
 
     if to < from_:
         raise HTTPException(status_code=400, detail="'to' must not be before 'from'.")

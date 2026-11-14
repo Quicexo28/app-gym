@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.core.text import clean_text
 from app.db.models import (
     CycleAssignment,
     CycleLevel,
@@ -18,7 +19,6 @@ from app.db.models import (
 from app.planning._common import (
     _blocks_for_micro_template,
     _normalize_focus_tags,
-    _normalize_text,
     _serialize_micro_block,
     _serialize_template,
     _template_children,
@@ -70,7 +70,7 @@ def _replace_micro_blocks(
         if relative_day is None:
             raise HTTPException(status_code=400, detail=f"blocks[{idx}].relative_day is required.")
 
-        title = _normalize_text(payload.get("title"), max_len=180)
+        title = clean_text(payload.get("title"), max_len=180)
         if not title:
             title = f"Bloque {idx}"
 
@@ -80,7 +80,7 @@ def _replace_micro_blocks(
             sequence_index=sequence_index,
             relative_day=relative_day,
             title=title,
-            objective=_normalize_text(payload.get("objective"), max_len=300),
+            objective=clean_text(payload.get("objective"), max_len=300),
             routine_snapshot=payload.get("routine_snapshot"),
             target_volume=_to_float("target_volume", payload.get("target_volume")),
             target_intensity=_to_float("target_intensity", payload.get("target_intensity")),
@@ -115,7 +115,7 @@ def create_template(
     duration_weeks: int | None = None,
     blocks: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    cleaned_name = _normalize_text(name, max_len=160)
+    cleaned_name = clean_text(name, max_len=160)
     if not cleaned_name:
         raise HTTPException(status_code=400, detail="name is required.")
 
@@ -124,11 +124,11 @@ def create_template(
         owner_user_id=owner_user_id,
         level=level,
         name=cleaned_name,
-        objective=_normalize_text(objective, max_len=280),
-        notes=_normalize_text(notes),
+        objective=clean_text(objective, max_len=280),
+        notes=clean_text(notes),
         status=status,
-        training_phase=_normalize_text(training_phase, max_len=120),
-        nutrition_phase=_normalize_text(nutrition_phase, max_len=120),
+        training_phase=clean_text(training_phase, max_len=120),
+        nutrition_phase=clean_text(nutrition_phase, max_len=120),
         focus_tags=_normalize_focus_tags(focus_tags),
         duration_days=_to_int("duration_days", duration_days, min_value=1),
         duration_weeks=_to_int("duration_weeks", duration_weeks, min_value=1),
@@ -169,20 +169,20 @@ def update_template(
     row = _template_or_404(db, template_id, owner_user_id=owner_user_id)
 
     if name is not None:
-        cleaned_name = _normalize_text(name, max_len=160)
+        cleaned_name = clean_text(name, max_len=160)
         if not cleaned_name:
             raise HTTPException(status_code=400, detail="name cannot be empty.")
         row.name = cleaned_name
     if objective is not None:
-        row.objective = _normalize_text(objective, max_len=280)
+        row.objective = clean_text(objective, max_len=280)
     if notes is not None:
-        row.notes = _normalize_text(notes)
+        row.notes = clean_text(notes)
     if status is not None:
         row.status = status
     if training_phase is not None:
-        row.training_phase = _normalize_text(training_phase, max_len=120)
+        row.training_phase = clean_text(training_phase, max_len=120)
     if nutrition_phase is not None:
-        row.nutrition_phase = _normalize_text(nutrition_phase, max_len=120)
+        row.nutrition_phase = clean_text(nutrition_phase, max_len=120)
     if focus_tags is not None:
         row.focus_tags = _normalize_focus_tags(focus_tags)
     if duration_days is not None:

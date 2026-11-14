@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterable
+from typing import Any, TypeVar
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -48,7 +50,8 @@ def list_accessible_athlete_ids(db: Session, user: User) -> list[str]:
     return out
 
 
-def require_athlete_access(db: Session, user: User, athlete_id: str) -> None:
+def require_athlete_access(db: Session, user: User, athlete_id: str) -> str:
+    # Devuelve el athlete_id ya normalizado (sin espacios).
     target = athlete_id.strip()
     if not target:
         raise HTTPException(status_code=400, detail="athlete_id is required.")
@@ -56,6 +59,34 @@ def require_athlete_access(db: Session, user: User, athlete_id: str) -> None:
     allowed = set(list_accessible_athlete_ids(db, user))
     if target not in allowed:
         raise HTTPException(status_code=403, detail="Athlete access denied.")
+    return target
+
+
+def parse_uuid_or_404(value: str, detail: str, *, status_code: int = 404) -> uuid.UUID:
+    # El codigo por defecto es 404; cada endpoint conserva el suyo (runs usa 400).
+    try:
+        return uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=status_code, detail=detail) from None
+
+
+_M = TypeVar("_M")
+
+
+def get_or_404(db: Session, model: type[_M], row_id: Any, detail: str = "Not found.") -> _M:
+    row = db.get(model, row_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=detail)
+    return row
+
+
+def get_owned_or_404(
+    db: Session, user: User, model: type[_M], row_id: Any, detail: str = "Not found."
+) -> _M:
+    # Carga la fila por id (404 si falta) y exige acceso a su athlete_id.
+    row = get_or_404(db, model, row_id, detail)
+    require_athlete_access(db, user, row.athlete_id)  # type: ignore[attr-defined]
+    return row
 
 
 def require_athlete_access_many(db: Session, user: User, athlete_ids: Iterable[str]) -> None:

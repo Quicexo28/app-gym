@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.api.v1.endpoints.diet.common import DbSession, PhotoKind, _is_admin, settings
+from app.auth.athlete_access import get_or_404
 from app.auth.deps import get_current_user
 from app.db.engine import get_db
 from app.db.models import FoodProduct
@@ -37,10 +38,7 @@ class FoodPhotoUploadResponse(BaseModel):
 
 
 def _get_food_or_404(db: DbSession, food_id: uuid.UUID) -> FoodProduct:
-    row = db.get(FoodProduct, food_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Food product not found.")
-    return row
+    return get_or_404(db, FoodProduct, food_id, "Food product not found.")
 
 
 def _authorize_food_photo_read(row: FoodProduct, user: User) -> None:

@@ -26,6 +26,10 @@ from app.planning._common import (
 from app.planning.assignments import _micro_to_meso_mapping
 
 
+def _volume_sum(sessions: list[TrainingSession]) -> float:
+    return sum(float(session.volume_load_kg or 0.0) for session in sessions)
+
+
 def metrics_for_assignment(db: Session, *, assignment_id: uuid.UUID) -> dict[str, Any]:
     assignment = _assignment_or_404(db, assignment_id)
     template = db.get(CycleTemplate, assignment.template_id)
@@ -45,7 +49,7 @@ def metrics_for_assignment(db: Session, *, assignment_id: uuid.UUID) -> dict[str
             .all()
         )
 
-    volume = sum(float(session.volume_load_kg or 0.0) for session in sessions)
+    volume = _volume_sum(sessions)
     rpe_values = [float(session.rpe) for session in sessions if session.rpe is not None]
     intensity_avg = (sum(rpe_values) / len(rpe_values)) if rpe_values else None
     fatigue = 0.0
@@ -77,7 +81,7 @@ def metrics_for_assignment(db: Session, *, assignment_id: uuid.UUID) -> dict[str
         micro_blocks = grouped_blocks[micro_seq]
         micro_completed = [block for block in micro_blocks if block.status == CycleBlockStatus.COMPLETED]
         micro_sessions = sessions_by_micro.get(micro_seq, [])
-        micro_volume = sum(float(session.volume_load_kg or 0.0) for session in micro_sessions)
+        micro_volume = _volume_sum(micro_sessions)
         micro_rpe_values = [float(session.rpe) for session in micro_sessions if session.rpe is not None]
         micro_intensity = (sum(micro_rpe_values) / len(micro_rpe_values)) if micro_rpe_values else None
         micro_fatigue = 0.0

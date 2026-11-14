@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.auth.types import Role
 from app.auth.view_scopes import effective_role_for_scopes, get_current_view_scopes
 from app.core.config import Settings
-from app.db.models import Athlete
 from app.db.models_auth import User
 
 DbSession = Session
@@ -59,18 +58,6 @@ class PhotoKind(StrEnum):
 # --------------------------------------------------------------------------
 # Helpers compartidos
 # --------------------------------------------------------------------------
-
-
-def _ensure_athlete_row(db: DbSession, athlete_id: str) -> None:
-    if db.get(Athlete, athlete_id) is not None:
-        return
-    db.add(Athlete(athlete_id=athlete_id))
-
-
-def _to_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
 
 
 def _is_admin(user: User) -> bool:

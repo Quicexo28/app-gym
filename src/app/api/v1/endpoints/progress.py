@@ -9,18 +9,19 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.athlete_access import require_athlete_access
+from app.auth.athlete_access import get_owned_or_404, parse_uuid_or_404, require_athlete_access
 from app.auth.deps import get_current_user
 from app.auth.types import Role
+from app.core.text import clean_text
 from app.db.engine import get_db
 from app.db.models import (
-    Athlete,
     BodyMeasurement,
     ProgressShare,
     ProgressShareComment,
     TrainingSession,
 )
 from app.db.models_auth import User, UserSettings
+from app.db.repo import ensure_athlete_row
 
 router = APIRouter(prefix="/progress", tags=["progress"])
 DbSession = Session
@@ -82,16 +83,9 @@ class ProgressCommentCreateRequest(BaseModel):
     body: str = Field(min_length=1, max_length=600)
 
 
-def _clean_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    cleaned = " ".join(value.split()).strip()
-    return cleaned or None
-
-
 def display_label(username: str | None, email: str) -> str:
     """Nombre visible en el hilo: username del perfil, si no el local del email."""
-    cleaned = _clean_text(username)
+    cleaned = clean_text(username)
     if cleaned:
         return cleaned
     local = email.split("@", 1)[0].strip()
@@ -257,22 +251,9 @@ def _comments_by_share(
     return out
 
 
-def _load_share(db: DbSession, share_id: str) -> ProgressShare:
-    try:
-        parsed = uuid.UUID(share_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Progress share not found.") from None
-
-    row = db.get(ProgressShare, parsed)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Progress share not found.")
-    return row
-
-
-def _ensure_athlete_row(db: DbSession, athlete_id: str) -> None:
-    if db.get(Athlete, athlete_id) is not None:
-        return
-    db.add(Athlete(athlete_id=athlete_id))
+def _load_share(db: DbSession, user: User, share_id: str) -> ProgressShare:
+    detail = "Progress share not found."
+    return get_owned_or_404(db, user, ProgressShare, parse_uuid_or_404(share_id, detail), detail)
 
 
 @router.get("/shares", response_model=ProgressShareListResponse)
@@ -282,8 +263,7 @@ def list_progress_shares(
     athlete_id: str = Query(min_length=1, max_length=255),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> ProgressShareListResponse:
-    normalized = athlete_id.strip()
-    require_athlete_access(db, user, normalized)
+    normalized = require_athlete_access(db, user, athlete_id)
 
     rows = (
         db.execute(
@@ -311,14 +291,13 @@ def create_progress_share(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> ProgressShareItem:
-    athlete_id = payload.athlete_id.strip()
-    require_athlete_access(db, user, athlete_id)
-    _ensure_athlete_row(db, athlete_id)
+    athlete_id = require_athlete_access(db, user, payload.athlete_id)
+    ensure_athlete_row(db, athlete_id)
 
     row = ProgressShare(
         athlete_id=athlete_id,
         author_user_id=user.id,
-        note=_clean_text(payload.note),
+        note=clean_text(payload.note),
         snapshot=_build_snapshot(db, athlete_id),
     )
     db.add(row)
@@ -340,10 +319,9 @@ def create_progress_comment(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> ProgressShareItem:
-    share = _load_share(db, share_id)
-    require_athlete_access(db, user, share.athlete_id)
+    share = _load_share(db, user, share_id)
 
-    body = _clean_text(payload.body)
+    body = clean_text(payload.body)
     if not body:
         raise HTTPException(status_code=400, detail="Comment body is required.")
 
@@ -362,8 +340,7 @@ def delete_progress_share(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_db)],
 ) -> ProgressShareDeleteResponse:
-    share = _load_share(db, share_id)
-    require_athlete_access(db, user, share.athlete_id)
+    share = _load_share(db, user, share_id)
 
     if share.author_user_id != user.id:
         raise HTTPException(status_code=403, detail="Only the author can delete this share.")

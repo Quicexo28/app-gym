@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 
 from fastapi import HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,13 @@ def generate_invite_code() -> str:
     return f"{_invite_code_part()}-{_invite_code_part()}"
 
 
+class CoachCapacityOut(BaseModel):
+    used: int
+    included: int
+    extra: int
+    total: int
+
+
 @dataclass(frozen=True)
 class CoachCapacity:
     used: int
@@ -35,6 +43,11 @@ class CoachCapacity:
     @property
     def has_room(self) -> bool:
         return self.used < self.total
+
+    def to_out(self) -> CoachCapacityOut:
+        return CoachCapacityOut(
+            used=self.used, included=self.included, extra=self.extra, total=self.total
+        )
 
 
 def coach_capacity(db: Session, coach_user_id: uuid.UUID) -> CoachCapacity:

@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.auth.athlete_access import personal_athlete_id_for_user
 from app.auth.deps import get_current_user, require_coach_view
-from app.coach.capacity import CoachCapacity, coach_capacity, generate_invite_code, require_capacity
+from app.coach.capacity import (
+    CoachCapacityOut,
+    coach_capacity,
+    generate_invite_code,
+    require_capacity,
+)
 from app.db.engine import get_db
 from app.db.models import CoachAthleteAssignment
 from app.db.models_auth import User
@@ -21,19 +26,6 @@ DbSession = Annotated[Session, Depends(get_db)]
 router = APIRouter(prefix="/coach", tags=["coach"])
 
 _MAX_ROTATE_ATTEMPTS = 5
-
-
-class CoachCapacityOut(BaseModel):
-    used: int
-    included: int
-    extra: int
-    total: int
-
-
-def _capacity_out(capacity: CoachCapacity) -> CoachCapacityOut:
-    return CoachCapacityOut(
-        used=capacity.used, included=capacity.included, extra=capacity.extra, total=capacity.total
-    )
 
 
 class CoachInviteOut(BaseModel):
@@ -74,7 +66,7 @@ def get_coach_invite(
     return CoachInviteOut(
         invite_code=profile.invite_code,
         invite_enabled=profile.invite_enabled,
-        capacity=_capacity_out(capacity),
+        capacity=capacity.to_out(),
     )
 
 
@@ -102,7 +94,7 @@ def rotate_coach_invite(
     return CoachInviteOut(
         invite_code=profile.invite_code,
         invite_enabled=profile.invite_enabled,
-        capacity=_capacity_out(capacity),
+        capacity=capacity.to_out(),
     )
 
 
@@ -121,7 +113,7 @@ def update_coach_invite(
     return CoachInviteOut(
         invite_code=profile.invite_code,
         invite_enabled=profile.invite_enabled,
-        capacity=_capacity_out(capacity),
+        capacity=capacity.to_out(),
     )
 
 

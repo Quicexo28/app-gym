@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.core.text import clean_text
 from app.db.models import (
     CycleAssignment,
     CycleAssignmentBlock,
@@ -28,7 +29,6 @@ from app.planning._common import (
     _assignment_blocks,
     _assignment_or_404,
     _blocks_for_micro_template,
-    _normalize_text,
     _now_utc,
     _serialize_assignment,
     _serialize_assignment_block,
@@ -217,7 +217,7 @@ def create_assignment(
 
     expanded_blocks, warnings = _expand_template_into_assignment_blocks(db, template=template)
 
-    normalized_timezone = _normalize_text(timezone, max_len=64) or DEFAULT_TIMEZONE
+    normalized_timezone = clean_text(timezone, max_len=64) or DEFAULT_TIMEZONE
     should_activate = start_mode == CycleStartMode.MANUAL and start_date is not None
     status = CycleStatus.ACTIVE if should_activate else CycleStatus.DRAFT
     now = _now_utc()

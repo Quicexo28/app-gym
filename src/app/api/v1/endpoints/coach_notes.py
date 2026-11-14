@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.athlete_access import require_athlete_access
+from app.auth.athlete_access import get_owned_or_404, parse_uuid_or_404, require_athlete_access
 from app.auth.deps import get_current_user
 from app.coach.reports import normalize_exercise_name
 from app.db.engine import get_db
@@ -50,6 +50,9 @@ class CoachNoteResponse(BaseModel):
     read_at_utc: str | None
 
 
+_NOTE_NOT_FOUND = "Nota no encontrada."
+
+
 def _serialize(row: CoachNote) -> CoachNoteResponse:
     return CoachNoteResponse(
         id=str(row.id),
@@ -65,25 +68,13 @@ def _serialize(row: CoachNote) -> CoachNoteResponse:
     )
 
 
-def _load_note(db: DbSession, note_id: str) -> CoachNote:
-    try:
-        parsed = uuid.UUID(note_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Nota no encontrada.") from None
-
-    row = db.get(CoachNote, parsed)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Nota no encontrada.")
-    return row
-
-
 @router.post("", response_model=CoachNoteResponse, status_code=status.HTTP_201_CREATED)
 def create_coach_note(
     payload: CoachNoteCreateRequest,
     user: Annotated[User, Depends(get_current_user)],
     db: DbSession,
 ) -> CoachNoteResponse:
-    require_athlete_access(db, user, payload.athlete_id)
+    athlete_id = require_athlete_access(db, user, payload.athlete_id)
 
     assignment_uuid: uuid.UUID | None = None
     if payload.assignment_id:
@@ -93,7 +84,7 @@ def create_coach_note(
             raise HTTPException(status_code=422, detail="assignment_id invalido.") from None
 
     row = CoachNote(
-        athlete_id=payload.athlete_id.strip(),
+        athlete_id=athlete_id,
         author_user_id=user.id,
         scope_type=payload.scope_type,
         routine_id=payload.routine_id,
@@ -117,9 +108,9 @@ def list_coach_notes(
     routine_id: str | None = Query(default=None),
     exercise_name: str | None = Query(default=None),
 ) -> list[CoachNoteResponse]:
-    require_athlete_access(db, user, athlete_id)
+    athlete_id = require_athlete_access(db, user, athlete_id)
 
-    stmt = select(CoachNote).where(CoachNote.athlete_id == athlete_id.strip())
+    stmt = select(CoachNote).where(CoachNote.athlete_id == athlete_id)
     if routine_id:
         stmt = stmt.where(CoachNote.routine_id == routine_id)
     if exercise_name:
@@ -138,8 +129,8 @@ def mark_coach_note_read(
     user: Annotated[User, Depends(get_current_user)],
     db: DbSession,
 ) -> CoachNoteResponse:
-    row = _load_note(db, note_id)
-    require_athlete_access(db, user, row.athlete_id)
+    note_uuid = parse_uuid_or_404(note_id, _NOTE_NOT_FOUND)
+    row = get_owned_or_404(db, user, CoachNote, note_uuid, _NOTE_NOT_FOUND)
 
     if row.read_at_utc is None:
         row.read_at_utc = datetime.now(UTC)

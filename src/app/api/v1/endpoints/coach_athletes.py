@@ -13,6 +13,7 @@ from app.auth.athlete_access import require_athlete_access
 from app.auth.deps import get_current_user, require_coach_view
 from app.coach.capacity import require_capacity
 from app.coach.muscle_groups import validate_priority_muscle_groups
+from app.core.text import clean_text
 from app.db.engine import get_db
 from app.db.models import Athlete, AthletePlan, CoachAthleteAssignment, ExerciseCatalog
 from app.db.models_auth import User
@@ -22,13 +23,6 @@ from coach_ai.training_core.naming import normalize_exercise_name
 
 DbSession = Annotated[Session, Depends(get_db)]
 router = APIRouter(prefix="/coach", tags=["coach"])
-
-
-def _clean_text(raw: str | None) -> str | None:
-    if raw is None:
-        return None
-    value = " ".join(raw.split()).strip()
-    return value or None
 
 
 def _own_assignment(db: DbSession, user: User, athlete_id: str) -> CoachAthleteAssignment | None:
@@ -76,7 +70,7 @@ def create_coach_athlete(
     athlete = Athlete(
         athlete_id=athlete_id,
         display_name=payload.display_name.strip(),
-        notes=_clean_text(payload.notes),
+        notes=clean_text(payload.notes),
     )
     db.add(athlete)
     db.add(CoachAthleteAssignment(id=uuid.uuid4(), coach_user_id=user.id, athlete_id=athlete_id))
@@ -112,7 +106,7 @@ def update_coach_athlete(
     if payload.display_name is not None:
         athlete.display_name = payload.display_name.strip()
     if payload.notes is not None:
-        athlete.notes = _clean_text(payload.notes)
+        athlete.notes = clean_text(payload.notes)
 
     plan = db.get(AthletePlan, athlete_id)
     if payload.priority_muscle_groups is not None:

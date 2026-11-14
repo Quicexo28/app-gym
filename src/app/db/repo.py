@@ -18,6 +18,13 @@ def ensure_athlete(db: Session, athlete_id: str) -> None:
         db.commit()
 
 
+def ensure_athlete_row(db: Session, athlete_id: str) -> None:
+    """Como `ensure_athlete`, pero sin commit: lo hace el endpoint con el resto del cambio."""
+    if db.get(Athlete, athlete_id) is not None:
+        return
+    db.add(Athlete(athlete_id=athlete_id))
+
+
 def upsert_session(db: Session, s: DomainSession) -> dict:
     """Insert session if not exists (uq athlete_id + start_time).
     Returns: {inserted: bool, issues: [...], session_key: ...}
